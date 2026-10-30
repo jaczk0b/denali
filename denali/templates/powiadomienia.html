@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st, alerts %}
+{% block title %}Powiadomienia{% endblock %}
+{% block content %}
+<div>
+  <h1>Powiadomienia</h1>
+  <p class="lead">Jedna wiadomość na awarię — o przyczynie, ze skutkami w treści. Wysyłana minutę po wykryciu (żeby zebrać skutki),
+    potem „rozwiązane”, gdy wróci. „Zajmuję się tym” na incydencie zatrzymuje kolejne wiadomości.</p>
+</div>
+{{ alerts(error, message) }}
+<div class="cols">
+<div class="col">
+  <section class="card">
+    <h2>Kanały</h2>
+    {% if rows %}
+    <ul class="list-rows">
+      {% for r in rows %}
+      <li><span class="grow"><strong>{{ r.name }}</strong> <span class="muted small">Discord · od: {{ labels[r.min_severity] }}</span>
+          {% if not r.enabled %}<span class="pill">wyłączony</span>{% endif %}
+          {% if r.last_error %}<br><span class="small">{{ st("down", 12) }} {{ r.last_error }}</span>
+          {% elif r.last_sent_at %}<br><span class="muted small">ostatnio wysłano {{ r.last_sent_at | dt }}</span>{% endif %}</span>
+        <form class="inline" method="post" action="/admin/powiadomienia/{{ r.id }}/test"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Wyślij test</button></form>
+        <form class="inline" method="post" action="/admin/powiadomienia/{{ r.id }}/{{ 'wylacz' if r.enabled else 'wlacz' }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">{{ "wyłącz" if r.enabled else "włącz" }}</button></form>
+        <form class="inline" method="post" action="/admin/powiadomienia/{{ r.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Brak kanałów — awarie widać tylko w panelu.</p>{% endif %}
+  </section>
+</div>
+<div class="col">
+  <form class="card" method="post" action="/admin/powiadomienia" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h2>Dodaj Discord</h2>
+    <p class="muted small">Discord → serwer → kanał → <em>Edytuj kanał → Integracje → Webhooki → Nowy webhook → Kopiuj adres URL</em>.</p>
+    <label class="field">Nazwa<input name="name" value="Discord" maxlength="100"></label>
+    <label class="field">Adres webhooka<input name="webhook" type="password" required placeholder="https://discord.com/api/webhooks/…"></label>
+    <label class="field">Wysyłaj od
+      <select name="min_severity">
+        <option value="ostrzezenie" selected>ostrzeżenia (zalecane)</option>
+        <option value="krytyczny">tylko krytyczne (P1)</option>
+        <option value="info">wszystkiego</option>
+      </select></label>
+    <button class="btn primary" type="submit">Dodaj i wyślij test</button>
+  </form>
+</div>
+</div>
+{% endblock %}

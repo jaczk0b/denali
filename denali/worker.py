@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from . import backup, checks, export, integrations, live
+from . import backup, checks, export, integrations, live, notify
 from .config import Settings
 from .crypto import Box
 from .db import kv_get, kv_set, make_engine
@@ -66,6 +66,12 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                     live.evaluate(conn)
             except Exception:
                 log.exception("Ocena stanu i incydentów nie powiodła się")
+            if box:
+                try:
+                    with engine.begin() as conn:
+                        await notify.process(conn, box, settings.base_url)
+                except Exception:
+                    log.exception("Wysyłka powiadomień nie powiodła się")
             await asyncio.to_thread(tick, engine, settings, state)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=interval)

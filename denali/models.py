@@ -269,6 +269,8 @@ incident = Table(
     Column("acked_by", String(64), nullable=False, default=""),
     Column("cause_md", Text, nullable=False, default=""),
     Column("fix_md", Text, nullable=False, default=""),
+    Column("notified_at", Float),                                     # powiadomienie o awarii wysłane (albo pominięte)
+    Column("closed_notified_at", Float),                              # powiadomienie „rozwiązane” wysłane
 )
 
 incident_device = Table(
@@ -312,4 +314,17 @@ check_state = Table(
     Column("first_fail_at", Float),                          # od kiedy nie odpowiada (do „po ilu sekundach awaria”)
     Column("last_ok_at", Float),
     Column("checked_at", Float, nullable=False),
+)
+
+# Kanały powiadomień (na razie Discord). Adres webhooka to sekret — zaszyfrowany.
+notification_channel = Table(
+    "notification_channel", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("type", String(16), nullable=False),                 # discord
+    Column("name", String(100), nullable=False),
+    Column("config_ct", Text, nullable=False),
+    Column("min_severity", String(16), nullable=False, default="ostrzezenie"),
+    Column("enabled", Boolean, nullable=False, default=True),
+    Column("last_sent_at", Float),
+    Column("last_error", String(300), nullable=False, default=""),
 )
