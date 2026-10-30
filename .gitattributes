@@ -1,0 +1,8 @@
+# Wszystko tekstowe w repo i na dysku z końcami linii LF — także po wyciągnięciu na Windowsie
+# (skrypty .sh, pliki systemd i compose muszą trafić na serwer bez CR).
+* text=auto eol=lf
+
+*.woff2 binary
+*.png binary
+*.jpg binary
+*.pdf binary
