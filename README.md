@@ -14,6 +14,7 @@ akcji — Etap 5.
 Spis treści:
 [Instalacja](#instalacja) ·
 [Pierwsze kroki](#pierwsze-kroki) ·
+[Migracja z HLC](#migracja-z-hlc) ·
 [Kopia zapasowa](#kopia-zapasowa) ·
 [Odtworzenie](#odtworzenie) ·
 [Zapasowy serwer](#uruchomienie-na-innym-serwerze) ·
@@ -146,6 +147,41 @@ Konto tylko do podglądu (np. dla domownika): `create-user LOGIN --role podglad`
 3. **Kopia awaryjna na VPS** — według [deploy/vps/README.md](deploy/vps/README.md).
 4. **Tablet** — *Tablet → Utwórz kod*, na tablecie otwórz `https://denali.serwispowers.com/tablet` i wpisz kod.
 5. **Strażnik z VPS-a** i powiadomienia na Discord dochodzą w Etapie 3.
+
+---
+
+## Migracja z HLC
+
+Przenosi z HLC: urządzenia (z notatkami, dostępem, portami), adresy, zależności, kable, runbooki, log problemów,
+pliki, hasła (do skarbca), procedury „na wypadek”, kontakt alarmowy, hasła Wi-Fi i ikony aplikacji ze strony Start.
+Nie przenosi kont (załóż w Denali), sprawdzeń i kanałów powiadomień (wrócą z integracjami w Etapie 3).
+HLC jest tylko czytane — nic w nim się nie zmienia. Drugie uruchomienie niczego nie dubluje.
+
+Wystarczą dwa terminale w przeglądarce, bez kopiowania plików na komputer:
+
+**1. Konsola HLC** (Proxmox → kontener HLC → *Console*, jako root):
+
+```sh
+cd /opt/hlc && set -a && . ./.env && set +a
+HLC_INSTANCE=/var/lib/hlc .venv/bin/python -m hlc backup     # wypisze ścieżkę świeżej kopii ZIP
+grep HLC_FERNET_KEY /opt/hlc/.env                            # klucz — skopiuj wartość po „=”
+hostname -I                                                  # adres IP kontenera HLC
+cd /var/lib/hlc/backups && python3 -m http.server 8099       # udostępnia kopię w LAN; zostaw włączone
+```
+
+**2. Terminal kontenera `app` Denali** (Komodo → stack `denali` → `app` → *Terminal*):
+
+```sh
+python -m denali migrate-hlc http://IP-HLC:8099/hlc-RRRR-MM-DD.zip --site Dom              # próba na sucho
+python -m denali migrate-hlc http://IP-HLC:8099/hlc-RRRR-MM-DD.zip --site Dom --wykonaj    # zapis
+```
+
+Polecenie zapyta o `HLC_FERNET_KEY` (wklej i Enter). Bez klucza przeniesie wszystko poza hasłami.
+Próba na sucho pokazuje dokładnie, co i ile zostanie przeniesione, oraz listę rzeczy do przejrzenia ręcznie
+(np. notatki, które wyglądają, jakby zawierały hasło, albo nieprawidłowe adresy).
+
+**3. Wróć do konsoli HLC i zatrzymaj udostępnianie: Ctrl+C.** Kopia zawiera zaszyfrowane hasła (bez klucza) i opis
+sieci — nie zostawiaj jej dostępnej dłużej niż trzeba.
 
 ---
 

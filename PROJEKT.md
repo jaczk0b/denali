@@ -310,7 +310,7 @@ Własne logowanie:
 Jedno polecenie, które czyta **kopię** `hlc.db` (tylko do odczytu) i zapisuje do nowej bazy:
 
 ```
-denali migrate-hlc --db hlc.db --uploads uploads/ --old-key <HLC_FERNET_KEY> [--dry-run]
+denali migrate-hlc <kopia ZIP z `hlc backup` | http://… | katalog | hlc.db> [--site NAZWA] [--wykonaj]   # bez --wykonaj: próba na sucho; klucz HLC podawany w terminalu
 ```
 
 | Z HLC | Do | Uwagi |

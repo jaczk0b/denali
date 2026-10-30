@@ -10,6 +10,8 @@
   python -m denali export [--out DIR] [--pdf|--no-pdf] eksport awaryjny procedur (HTML + PDF), np. na laptopa
   python -m denali backup [--out DIR]               kopia bazy i plików (worker robi ją sam raz na dobę)
   python -m denali restore ARCHIWUM [--force]       odtworzenie z kopii (panel i worker zatrzymane)
+  python -m denali migrate-hlc ZRODLO [--site NAZWA] [--wykonaj]
+                                                    import z HLC (ZIP z `hlc backup`, także http://…); bez --wykonaj próba
 """
 import argparse
 import asyncio
@@ -46,6 +48,10 @@ def main(argv=None):
     rs = sub.add_parser("restore")
     rs.add_argument("archive")
     rs.add_argument("--force", action="store_true", help="zastąp istniejącą bazę (zostanie odłożona obok)")
+    mh = sub.add_parser("migrate-hlc")
+    mh.add_argument("source", help="kopia HLC: plik ZIP, adres http://… do ZIP-a, katalog albo hlc.db")
+    mh.add_argument("--site", action="append", help="tylko ta lokalizacja z HLC (można podać kilka razy)")
+    mh.add_argument("--wykonaj", action="store_true", help="zapisz (bez tego: próba na sucho, nic nie zmienia)")
     e = sub.add_parser("export")
     e.add_argument("--out", help="katalog docelowy (domyślnie DENALI_DATA_DIR/export)")
     e.add_argument("--pdf", action=argparse.BooleanOptionalAction, default=None,
@@ -81,6 +87,19 @@ def main(argv=None):
         except backup.BackupError as e:
             sys.exit(str(e))
         print(f"Odtworzono bazę i {n} plików. Uruchom panel i worker.")
+    elif a.cmd == "migrate-hlc":
+        import os
+        from . import hlc_import
+        from .crypto import Box
+        from .db import make_engine
+        key = os.environ.get("HLC_FERNET_KEY") or getpass.getpass(
+            "HLC_FERNET_KEY z /opt/hlc/.env (wklej i Enter; puste = bez haseł ze skarbca): ")
+        try:
+            report = hlc_import.migrate(make_engine(settings.db_url), settings, Box(settings.encryption_key), a.source,
+                                        old_key=key or None, sites=a.site, apply=a.wykonaj)
+        except hlc_import.MigrationError as e:
+            sys.exit(str(e))
+        print(report.text(applied=a.wykonaj))
     elif a.cmd == "export":
         from . import export
         from .db import make_engine
