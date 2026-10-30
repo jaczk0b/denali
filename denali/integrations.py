@@ -1,7 +1,8 @@
 """Integracje: zapis konfiguracji (sekrety zaszyfrowane), odczyt przez adapter, zapis wyniku.
 
 Wynik odczytu: nowe obiekty → kolejka „do zatwierdzenia”, stan → observed_state (tylko ostatni),
-nowe adresy zatwierdzonych obiektów → adresy urządzenia (źródło: integracja).
+nowe adresy zatwierdzonych obiektów → adresy urządzenia (źródło: integracja), „przez co jest w sieci” → zależność
+sieciowa odświeżana przy każdym odczycie.
 """
 import asyncio
 import json
@@ -12,7 +13,7 @@ from sqlalchemy import delete, select
 
 from . import discovery, inventory as inv
 from .adapters import AdapterError, registry
-from .models import external_ref, integration, observed_state
+from .models import dependency, external_ref, integration, observed_state
 
 log = logging.getLogger("denali.integrations")
 POLL_TIMEOUT = 90
@@ -96,6 +97,7 @@ def record(conn, integration_id, result, now=None):
     for f in result.found:
         discovery.upsert(conn, integration_id, f.external_id, f.proposed, now)
     _sync_approved(conn, integration_id, result.found)
+    _sync_uplinks(conn, integration_id, result.found)
     seen = set()
     for s in result.states:
         seen.add(s.external_id)
@@ -173,6 +175,54 @@ def _sync_approved(conn, integration_id, found):
                 inv.add_address(conn, ref.device_id, a["kind"], a["value"], source="integracja")
             except (inv.InventoryError, KeyError):
                 continue
+
+
+def uplink_source(integration_id):
+    return f"siec:{integration_id}"
+
+
+def _sync_uplinks(conn, integration_id, found):
+    """Zależności „w sieci przez” (np. klient Wi-Fi → AP) dokładnie takie, jak w ostatnim odczycie tej integracji.
+
+    Urządzenie, którego źródło już nie widzi (przeszło do innego AP, wyłączone), traci zależność od tego źródła.
+    Odczyt z błędem nie zmienia nic — gdy padnie AP, zależności zostają i analiza wskaże AP jako przyczynę.
+    Zależności wpisanej ręcznie (albo z innego źródła) między tymi samymi urządzeniami nie ruszamy.
+    """
+    source = uplink_source(integration_id)
+    refs = {r.external_id: r.device_id for r in conn.execute(
+        select(external_ref.c.external_id, external_ref.c.device_id).where(
+            external_ref.c.integration_id == integration_id, external_ref.c.status == "zatwierdzony",
+            external_ref.c.device_id.isnot(None)))}
+    wanted = {}
+    for f in found:
+        up = f.proposed.get("uplink")
+        if not up:
+            continue
+        # znane urządzenie po MAC, nawet jeśli to źródło widzi je pierwszy raz (telefon przeszedł do innego AP)
+        dev = refs.get(f.external_id) or next(
+            (d for d in (inv.find_by_address(conn, "mac", a["value"]) for a in f.proposed.get("addresses") or []
+                         if a.get("kind") == "mac") if d), None)
+        if not dev:
+            continue
+        target = discovery._target_device(conn, integration_id, up)
+        if target and target != dev:
+            wanted[(dev, target)] = bool(up.get("hard", True))
+    for d in conn.execute(select(dependency).where(dependency.c.source == source)).mappings().all():
+        key = (d["device_id"], d["depends_on_id"])
+        if key not in wanted:
+            conn.execute(dependency.delete().where(dependency.c.id == d["id"]))
+        elif d["hard"] != wanted[key]:
+            conn.execute(dependency.update().where(dependency.c.id == d["id"]).values(hard=wanted[key]))
+        wanted.pop(key, None)
+    for (dev, target), hard in wanted.items():
+        exists = conn.execute(select(dependency.c.id).where(
+            dependency.c.device_id == dev, dependency.c.depends_on_id == target, dependency.c.type == "siec")).first()
+        if exists:
+            continue
+        try:
+            inv.add_dependency(conn, dev, target, "siec", hard=hard, source=source)
+        except inv.InventoryError:
+            continue    # pętla (np. dwa routery widzą się nawzajem jako klientów) — pomijamy
 
 
 # ───────────────────────── odczyt ─────────────────────────

@@ -5,6 +5,8 @@ Integracja opisuje obiekt słownikiem `proposed`:
   addresses   [{"kind": ip|mac|hostname, "value": …}]
   parent      na czym działa: {"ref": external_id tej samej integracji} albo {"ip"|"mac"|"hostname": …}
   depends_on  [{"ref"|"ip"|"mac"|"hostname": …, "type": dane|siec|zasilanie|usluga, "hard": bool}]
+  uplink      przez co jest teraz w sieci: {"ref"|…: …, "hard": bool} — zmienia się (telefon przechodzi między AP),
+              więc nie zapisujemy go przy zatwierdzeniu, tylko odświeżamy przy każdym odczycie (integrations.py)
 
 Adres pozwala połączyć obiekty z różnych integracji: stack z Komodo trafia na VM z Proxmoxa o tym samym IP.
 Zatwierdzenie jednego obiektu zatwierdza też czekające obiekty, na których działa, i te, które działają na nim —

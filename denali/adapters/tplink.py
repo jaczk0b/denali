@@ -8,6 +8,9 @@ Ograniczenia (świadoma decyzja z 30.10.2026; docelowo OpenWrt — patrz POMYSLY
 - aktualizacja firmware'u TP-Linka może zepsuć logowanie — wtedy integracja pokaże błąd, a ping dalej działa.
 
 Klienci sieci trafiają do kolejki „do zatwierdzenia” (= nowe urządzenie w sieci); znane dopasują się po MAC.
+Każdy klient dostaje zależność „sieć” od tego routera / AP: przez Wi-Fi twardą (padnie AP = klient też),
+przez kabel miękką (za routerem zwykle jest switch — ping w LAN działa dalej). Telefon, który przejdzie do innego
+AP, przy następnym odczycie zależy od nowego.
 """
 import asyncio
 import re
@@ -120,7 +123,8 @@ class Tplink(Adapter):
             addrs = [{"kind": "mac", "value": mac}] + ([{"kind": "ip", "value": ip}] if ip and ip != "0.0.0.0" else [])
             out.found.append(Found(f"mac/{mac}", {
                 "name": host if host and host not in ("--", "Unknown") else mac,
-                "kind": "telefon" if PHONE.search(host) else "komputer", "addresses": addrs}))
+                "kind": "telefon" if PHONE.search(host) else "komputer", "addresses": addrs,
+                "uplink": {"ref": "router", "hard": conn != "WIRED"}}))
             how = BAND.get(conn, "sieć")
             signal = getattr(d, "signal", None)
             summary = f"w sieci · {how}" + (f" · sygnał {signal} dBm" if signal else "") + (f" · {ip}" if ip else "")

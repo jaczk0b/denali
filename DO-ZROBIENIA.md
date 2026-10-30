@@ -34,7 +34,9 @@ z dokumentacji — pierwsze podłączenie może wymagać poprawki (wtedy wklej t
 - [ ] Integracje → **Komodo** (klucz tylko do odczytu) → Do zatwierdzenia → „Przypnij dopasowane”.
 - [ ] Integracje → **PBS** (token z rolą Audit) — kopie pojawią się na kartach VM.
 - [ ] Integracje → **TrueNAS** (klucz API) — pule i snapshoty na karcie TrueNAS.
-- [ ] Integracje → **Router TP-Link** (+ drugi jako AP) — klienci sieci w „Do zatwierdzenia”.
+- [ ] Integracje → **Router TP-Link** (+ drugi jako AP) — klienci sieci w „Do zatwierdzenia”. Po zatwierdzeniu
+      na karcie urządzenia w Wi-Fi: „zależy od <AP> · sieć · twarda · wykryta, aktualna” (pojawia się po kolejnym
+      odczycie, do 5 min). Sprawdź, czy router pokazuje klientów AP jako swoich (wtedy mają też miękką zależność od routera).
 - [ ] Powiadomienia → **webhook Discorda** (przyjdzie wiadomość testowa).
 - [ ] Powiadomienia → **strażnik**: Uptime Kuma na VPS, monitor *Push*, 60 s, Retries 2, powiadomienie na Discord.
 - [ ] **Test kryterium Etapu 3:** wyłącz testową VM z zaznaczonym *Start at boot* → po 1–2 min incydent na pulpicie
