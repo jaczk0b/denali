@@ -196,3 +196,50 @@ def test_podglad_nie_ma_dostepu_do_integracji(app):
     with new_client(app) as c:
         do_login(c, login="widz")
         assert c.get("/admin/integracje").status_code == 403
+
+
+# ───────────────────────── certyfikat CA ─────────────────────────
+def make_ca_pem():
+    import datetime
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Proxmox Virtual Environment")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(1).not_valid_before(now).not_valid_after(now + datetime.timedelta(days=3650))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True).sign(key, hashes.SHA256()))
+    return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+
+def test_certyfikat_wklejony_z_konsoli_jest_czyszczony():
+    from denali.adapters.proxmox import clean_pem
+    pem = make_ca_pem()
+    pasted = "root@pve:~# cat /etc/pve/pve-root-ca.pem\r\n" + pem.replace("\n", "\r\n") + "root@pve:~# "
+    config = {**CONFIG, "ca_pem": pasted}
+    Proxmox.validate(config, SECRETS)                      # nie rzuca, a zapisany certyfikat jest czysty
+    assert config["ca_pem"] == clean_pem(pem) and config["ca_pem"].startswith("-----BEGIN CERTIFICATE-----")
+
+
+@pytest.mark.parametrize("pasted, msg", [
+    ("to nie jest certyfikat", "nie wygląda poprawnie"),
+    ("-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----", "uszkodzony"),
+])
+def test_zly_certyfikat_odrzucony_przy_zapisie(pasted, msg):
+    with pytest.raises(AdapterError, match=msg):
+        Proxmox.validate({**CONFIG, "ca_pem": pasted}, SECRETS)
+
+
+def test_zly_certyfikat_w_panelu_to_komunikat_a_nie_blad_serwera(app):
+    make_user(app)
+    with new_client(app) as c:
+        do_login(c)
+        enable_2fa(c, app)
+        page = c.get("/admin/integracje/nowa?typ=proxmox")
+        r = c.post("/admin/integracje/nowa", data={"csrf_token": csrf_from(page.text), "type": "proxmox", "name": "pve",
+                                                    "url": CONFIG["url"], "token_id": CONFIG["token_id"],
+                                                    "token_secret": SECRETS["token_secret"], "verify_tls": "1",
+                                                    "ca_pem": "root@pve:~# cat /etc/pve/pve-root-ca.pem", "poll_seconds": "60"})
+        assert r.status_code == 400 and "Certyfikat CA nie wygląda poprawnie" in r.text

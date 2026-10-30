@@ -3,6 +3,7 @@
 Zatrzymana maszyna to „off” (wyłączona celowo), chyba że ma startować z hostem (onboot) — wtedy „down”.
 """
 import asyncio
+import re
 import ssl
 from urllib.parse import urlsplit
 
@@ -11,6 +12,19 @@ import httpx
 from . import Adapter, AdapterError, Field, Found, PollResult, State
 
 GB = 1024 ** 3
+_PEM = re.compile(r"-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\s]+?-----END CERTIFICATE-----")
+
+
+def clean_pem(text: str) -> str:
+    """Z wklejonego tekstu wyciąga same bloki certyfikatu (np. bez linii „root@pve:~# cat …” z konsoli)."""
+    text = (text or "").replace("\r\n", "\n")
+    if not text.strip():
+        return ""
+    blocks = _PEM.findall(text)
+    if not blocks:
+        raise AdapterError("Certyfikat CA nie wygląda poprawnie — wklej całość od -----BEGIN CERTIFICATE----- "
+                           "do -----END CERTIFICATE----- (wynik: cat /etc/pve/pve-root-ca.pem).")
+    return "\n".join(b.strip() for b in blocks) + "\n"
 
 
 def _ssl_context(ca_pem: str, verify: bool):
@@ -19,7 +33,12 @@ def _ssl_context(ca_pem: str, verify: bool):
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         return ctx
-    ctx = ssl.create_default_context(cadata=ca_pem.strip() or None) if ca_pem.strip() else ssl.create_default_context()
+    pem = clean_pem(ca_pem)
+    try:
+        ctx = ssl.create_default_context(cadata=pem) if pem else ssl.create_default_context()
+    except (ssl.SSLError, ValueError):
+        raise AdapterError("Certyfikat CA jest uszkodzony — skopiuj go jeszcze raz w całości "
+                           "(cat /etc/pve/pve-root-ca.pem).") from None
     # pve-root-ca.pem nie ma rozszerzenia keyUsage, które Python 3.13+ wymaga w trybie ścisłym (tak samo w HLC).
     # Łańcuch, podpis i nazwa hosta są dalej sprawdzane.
     ctx.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
@@ -60,6 +79,9 @@ class Proxmox(Adapter):
         tid = str(config.get("token_id", "")).strip()
         if "@" not in tid or "!" not in tid:
             raise AdapterError("Identyfikator tokenu ma postać użytkownik@realm!nazwa, np. denali@pve!odczyt.")
+        if config.get("ca_pem"):
+            config["ca_pem"] = clean_pem(config["ca_pem"])          # zapisujemy już oczyszczony
+            _ssl_context(config["ca_pem"], True)                     # zły certyfikat → błąd na formularzu
 
     def _client(self):
         url = str(self.config["url"]).strip().rstrip("/")

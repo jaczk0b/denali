@@ -1,5 +1,6 @@
 """Integracje w panelu (tylko administrator): dodanie, sprawdzenie połączenia, odczyt na żądanie, wyłączenie."""
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -12,6 +13,7 @@ from ..templating import render
 from .deps import NotFound, client_ip, require_admin
 
 router = APIRouter()
+log = logging.getLogger("denali.integrations")
 TEST_TIMEOUT = 30
 
 
@@ -71,6 +73,9 @@ async def _test(request, row):
         return None, str(e)
     except asyncio.TimeoutError:
         return None, f"Brak odpowiedzi w ciągu {TEST_TIMEOUT} s."
+    except Exception as e:      # nieprzewidziany błąd adaptera: komunikat zamiast „Internal Server Error”
+        log.exception("Sprawdzenie integracji %s nie powiodło się", row["name"])
+        return None, f"Nieoczekiwany błąd ({e.__class__.__name__}: {str(e)[:200]}). Szczegóły w logu kontenera app."
 
 
 @router.post("/admin/integracje/nowa")
