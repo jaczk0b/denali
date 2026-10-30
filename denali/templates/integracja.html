@@ -108,6 +108,20 @@
     <p class="muted small">Starsze wersje TrueNAS nie mają ról tylko do odczytu — wtedy klucz ma pełne prawa, a Denali i tak tylko czyta.
       Pule, snapshoty i replikacje pojawią się na karcie TrueNAS.</p>
   </section>
+  {% elif cls.type == "tplink" %}
+  <section class="card md">
+    <h2>Router TP-Link — przeczytaj przed dodaniem</h2>
+    <ul>
+      <li>To <strong>nieoficjalne</strong> połączenie (biblioteka tplinkrouterc6u). TP-Link nie ma kont tylko do odczytu,
+        więc potrzebne jest <strong>hasło administratora</strong> routera — Denali trzyma je zaszyfrowane i tylko czyta.</li>
+      <li>Przy odczycie Denali loguje się jako administrator i od razu się wylogowuje. Jeśli w tym momencie masz otwarty
+        panel routera w przeglądarce, może Cię wylogować — dlatego odczyt jest co 5 minut.</li>
+      <li>Po aktualizacji firmware'u TP-Linka połączenie może przestać działać — integracja pokaże błąd, a ping routera działa dalej.</li>
+      <li>Drugi router działający jako AP dodaj osobno i zaznacz „punkt dostępowy”.</li>
+    </ul>
+    <p class="muted small">Podłączone urządzenia trafią do „Do zatwierdzenia” (nowe urządzenie w sieci). Znane dopasują się po MAC.
+      Telefony i laptopy dostają profil „Komputery i telefony” — bez pingu i powiadomień.</p>
+  </section>
   {% endif %}
 
   {% if row %}

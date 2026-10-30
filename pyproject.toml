@@ -22,6 +22,7 @@ dependencies = [
     "segno>=1.6",
     "markdown-it-py>=3.0",
     "websockets>=14",
+    "tplinkrouterc6u>=5.30,<6",   # nieoficjalne API routerów TP-Link (do czasu OpenWrt)
 ]
 
 [project.optional-dependencies]

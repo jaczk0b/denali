@@ -20,6 +20,7 @@ Rzeczy, które nie służą bezpośrednio celowi panelu teraz albo czekają na d
 - **Widżet Home Assistanta na pulpicie** (np. stan alarmu, temperatura) — tablet i tak będzie miał HA obok.
 - **Logowanie przez OIDC** — po ustandaryzowaniu logowania we wszystkich aplikacjach (dostawca już jest). Własne konto Denali zostaje jako awaryjne.
 - **Adapter Omada / UniFi** — zależnie od wybranych access pointów.
+- **OpenWrt zamiast oryginalnego oprogramowania TP-Linka** (decyzja z 30.10.2026: na razie nie). Tylko Archer AX23 w wersji sprzętowej v1 (AX23 v2 i AX10 nie są obsługiwane). Dałoby: osobne konto tylko do odczytu (rpcd/ubus) zamiast hasła administratora, stabilne API zamiast nieoficjalnej biblioteki tplinkrouterc6u, klientów z DHCP/ARP/Wi-Fi, kopię konfiguracji (`sysupgrade -b`) jako jedyną akcję na routerze. Przed flashowaniem: sprawdzić wersję na naklejce.
 - **Panel dla sklepu** jako osobna instancja (lokalizacja w ustawieniach).
 - **Kopia zdjęć poza NAS** — wskazówka z makiety: `tank/photos` ma tylko snapshoty na tym samym NAS-ie.
 - **Zarządzanie komputerami** i **budowanie infrastruktury z szablonów** (z zadania: „później”).

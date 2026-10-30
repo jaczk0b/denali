@@ -80,5 +80,6 @@ def registry() -> dict:
     from .komodo import Komodo
     from .pbs import Pbs
     from .proxmox import Proxmox
+    from .tplink import Tplink
     from .truenas import Truenas
-    return {a.type: a for a in (Proxmox, Komodo, Pbs, Truenas)}
+    return {a.type: a for a in (Proxmox, Komodo, Pbs, Truenas, Tplink)}
