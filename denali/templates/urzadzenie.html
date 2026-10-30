@@ -15,7 +15,8 @@
     <div class="chips">
       {% if mark == "przyczyna" %}<span class="chip down">{{ st("down", 13) }}Przyczyna trwającej awarii</span>
       {% elif mark == "skutek" %}<span class="chip">{{ st("effect", 13) }}Skutek awarii innego urządzenia</span>
-      {% elif mark == "gorzej" %}<span class="chip warn">{{ st("warn", 13) }}Działa gorzej przez awarię</span>{% endif %}
+      {% elif mark == "gorzej" %}<span class="chip warn">{{ st("warn", 13) }}Działa gorzej przez awarię</span>
+      {% elif live %}{% set s = live.state %}<span class="chip {{ {'down': 'down', 'warn': 'warn'}.get(s, '') }}">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(s, "unknown"), 13) }}{{ {"ok": "Działa", "down": "Nie działa", "warn": "Uwaga", "off": "Wyłączone", "unknown": "Stan niepewny"}[s] }}</span>{% endif %}
       <span class="chip">{{ KINDS.get(d.kind, d.kind) }}</span>
       <span class="chip">{{ {1: "P1 — krytyczne", 2: "P2 — ważne", 3: "P3 — może poczekać"}[d.criticality] }}</span>
       {% if parent %}<span class="chip">działa na {{ parent.name }}</span>{% endif %}

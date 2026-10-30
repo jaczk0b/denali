@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from . import backup, checks, export, integrations
+from . import backup, checks, export, integrations, live
 from .config import Settings
 from .crypto import Box
 from .db import kv_get, kv_set, make_engine
@@ -61,6 +61,11 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                     await checks.run(engine)
                 except Exception:
                     log.exception("Sprawdzenia nie powiodły się")
+            try:
+                with engine.begin() as conn:
+                    live.evaluate(conn)
+            except Exception:
+                log.exception("Ocena stanu i incydentów nie powiodła się")
             await asyncio.to_thread(tick, engine, settings, state)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=interval)

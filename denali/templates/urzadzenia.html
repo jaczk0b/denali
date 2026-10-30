@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import mark_badge %}
+{% from "_makra.html" import mark_badge, st %}
 {% block title %}Infrastruktura{% endblock %}
 {% block content %}
 <div class="row-between">
@@ -31,7 +31,9 @@
           <td>{% if d.parent_id %}<a href="/urzadzenia/{{ d.parent_id }}">{{ names.get(d.parent_id) }}</a>{% else %}—{% endif %}</td>
           <td class="mono">{{ ips.get(d.id, "—") }}</td>
           <td>{{ PRIORITY[d.criticality] }}</td>
-          <td>{{ mark_badge(marks.get(d.id)) }}</td>
+          <td>{% if marks.get(d.id) %}{{ mark_badge(marks.get(d.id)) }}
+            {% elif states.get(d.id) %}{% set s = states[d.id].state %}<span class="pill {{ {'down': 'down', 'warn': 'warn', 'ok': 'ok'}.get(s, '') }}">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(s, "unknown"), 12) }} {{ {"ok": "działa", "down": "nie działa", "warn": "uwaga", "off": "wyłączone", "unknown": "?"}[s] }}</span>
+            {% else %}<span class="muted small">brak danych</span>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>

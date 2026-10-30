@@ -74,14 +74,14 @@
           {% for l in layers %}
           <li>
             {% if l.link %}<a class="layer {{ l.state }}" href="/urzadzenia/{{ l.link.id }}">{% else %}<div class="layer {{ l.state }}">{% endif %}
-              {{ st({"down": "down", "effect": "effect"}.get(l.state, "unknown")) }}
+              {{ st({"down": "down", "effect": "effect", "ok": "ok", "warn": "warn"}.get(l.state, "unknown")) }}
               <span class="layer-text"><b>{{ l.title }}</b><span>{{ l.text }}</span></span>
               {% if l.state == "down" %}<span class="layer-go">otwórz →</span>{% elif l.state == "effect" %}<span class="layer-go" aria-hidden="true">↑</span>{% endif %}
             {% if l.link %}</a>{% else %}</div>{% endif %}
           </li>
           {% endfor %}
         </ol>
-        <p class="muted small mt">Stan na żywo pojawi się po podłączeniu integracji (Etap 3).</p>
+        {% if not has_live %}<p class="muted small mt">Brak stanu na żywo — podłącz integrację (menu konta → Integracje) albo sprawdź, czy działa worker.</p>{% endif %}
       </section>
       <section class="widget" aria-labelledby="ostatnio">
         <h2 id="ostatnio">Ostatnio</h2>

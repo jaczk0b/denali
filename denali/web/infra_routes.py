@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from .. import auth, checks, discovery, docs, files, incidents, integrations, inventory as inv, profiles, status, vault
+from .. import auth, checks, discovery, docs, files, incidents, integrations, inventory as inv, live, profiles, status, vault
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook)
 from ..templating import render
@@ -39,6 +39,7 @@ def pulpit(request: Request, sess: dict = Depends(require_user)):
     with request.app.state.engine.connect() as conn:
         devices = conn.execute(select(device.c.id, device.c.name, device.c.kind)).mappings().all()
         marks = status.device_marks(conn)
+        states = live.saved(conn)
         open_inc = status.open_incidents(conn)
         effects = {i["id"]: conn.execute(
             select(func.count()).select_from(incidents.incident_device)
@@ -46,8 +47,8 @@ def pulpit(request: Request, sess: dict = Depends(require_user)):
                    incidents.incident_device.c.role.in_(("skutek", "gorzej")))).scalar() for i in open_inc}
         ctx = {
             "apps": status.pulpit_apps(conn), "marks": marks, "open_incidents": open_inc, "effects": effects,
-            "layers": status.layers(devices, marks), "recent": status.recent_events(conn),
-            "no_devices": not devices,
+            "layers": status.layers(devices, marks, states), "recent": status.recent_events(conn),
+            "no_devices": not devices, "has_live": bool(states),
         }
     now = datetime.now()
     ctx.update(clock=now.strftime("%H:%M"), date=f"{DAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]}")
@@ -60,6 +61,7 @@ def device_list(request: Request, sess: dict = Depends(require_user)):
     with request.app.state.engine.connect() as conn:
         rows = conn.execute(select(device).order_by(device.c.name)).mappings().all()
         marks = status.device_marks(conn)
+        states = live.saved(conn)
         ips = {r.device_id: r.value for r in conn.execute(
             select(device_address.c.device_id, device_address.c.value)
             .where(device_address.c.kind == "ip").order_by(device_address.c.is_primary))}
@@ -69,7 +71,8 @@ def device_list(request: Request, sess: dict = Depends(require_user)):
         devs = [d for d in rows if status.layer_of(d["kind"]) == key]
         if devs:
             groups.append((label, devs))
-    return render(request, "urzadzenia.html", {"groups": groups, "marks": marks, "ips": ips, "names": names})
+    return render(request, "urzadzenia.html", {"groups": groups, "marks": marks, "ips": ips, "names": names,
+                                               "states": states})
 
 
 def _card(request, conn, device_id, *, error=None, message=None, revealed=None, status_code=200):
@@ -106,6 +109,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "marks": (marks := status.device_marks(conn)), "mark": marks.get(device_id),
         "sources": integrations.states_for_device(conn, device_id),
         "checks": checks.for_device(conn, device_id), "now": time.time(),
+        "live": live.saved(conn).get(device_id),
         "refs": conn.execute(select(external_ref).where(external_ref.c.device_id == device_id)).mappings().all(),
     }
     return render(request, "urzadzenie.html", ctx, status_code)

@@ -42,18 +42,32 @@ def device_marks(conn):
     return marks
 
 
-def layers(devices, marks):
+def layers(devices, marks, live=None):
+    """live: {device_id: {"state", "why"}} ze stanu liczonego przez workera (puste = brak danych)."""
+    live = live or {}
     out = []
     for key, label, _kinds in LAYERS:
         devs = [d for d in devices if layer_of(d["kind"]) == key]
         causes = [d for d in devs if marks.get(d["id"]) == "przyczyna"]
         effects = [d for d in devs if marks.get(d["id"]) in ("skutek", "gorzej")]
+        known = [d for d in devs if live.get(d["id"], {}).get("state") in ("ok", "warn", "down", "off")]
+        warn = [d for d in devs if live.get(d["id"], {}).get("state") == "warn"]
+        ok = [d for d in devs if live.get(d["id"], {}).get("state") == "ok"]
         title = label
         if causes:
             state, text = "down", "tu jest przyczyna"
             title = f"{label} · " + ", ".join(d["name"] for d in causes)
         elif effects:
             state, text = "effect", f"{len(effects)} z {len(devs)} — skutek, nie osobna awaria"
+        elif warn:
+            state, text = "warn", "uwaga: " + ", ".join(d["name"] for d in warn)
+        elif known:
+            rest = len(devs) - len(known)
+            state = "ok"
+            text = f"{len(ok)} z {len(devs)} działa" + (f" · {rest} bez danych" if rest else "")
+            off = len(known) - len(ok)
+            if off:
+                text += f" · {off} wyłączone"
         elif devs:
             state, text = "unknown", f"{len(devs)} urządz. · brak danych o stanie"
         else:
