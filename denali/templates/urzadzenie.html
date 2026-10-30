@@ -50,7 +50,7 @@
   <div class="source-grid">
     {% for s in sources %}
     <div class="card source">
-      <div class="source-head"><span>{{ s.source }}</span><span>{{ s.observed_at | hm }}</span></div>
+      <div class="source-head"><span>{{ s.source }}{% if s.proposed and s.proposed.get("attached") %} · {{ s.proposed.name }}{% endif %}</span><span>{{ s.observed_at | hm }}</span></div>
       <div class="source-state">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(s.state, "unknown"), 15) }}
         {{ {"ok": "Działa", "down": "Nie działa", "warn": "Uwaga", "off": "Wyłączone", "unknown": "Brak danych"}.get(s.state, s.state) }}</div>
       <div class="small">{{ s.summary }}</div>

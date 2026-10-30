@@ -85,6 +85,29 @@
     <p class="muted small">Adres to adres panelu Komodo (Core), nie periphery na serwerach. Serwery Komodo pojawią się w kolejce
       z adresem IP — „Przypnij dopasowane” połączy je z VM-kami z Proxmoxa, a stacki trafią pod swoje VM-ki.</p>
   </section>
+  {% elif cls.type == "pbs" %}
+  <section class="card md">
+    <h2>Jak założyć token (tylko odczyt)</h2>
+    <ol>
+      <li>W PBS: <strong>Configuration → Access Control → User Management → Add</strong>: użytkownik <code>denali</code>, realm <code>pbs</code>.</li>
+      <li><strong>API Token → Add</strong>: użytkownik <code>denali@pbs</code>, Token Name <code>odczyt</code>. Skopiuj <strong>Secret</strong> — widać go tylko raz.</li>
+      <li><strong>Permissions → Add → API Token Permission</strong>: ścieżka <code>/</code>, token <code>denali@pbs!odczyt</code>, rola <code>Audit</code>, <em>Propagate</em> zaznaczone.</li>
+      <li>Certyfikat: <strong>Administration → Shell</strong> → <code>cat /etc/proxmox-backup/proxy.pem</code>, skopiuj całość.</li>
+    </ol>
+    <p class="muted small">Kopie podepną się same pod karty VM i kontenerów z Proxmoxa (po numerze VM). Serwer PBS pojawi się w kolejce — „Przypnij dopasowane” połączy go z jego VM.</p>
+  </section>
+  {% elif cls.type == "truenas" %}
+  <section class="card md">
+    <h2>Jak założyć klucz API</h2>
+    <ol>
+      <li>W TrueNAS: <strong>Credentials → Local Users → Add</strong>: użytkownik <code>denali</code>, bez hasła logowania, bez powłoki.</li>
+      <li>W nowszych wersjach: <strong>Credentials → Groups</strong> — dodaj go do grupy z rolą <code>READONLY_ADMIN</code>.</li>
+      <li>Klucz: <strong>ikona użytkownika (prawy górny róg) → API Keys → Add</strong> dla <code>denali</code>. Skopiuj klucz — widać go tylko raz.</li>
+      <li>Certyfikat: <strong>Credentials → Certificates → truenas_default → pobierz</strong> i wklej zawartość (albo wyłącz sprawdzanie).</li>
+    </ol>
+    <p class="muted small">Starsze wersje TrueNAS nie mają ról tylko do odczytu — wtedy klucz ma pełne prawa, a Denali i tak tylko czyta.
+      Pule, snapshoty i replikacje pojawią się na karcie TrueNAS.</p>
+  </section>
   {% endif %}
 
   {% if row %}

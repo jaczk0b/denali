@@ -106,6 +106,9 @@ def record(conn, integration_id, result, now=None):
         if not updated:
             conn.execute(observed_state.insert().values(integration_id=integration_id, external_id=s.external_id,
                                                         **values))
+    for s in result.states:
+        if s.attach:
+            _attach(conn, integration_id, s, now)
     # obiekty, których źródło już nie zgłasza (np. usunięta VM) — nie wiemy, co z nimi
     for row in conn.execute(select(observed_state.c.external_id, observed_state.c.state).where(
             observed_state.c.integration_id == integration_id)).all():
@@ -121,6 +124,38 @@ def record_error(conn, integration_id, message, now=None):
     now = now or time.time()
     conn.execute(integration.update().where(integration.c.id == integration_id).values(
         last_attempt_at=now, last_error=str(message)[:500]))
+
+
+def _resolve_attach(conn, integration_id, attach):
+    """Urządzenie, pod które podpiąć stan, albo None (np. VM jeszcze niezatwierdzona — spróbujemy następnym razem)."""
+    q = select(external_ref.c.device_id).where(external_ref.c.status == "zatwierdzony",
+                                               external_ref.c.device_id.isnot(None))
+    if attach.get("ref"):
+        q = q.where(external_ref.c.integration_id == integration_id, external_ref.c.external_id == attach["ref"])
+    elif attach.get("integration_type") and attach.get("external_ids"):
+        q = q.join(integration, integration.c.id == external_ref.c.integration_id).where(
+            integration.c.type == attach["integration_type"], external_ref.c.external_id.in_(attach["external_ids"]))
+    else:
+        return None
+    row = conn.execute(q.limit(1)).first()
+    return row.device_id if row else None
+
+
+def _attach(conn, integration_id, state, now):
+    device_id = _resolve_attach(conn, integration_id, state.attach)
+    if not device_id:
+        return
+    proposed = {"name": state.label or state.external_id, "kind": "inne", "addresses": [], "attached": True}
+    row = conn.execute(select(external_ref.c.id, external_ref.c.device_id).where(
+        external_ref.c.integration_id == integration_id, external_ref.c.external_id == state.external_id)).first()
+    if row:
+        if row.device_id != device_id:
+            conn.execute(external_ref.update().where(external_ref.c.id == row.id).values(
+                device_id=device_id, status="zatwierdzony", proposed=proposed, last_seen=now))
+        return
+    conn.execute(external_ref.insert().values(integration_id=integration_id, external_id=state.external_id,
+                                              device_id=device_id, status="zatwierdzony", proposed=proposed,
+                                              first_seen=now, last_seen=now))
 
 
 def _sync_approved(conn, integration_id, found):
@@ -177,7 +212,7 @@ async def poll_due(engine, box, now=None):
 
 def states_for_device(conn, device_id):
     """Stan ze wszystkich źródeł, które zgłaszają to urządzenie (do karty urządzenia)."""
-    q = (select(observed_state, integration.c.name.label("source"), integration.c.type)
+    q = (select(observed_state, integration.c.name.label("source"), integration.c.type, external_ref.c.proposed)
          .join(external_ref, (external_ref.c.integration_id == observed_state.c.integration_id)
                & (external_ref.c.external_id == observed_state.c.external_id))
          .join(integration, integration.c.id == observed_state.c.integration_id)

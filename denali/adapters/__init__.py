@@ -36,6 +36,11 @@ class State:
     state: str                  # ok | warn | down | off (wyłączone celowo) | unknown
     summary: str = ""
     data: dict = field(default_factory=dict)
+    # Stan, który nie jest osobnym urządzeniem, tylko informacją o istniejącym (kopia VM w PBS, pula w TrueNAS).
+    # {"ref": external_id tej samej integracji} albo {"integration_type": "proxmox", "external_ids": ["qemu/100"]}.
+    # Podpina się sam pod urządzenie, które już jest — bez kolejki „do zatwierdzenia”.
+    attach: dict | None = None
+    label: str = ""             # nazwa obiektu do listy „Co widać” (np. „kopie VM 100”)
 
 
 @dataclass
@@ -73,5 +78,7 @@ class Adapter:
 
 def registry() -> dict:
     from .komodo import Komodo
+    from .pbs import Pbs
     from .proxmox import Proxmox
-    return {a.type: a for a in (Proxmox, Komodo)}
+    from .truenas import Truenas
+    return {a.type: a for a in (Proxmox, Komodo, Pbs, Truenas)}
