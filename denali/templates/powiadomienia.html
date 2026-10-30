@@ -29,6 +29,28 @@
   </section>
 </div>
 <div class="col">
+  <form class="card" method="post" action="/admin/powiadomienia/straznik" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h2>Strażnik na VPS</h2>
+    <p class="muted small">Gdy padnie sam panel, pve, prąd albo internet w domu, Denali nie powie tego sam. Dlatego co minutę
+      melduje się monitorowi na VPS — gdy meldunki ustaną, monitor na VPS pisze na Discord.</p>
+    <p>{% if watchdog.enabled %}{% if watchdog.last_error %}{{ st("down") }} Ostatni meldunek nieudany: {{ watchdog.last_error }}
+       {% elif watchdog.last_ok %}{{ st("ok") }} Ostatni meldunek: {{ watchdog.last_ok | dt }}{% else %}Włączony, jeszcze bez meldunku.{% endif %}
+       {% else %}<span class="muted">Wyłączony.</span>{% endif %}</p>
+    <details>
+      <summary>Jak ustawić (Uptime Kuma na VPS)</summary>
+      <ol class="small">
+        <li>Uptime Kuma → <strong>Add New Monitor</strong> → typ <strong>Push</strong>, nazwa „Denali”.</li>
+        <li><strong>Heartbeat Interval</strong> 60 s, <strong>Retries</strong> 2 (alarm po ok. 3 minutach ciszy).</li>
+        <li>Powiadomienie: Discord — ten sam webhook co wyżej. Zapisz.</li>
+        <li>Skopiuj <strong>Push URL</strong> i wklej poniżej (parametry na końcu adresu można zostawić).</li>
+      </ol>
+      <p class="muted small">Zamiast Uptime Kuma może być healthchecks.io — wtedy wklej jego „Ping URL”.</p>
+    </details>
+    <label class="field mt">Adres meldunku<input name="url" type="password" placeholder="{{ 'zapisany — wklej nowy, żeby zmienić; puste = wyłącz' if watchdog.enabled else 'https://kuma.example.pl/api/push/…' }}"></label>
+    <button class="btn" type="submit">{{ "Zapisz i wyślij meldunek" }}</button>
+  </form>
+
   <form class="card" method="post" action="/admin/powiadomienia" autocomplete="off">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <h2>Dodaj Discord</h2>

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from . import backup, checks, export, integrations, live, notify
+from . import backup, checks, export, integrations, live, notify, watchdog
 from .config import Settings
 from .crypto import Box
 from .db import kv_get, kv_set, make_engine
@@ -72,6 +72,11 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                         await notify.process(conn, box, settings.base_url)
                 except Exception:
                     log.exception("Wysyłka powiadomień nie powiodła się")
+                try:
+                    with engine.begin() as conn:
+                        await watchdog.ping(conn, box)
+                except Exception:
+                    log.exception("Meldunek strażnika nie powiódł się")
             await asyncio.to_thread(tick, engine, settings, state)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=interval)
