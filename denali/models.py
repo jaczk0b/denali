@@ -298,3 +298,18 @@ observed_state = Table(
     Column("data", JSON, nullable=False, default=dict),
     Column("observed_at", Float, nullable=False),
 )
+
+# Sprawdzenia z LAN wyliczane same z adresów i linków urządzeń (bez konfiguracji na urządzeniu).
+check_state = Table(
+    "check_state", metadata,
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), primary_key=True),
+    Column("kind", String(16), primary_key=True),             # ping | http
+    Column("target", String(500), primary_key=True),
+    Column("ok", Boolean, nullable=False),
+    Column("summary", String(300), nullable=False, default=""),
+    Column("ms", Float),
+    Column("cert_expires_at", Float),
+    Column("first_fail_at", Float),                          # od kiedy nie odpowiada (do „po ilu sekundach awaria”)
+    Column("last_ok_at", Float),
+    Column("checked_at", Float, nullable=False),
+)

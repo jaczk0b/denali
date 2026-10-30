@@ -2,13 +2,14 @@
 
 Odczyt: każdy zalogowany. Zmiany: tylko administrator (require_admin sprawdza też CSRF).
 """
+import time
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from .. import auth, discovery, docs, files, incidents, integrations, inventory as inv, profiles, status, vault
+from .. import auth, checks, discovery, docs, files, incidents, integrations, inventory as inv, profiles, status, vault
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook)
 from ..templating import render
@@ -104,6 +105,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "secrets": vault.list_secrets(conn, role="admin", device_id=device_id) if is_admin else [],
         "marks": (marks := status.device_marks(conn)), "mark": marks.get(device_id),
         "sources": integrations.states_for_device(conn, device_id),
+        "checks": checks.for_device(conn, device_id), "now": time.time(),
         "refs": conn.execute(select(external_ref).where(external_ref.c.device_id == device_id)).mappings().all(),
     }
     return render(request, "urzadzenie.html", ctx, status_code)

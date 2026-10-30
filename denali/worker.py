@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from . import backup, export, integrations
+from . import backup, checks, export, integrations
 from .config import Settings
 from .crypto import Box
 from .db import kv_get, kv_set, make_engine
@@ -12,6 +12,7 @@ from .db import kv_get, kv_set, make_engine
 log = logging.getLogger("denali.worker")
 EXPORT_FORCE_EVERY = 3600   # eksport awaryjny: po każdej zmianie, a co godzinę i tak (świeża data na stronie)
 BACKUP_EVERY = 24 * 3600    # kopia bazy i plików do data/backups (14 ostatnich); PBS i tak kopiuje całą VM
+CHECKS_EVERY = 60           # ping i HTTP z LAN
 
 
 def tick(engine, settings: Settings, state: dict, now: float | None = None) -> None:
@@ -54,6 +55,12 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                     await integrations.poll_due(engine, box)
                 except Exception:   # błąd odczytu integracji nie może zatrzymać workera
                     log.exception("Odczyt integracji nie powiódł się")
+            if time.time() - state.get("checks_at", 0) >= CHECKS_EVERY:
+                state["checks_at"] = time.time()
+                try:
+                    await checks.run(engine)
+                except Exception:
+                    log.exception("Sprawdzenia nie powiodły się")
             await asyncio.to_thread(tick, engine, settings, state)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=interval)
