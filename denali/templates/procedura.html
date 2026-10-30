@@ -18,8 +18,8 @@
 <ol class="steps">
   {% for s in p.steps %}
   <li class="card step">
-    <h2><span class="step-no">{{ s.position }}</span> {{ s.title }}</h2>
-    {% if s.body_md %}<div class="md">{{ s.body_md | md }}</div>{% endif %}
+    <span class="step-no">{{ s.position }}</span>
+    <div class="grow"><h2>{{ s.title }}</h2>{% if s.body_md %}<div class="md">{{ s.body_md | md }}</div>{% endif %}</div>
   </li>
   {% endfor %}
 </ol>

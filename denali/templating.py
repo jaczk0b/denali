@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 
 from . import incidents, inventory
 from .models import external_ref, incident
-from .status import initials
+from .status import initials, tile_color
 
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templates")
 # Markdown bez surowego HTML; markdown-it sam odrzuca linki javascript: i data:
@@ -36,7 +36,7 @@ def _size(n: int) -> str:
         n /= 1024
 
 
-templates.env.filters.update(dt=_dt, hm=_hm, md=_md_filter, initials=initials, size=_size)
+templates.env.filters.update(dt=_dt, hm=_hm, md=_md_filter, initials=initials, tile_color=tile_color, size=_size)
 templates.env.globals.update(KINDS=inventory.KINDS, DEP_TYPES=inventory.DEP_TYPES, VIA=incidents.VIA,
                              PRIORITY={1: "P1", 2: "P2", 3: "P3"})
 

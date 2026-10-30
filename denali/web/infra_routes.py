@@ -102,7 +102,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "incidents": incidents.list_incidents(conn, device_id=device_id, limit=20),
         "files": files.for_device(conn, device_id),
         "secrets": vault.list_secrets(conn, role="admin", device_id=device_id) if is_admin else [],
-        "mark": status.device_marks(conn).get(device_id),
+        "marks": (marks := status.device_marks(conn)), "mark": marks.get(device_id),
         "refs": conn.execute(select(external_ref).where(external_ref.c.device_id == device_id)).mappings().all(),
     }
     return render(request, "urzadzenie.html", ctx, status_code)

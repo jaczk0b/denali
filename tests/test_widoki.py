@@ -71,14 +71,14 @@ def test_kazda_strona_sie_renderuje(admin, lab):
 def test_pulpit_pokazuje_przyczyne_i_skutki(admin, lab):
     html = admin.get("/").text
     assert "truenas nie działa" in html and "Co się stało" in html
-    assert "tu jest przyczyna: truenas" in html               # truenas to VM, więc warstwa „Serwery”
-    assert "▲ bez danych" in html                             # ikona Immich: skutek, nie osobna awaria
+    assert "<b>Serwery · truenas</b><span>tu jest przyczyna</span>" in html   # truenas to VM, więc warstwa „Serwery”
+    assert "bez danych" in html and "Skutek, nie osobna awaria" in html   # ikona Immich: skutek, nie osobna awaria
     assert 'href="https://immich.lan"' in html and 'rel="noopener noreferrer"' in html
 
 
 def test_karta_urzadzenia(admin, lab):
     html = admin.get(f"/urzadzenia/{lab['truenas']}").text
-    assert "Przestanie działać:</strong> Immich" in html
+    assert "przestanie działać</strong> Immich" in html
     assert "Padł TrueNAS" in html and "Restart TrueNAS" in html          # procedura z wyzwalacza + runbook
     assert "Maszyna wirtualna" in html                                    # profil po typie
     assert "192.168.1.30" in html
@@ -188,7 +188,7 @@ def test_incydent_reczny_od_poczatku_do_konca(admin, lab):
     post(admin, f"{url}/notatka", url, text="transkodowanie na CPU")
     post(admin, f"{url}/zamknij", url, cause_md="brak GPU", fix_md="włączone QSV")
     html = admin.get(url).text
-    assert "✓ zamknięty" in html and "transkodowanie na CPU" in html and "włączone QSV" in html
+    assert "zamknięty</span>" in html and "transkodowanie na CPU" in html and "włączone QSV" in html
 
 
 def test_procedura_z_formularza(admin, lab):

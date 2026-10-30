@@ -1,46 +1,63 @@
 {% extends "base.html" %}
-{% from "_makra.html" import mark_badge %}
+{% from "_makra.html" import st, search_icon, account_menu, nav_icon %}
 {% block title %}Pulpit{% endblock %}
-{% block body %}
+{% block body_class %}desk-body{% endblock %}
+{% block chrome %}
 <main class="desk">
+<div class="desk-inner">
+
   <div class="desk-head">
-    <div>
-      <div class="clock">{{ clock }}</div>
-      <div class="muted">{{ date }}</div>
+    <div class="clock-row">
+      <span class="clock">{{ clock }}</span>
+      <span class="muted">{{ date }}</span>
+    </div>
+    <div class="desk-tools">
+      <form class="search" method="get" action="/szukaj" role="search">
+        {{ search_icon() }}
+        <label class="sr" for="q-desk">Szukaj</label>
+        <input id="q-desk" type="search" name="q" placeholder="Szukaj aplikacji, urządzenia, IP, procedury…">
+      </form>
+      {% if sess.kind != "kiosk" %}{{ account_menu(sess, counts, csrf) }}{% endif %}
     </div>
   </div>
 
   {% for i in open_incidents[:2] %}
-  <a class="banner {{ 'down' if i.severity == 'krytyczny' else 'warn' }}" href="/incydenty/{{ i.id }}">
-    <span><strong>{{ i.title }}</strong> od {{ i.started_at | hm }}.
-      {% if effects[i.id] %}{{ effects[i.id] }} {{ "urządzenie to" if effects[i.id] == 1 else "urządzeń to" }} skutek, nie osobne awarie.{% endif %}</span>
-    <span class="banner-link">Co się stało →</span>
+  <a class="banner {{ 'down' if i.severity == 'krytyczny' else '' }}" href="/incydenty/{{ i.id }}">
+    {{ st("down" if i.severity == "krytyczny" else "warn", 26) }}
+    <span class="banner-text"><strong>{{ i.title }} od {{ i.started_at | hm }}.</strong>
+      {% if effects[i.id] %}<span class="sub">{{ effects[i.id] }} {{ "urządzenie to skutek" if effects[i.id] == 1 else "urządzeń to skutek" }}, nie osobne awarie.</span>{% endif %}</span>
+    <span class="cta">Co się stało →</span>
   </a>
   {% endfor %}
 
   <div class="desk-grid">
     <div class="desk-apps">
       {% if no_devices %}
-        <div class="card">
+        <div class="widget">
           <h2>Pusto — zacznij od urządzeń</h2>
           <p class="muted">Urządzenia przyjdą same z integracji (Etap 3) albo dodaj je ręcznie. Aplikacja z adresem i grupą pulpitu pojawi się tutaj jako ikona.</p>
           {% if sess.role == "admin" %}<a class="btn primary" href="/urzadzenia/nowe">Dodaj urządzenie</a>{% endif %}
+        </div>
+      {% elif not apps %}
+        <div class="widget">
+          <h2>Tu będą ikony aplikacji</h2>
+          <p class="muted">Na karcie urządzenia → <em>Edytuj</em> ustaw adres aplikacji i „Na pulpicie: na co dzień” albo „zarządzanie”.</p>
         </div>
       {% endif %}
       {% for group, label in [("codzien", "Na co dzień"), ("zarzadzanie", "Zarządzanie")] %}
         {% set items = apps | selectattr("pulpit_group", "equalto", group) | list %}
         {% if items %}
-        <section aria-label="{{ label }}">
-          <h2 class="desk-label">{{ label }}</h2>
+        <section aria-labelledby="g-{{ group }}">
+          <h2 class="desk-label" id="g-{{ group }}">{{ label }}</h2>
           <div class="icons">
             {% for a in items %}
               {% set m = marks.get(a.id) %}
-              <a class="icon-tile {{ 'is-down' if m == 'przyczyna' else ('is-warn' if m else '') }}"
+              <a class="icon-tile {{ {'przyczyna': 'is-down', 'skutek': 'is-effect', 'gorzej': 'is-degraded'}.get(m, '') }}"
                  href="{{ a.app_url or '/urzadzenia/%d' % a.id }}" {% if a.app_url %}target="_blank" rel="noopener noreferrer"{% endif %}>
-                <span class="icon">{{ a.icon or (a.name | initials) }}</span>
+                <span class="icon {{ a.name | tile_color }}">{{ a.icon or (a.name | initials) }}
+                  {%- if m %}<span class="icon-badge">{{ st({"przyczyna": "down", "skutek": "effect", "gorzej": "warn"}[m], 18) }}</span>{% endif %}</span>
                 <span class="icon-name">{{ a.name }}</span>
-                {% if m == "przyczyna" %}<span class="icon-state">✕ nie działa</span>
-                {% elif m %}<span class="icon-state">▲ bez danych</span>{% endif %}
+                {% if m %}<span class="icon-state">{{ {"przyczyna": "nie działa", "skutek": "bez danych", "gorzej": "działa gorzej"}[m] }}</span>{% endif %}
               </a>
             {% endfor %}
           </div>
@@ -49,30 +66,40 @@
       {% endfor %}
     </div>
 
-    <aside class="desk-side">
-      <section class="card" aria-labelledby="gdzie">
+    <aside class="desk-side" aria-label="Widżety">
+      <section class="widget" aria-labelledby="gdzie">
         <h2 id="gdzie">Gdzie jest problem</h2>
         <p class="muted small">Od góry to, czego używasz, na dole to, na czym stoi</p>
         <ol class="layers">
           {% for l in layers %}
-          <li class="layer {{ l.state }}">
-            <span class="layer-dot" aria-hidden="true">{{ {"down": "✕", "warn": "▲", "unknown": "?", "none": "·"}[l.state] }}</span>
-            <span class="layer-text"><strong>{{ l.label }}</strong> · {{ l.text }}</span>
-            {% if l.link %}<a href="/urzadzenia/{{ l.link.id }}">otwórz →</a>{% endif %}
+          <li>
+            {% if l.link %}<a class="layer {{ l.state }}" href="/urzadzenia/{{ l.link.id }}">{% else %}<div class="layer {{ l.state }}">{% endif %}
+              {{ st({"down": "down", "effect": "effect"}.get(l.state, "unknown")) }}
+              <span class="layer-text"><b>{{ l.title }}</b><span>{{ l.text }}</span></span>
+              {% if l.state == "down" %}<span class="layer-go">otwórz →</span>{% elif l.state == "effect" %}<span class="layer-go" aria-hidden="true">↑</span>{% endif %}
+            {% if l.link %}</a>{% else %}</div>{% endif %}
           </li>
           {% endfor %}
         </ol>
-        <p class="muted small">Stan na żywo pojawi się po podłączeniu integracji (Etap 3).</p>
+        <p class="muted small mt">Stan na żywo pojawi się po podłączeniu integracji (Etap 3).</p>
       </section>
-      <section class="card" aria-labelledby="ostatnio">
+      <section class="widget" aria-labelledby="ostatnio">
         <h2 id="ostatnio">Ostatnio</h2>
         {% if recent %}
-        <ul class="plain">
-          {% for e in recent %}<li><span class="mono muted">{{ e.ts | hm }}</span> <a href="/incydenty/{{ e.incident_id }}">{{ e.text }}</a></li>{% endfor %}
-        </ul>
-        {% else %}<p class="muted">Nic się nie działo.</p>{% endif %}
+        <ol class="recent">
+          {% for e in recent %}<li><span class="when">{{ e.ts | hm }}</span><a href="/incydenty/{{ e.incident_id }}">{{ e.text }}</a></li>{% endfor %}
+        </ol>
+        {% else %}<p class="muted small">Nic się nie działo.</p>{% endif %}
       </section>
     </aside>
   </div>
+</div>
+
+<nav class="dock" aria-label="Dok">
+  <a href="/" aria-current="page">{{ nav_icon("pulpit") }}Pulpit</a>
+  <a href="/urzadzenia">{{ nav_icon("infra") }}Infrastruktura</a>
+  <a href="/incydenty">{{ nav_icon("incydenty") }}Incydenty{% if counts.incidents %}<span class="badge down">{{ counts.incidents }}</span>{% endif %}</a>
+  <a href="/procedury">{{ nav_icon("procedury") }}Procedury</a>
+</nav>
 </main>
 {% endblock %}

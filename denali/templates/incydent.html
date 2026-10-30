@@ -40,7 +40,7 @@
     <h2 id="przebieg">Przebieg i dlaczego panel tak uważa</h2>
     <ol class="timeline">
       {% for e in inc.events %}
-      <li class="ev-{{ e.kind }}"><span class="mono muted">{{ e.ts | dt }}</span> {{ e.text }}{% if e.user and e.user != "system" %} <span class="muted small">· {{ e.user }}</span>{% endif %}</li>
+      <li class="ev-{{ e.kind }}"><span class="when">{{ e.ts | dt }}</span><span>{{ e.text }}{% if e.user and e.user != "system" %} <span class="muted small">· {{ e.user }}</span>{% endif %}</span></li>
       {% endfor %}
     </ol>
     {% if admin %}

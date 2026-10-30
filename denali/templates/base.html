@@ -1,4 +1,5 @@
 <!doctype html>
+{% from "_makra.html" import search_icon, account_menu %}
 <html lang="pl">
 <head>
 <meta charset="utf-8">
@@ -7,39 +8,32 @@
 <title>{% block title %}Denali{% endblock %} · Denali</title>
 <link rel="stylesheet" href="/static/denali.css">
 </head>
-<body{% if sess and sess.kind == "kiosk" %} class="kiosk"{% endif %}>
+<body class="{% block body_class %}{% endblock %}{% if sess and sess.kind == 'kiosk' %} kiosk{% endif %}">
 {% set signed_in = sess and sess.kind != "pending" %}
+{% block chrome %}
 {% if signed_in %}
 <header class="top">
-  <a class="brand" href="/">Denali</a>
-  <form class="top-search" method="get" action="/szukaj" role="search">
-    <input name="q" placeholder="Szukaj: urządzenie, IP, procedura…" aria-label="Szukaj" value="{{ q or '' }}">
-  </form>
-  <nav class="top-links" aria-label="Konto">
-    {% if sess.role == "admin" %}
-      <a href="/zatwierdz">Do zatwierdzenia{% if counts.queue %} <span class="badge">{{ counts.queue }}</span>{% endif %}</a>
-      <a href="/admin/profile">Profile</a>
-      <a href="/admin/tablet">Tablet</a>
-      <a href="/admin/audyt">Audyt</a>
-    {% endif %}
-    {% if sess.kind != "kiosk" %}
-    <a href="/konto">{{ sess.login }}</a>
-    <form method="post" action="/logout">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <button class="link" type="submit">Wyloguj</button>
-    </form>
-    {% endif %}
+  <a class="brand" href="/">
+    <span class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 13.5L6 5l2.6 4.2L10.5 7l4 6.5z" fill="#0e1114"/></svg></span>
+    Denali
+  </a>
+  <nav class="nav" aria-label="Główne menu">
+    <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>Pulpit</a>
+    <a href="/urzadzenia" {% if path.startswith("/urzadzenia") or path.startswith("/runbooki") %}aria-current="page"{% endif %}>Infrastruktura</a>
+    <a href="/incydenty" {% if path.startswith("/incydenty") %}aria-current="page"{% endif %}>Incydenty{% if counts.incidents %} <span class="badge down">{{ counts.incidents }}</span>{% endif %}</a>
+    <a href="/procedury" {% if path.startswith("/procedury") %}aria-current="page"{% endif %}>Procedury</a>
   </nav>
+  <div class="top-right">
+    <form class="search" method="get" action="/szukaj" role="search">
+      {{ search_icon() }}
+      <label class="sr" for="q-top">Szukaj</label>
+      <input id="q-top" type="search" name="q" placeholder="Szukaj: urządzenie, IP, MAC, procedura…" value="{{ q or '' }}">
+    </form>
+    {% if sess.kind != "kiosk" %}{{ account_menu(sess, counts, csrf) }}{% endif %}
+  </div>
 </header>
 {% endif %}
 {% block body %}<main class="page">{% block content %}{% endblock %}</main>{% endblock %}
-{% if signed_in %}
-<nav class="dock" aria-label="Główne">
-  <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>Pulpit</a>
-  <a href="/urzadzenia" {% if path.startswith("/urzadzenia") %}aria-current="page"{% endif %}>Infrastruktura</a>
-  <a href="/incydenty" {% if path.startswith("/incydenty") %}aria-current="page"{% endif %}>Incydenty{% if counts.incidents %} <span class="badge down">{{ counts.incidents }}</span>{% endif %}</a>
-  <a href="/procedury" {% if path.startswith("/procedury") %}aria-current="page"{% endif %}>Procedury</a>
-</nav>
-{% endif %}
+{% endblock %}
 </body>
 </html>

@@ -1,20 +1,78 @@
-{# Wspólne kawałki. Stan zawsze kolorem i słowem/kształtem, nigdy samym kolorem. #}
+{# Wspólne kawałki. Stan zawsze kolorem I kształtem (ośmiokąt, trójkąt, przerywane kółko), nigdy samym kolorem. #}
+
+{# state: ok | down | warn | effect | unknown #}
+{% macro st(state, size=16, label="") -%}
+{%- set lbl = label or {"ok": "Działa", "down": "Nie działa", "warn": "Ostrzeżenie", "effect": "Skutek, nie osobna awaria", "unknown": "Brak danych"}.get(state, state) -%}
+<svg class="st" width="{{ size }}" height="{{ size }}" viewBox="0 0 16 16" role="img" aria-label="{{ lbl }}">
+{%- if state == "ok" %}<circle cx="8" cy="8" r="7" fill="#45c486"/><path d="M4.6 8.2l2.3 2.3 4.6-4.7" stroke="#0e1114" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+{%- elif state == "down" %}<path d="M5 1h6l4 4v6l-4 4H5l-4-4V5z" fill="#ff6b6b"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#2a1517" stroke-width="1.8" stroke-linecap="round"/>
+{%- elif state == "warn" %}<path d="M8 1.5l7 12.5H1z" fill="#f2a93b"/><path d="M8 6v3.5M8 11.6v.01" stroke="#33280f" stroke-width="1.6" stroke-linecap="round"/>
+{%- elif state == "effect" %}<circle cx="8" cy="8" r="6.5" fill="none" stroke="#b3bcc6" stroke-width="1.8" stroke-dasharray="2.5 2"/>
+{%- else %}<circle cx="8" cy="8" r="6" fill="none" stroke="#6b7580" stroke-width="1.6"/>{% endif -%}
+</svg>
+{%- endmacro %}
+
+{# rola w otwartym incydencie → stan do ikony #}
+{% macro mark_state(mark) -%}
+{{ {"przyczyna": "down", "skutek": "effect", "gorzej": "warn"}.get(mark, "") }}
+{%- endmacro %}
+
 {% macro mark_badge(mark) -%}
-  {%- if mark == "przyczyna" %}<span class="pill down">✕ przyczyna</span>
-  {%- elif mark == "skutek" %}<span class="pill warn">▲ skutek</span>
-  {%- elif mark == "gorzej" %}<span class="pill warn">◐ działa gorzej</span>{% endif -%}
+  {%- if mark == "przyczyna" %}<span class="pill down">{{ st("down", 12) }} przyczyna</span>
+  {%- elif mark == "skutek" %}<span class="pill">{{ st("effect", 12) }} skutek</span>
+  {%- elif mark == "gorzej" %}<span class="pill warn">{{ st("warn", 12) }} działa gorzej</span>{% endif -%}
 {%- endmacro %}
+
 {% macro alerts(error=None, message=None) %}
-  {% if message %}<div class="alert ok" role="status">{{ message }}</div>{% endif %}
-  {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+  {% if message %}<div class="alert ok" role="status">{{ st("ok") }}<span>{{ message }}</span></div>{% endif %}
+  {% if error %}<div class="alert error" role="alert">{{ st("down") }}<span>{{ error }}</span></div>{% endif %}
 {% endmacro %}
+
 {% macro severity(s) -%}
-  {%- if s == "krytyczny" %}<span class="pill down">● krytyczny</span>
-  {%- elif s == "ostrzezenie" %}<span class="pill warn">▲ ostrzeżenie</span>
-  {%- else %}<span class="pill">○ informacja</span>{% endif -%}
+  {%- if s == "krytyczny" %}<span class="pill down">{{ st("down", 12) }} krytyczny</span>
+  {%- elif s == "ostrzezenie" %}<span class="pill warn">{{ st("warn", 12) }} ostrzeżenie</span>
+  {%- else %}<span class="pill">{{ st("unknown", 12) }} informacja</span>{% endif -%}
 {%- endmacro %}
+
 {% macro inc_status(s) -%}
   {%- if s == "trwa" %}<span class="pill down">trwa</span>
   {%- elif s == "potwierdzony" %}<span class="pill warn">ktoś się zajmuje</span>
-  {%- else %}<span class="pill ok">✓ zamknięty</span>{% endif -%}
+  {%- else %}<span class="pill ok">{{ st("ok", 12) }} zamknięty</span>{% endif -%}
 {%- endmacro %}
+
+{% macro search_icon() -%}
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="#9ba5b0" stroke-width="1.6" fill="none"/><path d="M11 11l3.5 3.5" stroke="#9ba5b0" stroke-width="1.6" stroke-linecap="round"/></svg>
+{%- endmacro %}
+
+{% macro nav_icon(name) -%}
+<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+{%- if name == "pulpit" %}<rect x="3" y="3" width="6" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="3" width="6" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="11" width="6" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="11" width="6" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+{%- elif name == "infra" %}<rect x="3" y="3" width="14" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="12" width="14" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 5.5h.01M6 14.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+{%- elif name == "incydenty" %}<path d="M10 3l8 14H2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10 8v4M10 14.5v.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+{%- elif name == "procedury" %}<path d="M5 2.5h7l3 3v12H5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 9h4M8 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+
+{# menu konta: login, admin, liczniki — bez JavaScriptu (details) #}
+{% macro account_menu(sess, counts, csrf) %}
+<details class="menu">
+  <summary>{% if counts.queue and sess.role == "admin" %}<span class="badge">{{ counts.queue }}</span>{% endif %}
+    <span class="menu-who">{{ sess.login }} · {{ "admin" if sess.role == "admin" else "podgląd" }}</span>
+    <span class="avatar" aria-hidden="true">{{ sess.login[:1] | upper }}</span></summary>
+  <div class="menu-panel">
+    {% if sess.role == "admin" %}
+    <a href="/zatwierdz">Do zatwierdzenia {% if counts.queue %}<span class="badge">{{ counts.queue }}</span>{% endif %}</a>
+    <a href="/admin/profile">Profile urządzeń</a>
+    <a href="/admin/tablet">Tablet na ścianie</a>
+    <a href="/admin/audyt">Audyt</a>
+    <hr>
+    {% endif %}
+    <a href="/konto">Konto i sesje</a>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button type="submit">Wyloguj</button>
+    </form>
+  </div>
+</details>
+{% endmacro %}

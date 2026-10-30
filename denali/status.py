@@ -48,15 +48,17 @@ def layers(devices, marks):
         devs = [d for d in devices if layer_of(d["kind"]) == key]
         causes = [d for d in devs if marks.get(d["id"]) == "przyczyna"]
         effects = [d for d in devs if marks.get(d["id"]) in ("skutek", "gorzej")]
+        title = label
         if causes:
-            state, text = "down", "tu jest przyczyna: " + ", ".join(d["name"] for d in causes)
+            state, text = "down", "tu jest przyczyna"
+            title = f"{label} · " + ", ".join(d["name"] for d in causes)
         elif effects:
-            state, text = "warn", f"{len(effects)} z {len(devs)} — skutek, nie osobna awaria"
+            state, text = "effect", f"{len(effects)} z {len(devs)} — skutek, nie osobna awaria"
         elif devs:
             state, text = "unknown", f"{len(devs)} urządz. · brak danych o stanie"
         else:
             state, text = "none", "nic tu nie ma"
-        out.append({"key": key, "label": label, "state": state, "text": text, "count": len(devs),
+        out.append({"key": key, "label": label, "title": title, "state": state, "text": text, "count": len(devs),
                     "link": (causes or effects or [None])[0]})
     return out
 
@@ -69,6 +71,11 @@ def recent_events(conn, limit=5):
 def pulpit_apps(conn):
     return conn.execute(select(device).where(device.c.pulpit_group != "brak").order_by(device.c.name)
                         ).mappings().all()
+
+
+def tile_color(name):
+    """Stały kolor kafla aplikacji wyliczony z nazwy (6 barw z makiety) — bez ustawiania czegokolwiek."""
+    return f"c{sum(ord(ch) for ch in (name or '').lower()) % 6}"
 
 
 def initials(name):
