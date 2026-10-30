@@ -17,5 +17,13 @@ def alembic_config(settings: Settings) -> Config:
 
 
 def upgrade(settings: Settings) -> None:
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        settings.data_dir.mkdir(parents=True, exist_ok=True)
+        probe = settings.data_dir / ".zapis-test"
+        probe.write_text("ok")
+        probe.unlink()
+    except OSError as e:
+        raise SystemExit(f"Nie mogę pisać do katalogu danych {settings.data_dir} ({e.strerror}). "
+                         f"Katalog na hoście (DENALI_DATA_PATH) musi należeć do UID 1000: "
+                         f"chown -R 1000:1000 <katalog>") from None
     command.upgrade(alembic_config(settings), "head")

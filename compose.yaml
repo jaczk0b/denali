@@ -2,7 +2,11 @@
 # Panelu NIE dodajemy do Pangolina/Newt ani do tunelu Cloudflare — dostęp tylko z LAN i Tailscale.
 #
 # DENALI_DATA_PATH: katalog na hoście z bazą, plikami i kopiami. W Komodo ustaw stałą ścieżkę (np. /opt/denali/data),
-# bo katalog z klonem repozytorium Komodo może wyczyścić przy aktualizacji. Katalog musi należeć do UID 1000.
+# bo katalog z klonem repozytorium Komodo może wyczyścić przy aktualizacji. Właściciela (UID 1000) ustawia sam
+# krótki krok „data-owner” przed startem panelu — ręczny chown nie jest potrzebny.
+x-data: &data
+  - ${DENALI_DATA_PATH:-./data}:/data
+
 x-denali: &denali
   image: denali:local     # budowany lokalnie z Dockerfile, nie ma go w żadnym rejestrze
   pull_policy: never      # worker używa obrazu zbudowanego dla app — nigdy nie pobieraj z Docker Hub
@@ -12,9 +16,19 @@ x-denali: &denali
       required: false
   environment:
     DENALI_DATA_DIR: /data
-  volumes:
-    - ${DENALI_DATA_PATH:-./data}:/data
+  volumes: *data
+
 services:
+  # Jednorazowo przy każdym wdrożeniu: katalog danych należy do użytkownika panelu (UID 1000).
+  # Docker tworzy brakujący katalog na hoście jako root — bez tego panel nie zapisze bazy.
+  data-owner:
+    image: denali:local
+    pull_policy: never
+    user: "0:0"
+    entrypoint: ["chown", "-R", "1000:1000", "/data"]
+    volumes: *data
+    restart: "no"
+
   app:
     <<: *denali
     build: .
@@ -22,6 +36,9 @@ services:
     command: sh -c "python -m denali migrate && python -m denali serve --host 0.0.0.0 --port 8000"
     ports:
       - "${DENALI_PORT:-8000}:8000"
+    depends_on:
+      data-owner:
+        condition: service_completed_successfully
 
   worker:
     <<: *denali
