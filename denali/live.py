@@ -9,13 +9,15 @@ Pierwszeństwo: off (wyłączone celowo — wtedy milczący ping nie jest awari�
 Worker co minutę liczy stany, zapisuje je (strony panelu tylko je czytają), puszcza analizę przyczyny
 i otwiera albo zamyka incydenty.
 """
+import hashlib
+import json
 import time
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from . import incidents, inventory as inv, profiles
 from .db import kv_get, kv_set
-from .models import check_state, device, external_ref, incident, observed_state
+from .models import check_state, device, external_ref, incident, incident_event, observed_state
 
 STATES_KEY = "live.states"
 STALE_AFTER = 300           # stan starszy niż 5 min = worker nie działa → nie pokazujemy go jako aktualnego
@@ -65,6 +67,24 @@ def saved(conn, now=None):
     if not data or now - data.get("at", 0) > STALE_AFTER:
         return {}
     return {int(k): v for k, v in data.get("devices", {}).items()}
+
+
+def version(conn, now=None):
+    """Krótki odcisk wszystkiego, co pokazują strony „na żywo” (pulpit, listy, karta incydentu).
+    Zmienia się → przeglądarka pobiera stronę od nowa (SSE, web/live_routes.py)."""
+    now = now or time.time()
+    parts = {
+        "stany": saved(conn, now),
+        "incydenty": [list(r) for r in conn.execute(
+            select(incident.c.id, incident.c.status, incident.c.severity, incident.c.title, incident.c.ended_at)
+            .where(incident.c.status != "zamkniety").order_by(incident.c.id))],
+        "zdarzenie": conn.execute(select(func.max(incident_event.c.id))).scalar(),
+        "urzadzenia": list(conn.execute(select(func.count(), func.max(device.c.updated_at))).one()),
+        "kolejka": conn.execute(select(func.count()).select_from(external_ref)
+                                .where(external_ref.c.status == "nowy")).scalar(),
+        "dzien": time.strftime("%Y-%m-%d", time.localtime(now)),
+    }
+    return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 def evaluate(conn, now=None):

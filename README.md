@@ -6,10 +6,11 @@ a gdy coś padnie albo się zmieni, w minutę wiem **co, dlaczego i gdzie szuka�
 Dokumenty: [PROJEKT.md](PROJEKT.md) (projekt i decyzje), [AUDYT.md](AUDYT.md) (audyt poprzedniego panelu HLC),
 [POMYSLY.md](POMYSLY.md) (odłożone pomysły).
 
-**Stan: Etap 2 (rdzeń).** Jest: logowanie z 2FA, urządzenia, zależności i kable, profile, kolejka „do zatwierdzenia”,
-analiza przyczyny, incydenty, procedury, runbooki, pliki, skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe.
-Nie ma jeszcze: integracji (Proxmox, TrueNAS, Komodo, router…) i stanu na żywo — Etap 3; aktualizacji — Etap 4;
-akcji — Etap 5.
+**Stan: Etap 3 (status) — kod gotowy, czeka na sprawdzenie na serwerach.** Jest: logowanie z 2FA, urządzenia,
+zależności i kable, profile, kolejka „do zatwierdzenia”, analiza przyczyny, incydenty, procedury, runbooki, pliki,
+skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo i router TP-Link,
+sprawdzenia z LAN, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS, odświeżanie
+pulpitu i list na żywo (SSE). Nie ma jeszcze: sprawdzeń z VPS i OpenWrt; aktualizacji — Etap 4; akcji — Etap 5.
 
 Spis treści:
 [Instalacja](#instalacja) ·
@@ -112,7 +113,7 @@ W NPM: *Hosts → Proxy Hosts → Add Proxy Host*:
 | Domain Names | `denali.serwispowers.com` |
 | Scheme / Forward Hostname / Port | `http` / IP tej VM / `8000` |
 | Block Common Exploits | włączone |
-| Websockets Support | włączone (przyda się do odświeżania na żywo w Etapie 3) |
+| Websockets Support | może zostać włączone (odświeżanie na żywo to SSE — zwykłe HTTP; panel sam wyłącza buforowanie nagłówkiem `X-Accel-Buffering: no`) |
 | Access List | lista „tylko LAN + Tailscale”: *allow* `192.168.0.0/16` (Twoja podsieć) i `100.64.0.0/10`, *deny* `all` |
 | SSL | *Request a new SSL Certificate* → *Use a DNS Challenge* → Cloudflare (token „Edit zone DNS” tylko dla `serwispowers.com`), *Force SSL* i *HSTS* włączone |
 

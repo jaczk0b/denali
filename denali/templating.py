@@ -8,12 +8,15 @@ from markdown_it import MarkdownIt
 from markupsafe import Markup
 from sqlalchemy import func, select
 
-from . import incidents, inventory
+from . import incidents, inventory, live
 from .models import external_ref, incident
 from .status import initials, tile_color
 
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templates")
 # Markdown bez surowego HTML; markdown-it sam odrzuca linki javascript: i data:
+# Strony odświeżane na żywo (SSE). Tylko widoki do patrzenia — nie strona po wysłaniu formularza (błąd albo
+# odsłonięte hasło zniknęłyby przy podmianie) ani karta urządzenia ze skarbcem.
+LIVE_TEMPLATES = {"pulpit.html", "urzadzenia.html", "incydenty.html", "incydent.html"}
 _md = MarkdownIt("commonmark", {"html": False}).enable("table").enable("strikethrough")
 
 
@@ -56,5 +59,8 @@ def render(request: Request, name: str, ctx: dict | None = None, status: int = 2
     sess = getattr(request.state, "sess", None)
     signed_in = bool(sess) and sess["kind"] != "pending"
     base = {"sess": sess, "csrf": sess["csrf"] if sess else "", "path": request.url.path,
-            "counts": _counts(request) if signed_in else {}}
+            "counts": _counts(request) if signed_in else {}, "live_version": ""}
+    if signed_in and request.method == "GET" and name in LIVE_TEMPLATES and status == 200:
+        with request.app.state.engine.connect() as conn:
+            base["live_version"] = live.version(conn)
     return templates.TemplateResponse(request, name, {**base, **(ctx or {})}, status_code=status)

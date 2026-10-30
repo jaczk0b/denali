@@ -165,8 +165,10 @@ def create_session(conn, user_id: int, kind: str, ip: str = "", user_agent: str 
     return token
 
 
-def load_session(conn, token: str, ip: str = "", now: float | None = None):
-    """Sesja razem z kontem albo None (wygasła, bezczynna, inne IP kiosku, konto wyłączone)."""
+def load_session(conn, token: str, ip: str = "", now: float | None = None, touch: bool = True):
+    """Sesja razem z kontem albo None (wygasła, bezczynna, inne IP kiosku, konto wyłączone).
+
+    touch=False: odczyt bez odnotowania aktywności — odświeżanie na żywo nie może przedłużać bezczynnej sesji."""
     if not token:
         return None
     now = now if now is not None else time.time()
@@ -183,7 +185,7 @@ def load_session(conn, token: str, ip: str = "", now: float | None = None):
         return None
     if row["disabled"] or (row["kind"] == "kiosk" and row["ip"] != ip):
         return None
-    if now - row["last_seen_at"] > 60:
+    if touch and now - row["last_seen_at"] > 60:
         conn.execute(update(session).where(session.c.token_hash == row["token_hash"]).values(last_seen_at=now))
     return dict(row)
 

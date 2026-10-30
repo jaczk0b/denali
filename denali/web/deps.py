@@ -10,6 +10,9 @@ COOKIE = "denali_session"
 PRELOGIN_COOKIE = "denali_prelogin"
 # Administrator bez 2FA może wejść tylko tutaj (włączenie 2FA jest obowiązkowe).
 PATHS_WITHOUT_2FA = {"/konto/2fa", "/logout"}
+# Odświeżanie na żywo: strumień SSE i pobrania strony w tle (nagłówek) to nie aktywność użytkownika.
+LIVE_PATH = "/na-zywo"
+LIVE_HEADER = "X-Denali-Live"
 
 
 class Redirect(Exception):
@@ -44,8 +47,9 @@ def get_session(request: Request) -> dict | None:
     if hasattr(request.state, "sess"):
         return request.state.sess
     token = request.cookies.get(COOKIE, "")
+    touch = request.url.path != LIVE_PATH and request.headers.get(LIVE_HEADER) != "1"
     with request.app.state.engine.begin() as conn:
-        sess = auth.load_session(conn, token, client_ip(request))
+        sess = auth.load_session(conn, token, client_ip(request), touch=touch)
     if sess:
         sess["token"] = token
     request.state.sess = sess

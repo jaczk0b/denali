@@ -245,7 +245,7 @@ def test_tablet_laczy_sie_kodem_jednorazowym(admin, app):
     tablet, r = pair(app, code.lower())                # wielkość liter i myślnik bez znaczenia
     assert r.status_code == 303
     home = tablet.get("/")
-    assert home.status_code == 200 and 'http-equiv="refresh"' in home.text
+    assert home.status_code == 200 and 'class="desk-body kiosk"' in home.text and "data-live=" in home.text
     assert tablet.get("/urzadzenia/nowe").status_code == 403         # tylko podgląd
     _other, r = pair(app, code)
     assert r.status_code == 400                                       # kod działa raz

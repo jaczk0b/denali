@@ -7,7 +7,7 @@ serwerach i akceptację. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), dec
 
 ## 1. Po Twojej stronie — teraz
 
-- [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (ostatnie zmiany: PBS, TrueNAS, strażnik, router).
+- [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (ostatnie zmiany: PBS, TrueNAS, strażnik, router, odświeżanie na żywo).
 - [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).
       Instrukcja: README → Instalacja → krok 4.
@@ -39,13 +39,15 @@ z dokumentacji — pierwsze podłączenie może wymagać poprawki (wtedy wklej t
 - [ ] Powiadomienia → **strażnik**: Uptime Kuma na VPS, monitor *Push*, 60 s, Retries 2, powiadomienie na Discord.
 - [ ] **Test kryterium Etapu 3:** wyłącz testową VM z zaznaczonym *Start at boot* → po 1–2 min incydent na pulpicie
       i wiadomość na Discordzie → po włączeniu „Rozwiązane”.
+- [ ] Przy tym teście: pulpit na tablecie i w przeglądarce (przez NPM) zmienia się **sam**, bez przeładowania strony.
 - [ ] Akceptacja Etapu 3.
 
 ## 4. Braki względem projektu (Etap 3)
 
 - [ ] **Sprawdzenia z VPS** („działa w LAN, nie działa z internetu”) — jest tylko strażnik; sprawdzenia aplikacji
       z zewnątrz jeszcze nie.
-- [ ] **Odświeżanie na żywo (SSE)** — pulpit i tablet odświeżają się co minutę zwykłym przeładowaniem strony.
+- [x] **Odświeżanie na żywo (SSE)** — pulpit, listy urządzeń i incydentów oraz karta incydentu podmieniają treść
+      przy zmianie stanu (do ~5 s po zapisie workera); nie w trakcie pisania. Do sprawdzenia na tablecie i przez NPM.
 - [ ] **OpenWrt** — odłożone (POMYSLY.md); router działa przez nieoficjalną bibliotekę TP-Link.
 - [ ] Z migracji HLC **nie przeniesione**: sprawdzenia, kanały powiadomień, konta (z założenia — wracają w nowej postaci).
 
@@ -55,8 +57,7 @@ z dokumentacji — pierwsze podłączenie może wymagać poprawki (wtedy wklej t
       (sprawdź, czy w `/opt/denali/data/export/` jest `denali-procedury.pdf`).
 - [ ] **Synchronizacja kopii awaryjnej na VPS** — skrypt i instrukcja są (`deploy/vps/README.md`), nic nie zostało ustawione.
 - [ ] **Kopia poza domem** (restic na VPS) — opisana w README, nieustawiona.
-- [ ] **Końce linii w gicie** — dodać `.gitattributes` (`* text=auto eol=lf`), żeby skrypty `.sh` nie psuły się
-      po wyciągnięciu repo na Windowsie.
+- [x] **Końce linii w gicie** — `.gitattributes` (`* text=auto eol=lf`).
 - [ ] Testy lokalnie działają na Pythonie 3.15, obraz na 3.12 — dotąd bez problemów, ale warto kiedyś puścić testy w obrazie.
 
 ## 6. Następne etapy
