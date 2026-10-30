@@ -1,5 +1,6 @@
 FROM python:3.12-slim
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DENALI_DATA_DIR=/data
+# PYTHONPATH: kod Denali jest tylko w /app/denali (jedna kopia) — `python -m denali` działa z każdego katalogu
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DENALI_DATA_DIR=/data PYTHONPATH=/app
 # pango + czcionki z polskimi znakami: PDF eksportu awaryjnego (WeasyPrint)
 RUN apt-get update && apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
@@ -7,7 +8,9 @@ RUN useradd --system --uid 1000 --create-home denali && mkdir /data && chown den
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY denali ./denali
-RUN pip install --no-cache-dir ".[pdf]"
+# instalujemy zależności, a sam pakiet odinstalowujemy — inaczej w obrazie są dwie kopie kodu i terminal
+# uruchomiony poza /app potrafi wziąć tę z site-packages
+RUN pip install --no-cache-dir ".[pdf]" && pip uninstall -y denali
 USER denali
 EXPOSE 8000
 VOLUME /data
