@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st, alerts %}
+{% block title %}{{ row.name if row else "Nowa integracja" }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/admin/integracje">Integracje</a> / {{ row.name if row else cls.label }}</p>
+<div class="row-between">
+  <div>
+    <h1>{{ row.name if row else "Dodaj: " ~ cls.label }}</h1>
+    {% if row %}<p class="lead">{% if row.last_error %}{{ st("down") }} Ostatni odczyt nieudany: {{ row.last_error }}
+      {% elif row.last_ok_at %}{{ st("ok") }} Ostatni odczyt: {{ row.last_ok_at | dt }} · co {{ row.poll_seconds }} s
+      {% else %}Jeszcze nie odczytano.{% endif %}</p>{% endif %}
+  </div>
+  {% if row %}
+  <div class="actions">
+    <form method="post" action="/admin/integracje/{{ row.id }}/odczyt"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn primary" type="submit">Odczytaj teraz</button></form>
+    <a class="btn" href="/admin/integracje/{{ row.id }}?sprawdz=1">Sprawdź połączenie</a>
+  </div>
+  {% endif %}
+</div>
+{{ alerts(error, message) }}
+
+<div class="cols">
+<div class="col">
+  <form class="card" method="post" action="{{ '/admin/integracje/%d' % row.id if row else '/admin/integracje/nowa' }}" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="type" value="{{ cls.type }}">
+    <h2>Ustawienia</h2>
+    <label class="field">Nazwa<input name="name" value="{{ values.name or '' }}" required maxlength="100"></label>
+    {% for f in cls.fields %}
+      {% if f.kind == "bool" %}
+        <label class="check"><input type="checkbox" name="{{ f.key }}" value="1" {% if values.get(f.key, f.default) %}checked{% endif %}> {{ f.label }}</label>
+        {% if f.help %}<p class="muted small">{{ f.help }}</p>{% endif %}
+      {% elif f.kind == "textarea" %}
+        <label class="field">{{ f.label }}{% if not f.required %} <span class="muted small">(opcjonalnie)</span>{% endif %}
+          <textarea name="{{ f.key }}" rows="5" class="mono" spellcheck="false">{{ values.get(f.key, "") }}</textarea></label>
+        {% if f.help %}<p class="muted small">{{ f.help }}</p>{% endif %}
+      {% elif f.kind == "secret" %}
+        <label class="field">{{ f.label }}
+          <input name="{{ f.key }}" type="password" autocomplete="new-password" {% if not row and f.required %}required{% endif %}
+                 placeholder="{{ 'zapisany — zostaw puste, żeby nie zmieniać' if row else '' }}"></label>
+      {% else %}
+        <label class="field">{{ f.label }}
+          <input name="{{ f.key }}" value="{{ values.get(f.key, '') }}" {% if f.required %}required{% endif %} {% if f.kind == "url" %}inputmode="url"{% endif %} spellcheck="false"></label>
+        {% if f.help %}<p class="muted small">{{ f.help }}</p>{% endif %}
+      {% endif %}
+    {% endfor %}
+    <label class="field">Odczyt co ile sekund<input name="poll_seconds" value="{{ values.poll_seconds or cls.default_poll }}" inputmode="numeric" class="small-input"></label>
+    <div class="actions mt">
+      <button class="btn primary" type="submit">{{ "Zapisz i sprawdź" if row else "Dodaj i sprawdź połączenie" }}</button>
+      <a class="btn" href="/admin/integracje">Anuluj</a>
+    </div>
+  </form>
+
+  {% if row %}
+  <details class="card">
+    <summary>Usuń integrację</summary>
+    <p class="muted small">Zatwierdzone urządzenia zostają w Denali (z dokumentacją i historią), tracą tylko stan z tego źródła.</p>
+    <form method="post" action="/admin/integracje/{{ row.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn danger" type="submit">Usuń „{{ row.name }}”</button></form>
+  </details>
+  {% endif %}
+</div>
+
+<div class="col">
+  {% if cls.type == "proxmox" %}
+  <section class="card md">
+    <h2>Jak założyć token (tylko odczyt)</h2>
+    <p>W panelu Proxmoxa, w przeglądarce:</p>
+    <ol>
+      <li><strong>Datacenter → Permissions → Users → Add</strong>: użytkownik <code>denali</code>, realm <code>Proxmox VE authentication server</code> (pve). Hasło dowolne, nie będzie potrzebne.</li>
+      <li><strong>Datacenter → Permissions → API Tokens → Add</strong>: użytkownik <code>denali@pve</code>, Token ID <code>odczyt</code>, <em>Privilege Separation</em> zaznaczone. Skopiuj <strong>Secret</strong> — Proxmox pokaże go tylko raz.</li>
+      <li><strong>Datacenter → Permissions → Add → API Token Permission</strong>: ścieżka <code>/</code>, token <code>denali@pve!odczyt</code>, rola <code>PVEAuditor</code>, <em>Propagate</em> zaznaczone.</li>
+      <li>Certyfikat: węzeł → <strong>Shell</strong> → <code>cat /etc/pve/pve-root-ca.pem</code>, skopiuj całość (z liniami BEGIN/END) do pola obok.</li>
+    </ol>
+    <p class="muted small">PVEAuditor pozwala tylko czytać. Adresy IP maszyn wirtualnych wymagają agenta QEMU w VM (qemu-guest-agent); bez niego VM pojawi się bez IP.</p>
+  </section>
+  {% endif %}
+
+  {% if row %}
+  <section class="card">
+    <h2>Co widać ({{ objects | length }})</h2>
+    {% if objects %}
+    <ul class="list-rows">
+      {% for o in objects %}
+      <li>{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(o.state, "unknown"), 14) }}
+        <span class="grow">{{ (o.proposed or {}).get("name") or o.external_id }} <span class="muted small mono">{{ o.external_id }}</span><br>
+          <span class="muted small">{{ o.summary }}</span></span>
+        {% if o.device_id %}<a class="small" href="/urzadzenia/{{ o.device_id }}">karta →</a>
+        {% elif o.ref_status == "nowy" %}<a class="small" href="/zatwierdz">do zatwierdzenia</a>
+        {% elif o.ref_status == "ignorowany" %}<span class="muted small">pominięte</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Jeszcze nic — kliknij „Odczytaj teraz”.</p>{% endif %}
+  </section>
+  {% endif %}
+</div>
+</div>
+{% endblock %}

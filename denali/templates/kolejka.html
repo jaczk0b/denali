@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import alerts %}
+{% from "_makra.html" import alerts, st %}
 {% block title %}Do zatwierdzenia{% endblock %}
 {% block content %}
 <div class="row-between">
@@ -9,13 +9,25 @@
       Zatwierdzenie VM zatwierdza też czekające stacki na niej i host, na którym stoi.</p>
   </div>
   {% if rows and sess.role == "admin" %}
-  <form method="post" action="/zatwierdz/wszystko">
-    <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <button class="btn primary" type="submit">Zatwierdź wszystko ({{ rows | length }})</button>
-  </form>
+  <div class="actions">
+    {% if matches %}
+    <form method="post" action="/zatwierdz/dopasowane">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn primary" type="submit">Przypnij dopasowane ({{ matches | length }})</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/zatwierdz/wszystko">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn {{ '' if matches else 'primary' }}" type="submit">Zatwierdź wszystko jako nowe ({{ rows | length }})</button>
+    </form>
+  </div>
   {% endif %}
 </div>
 {{ alerts(error) }}
+{% if matches %}
+<div class="alert warn">{{ st("warn") }}<span>{{ matches | length }} z tych obiektów wygląda na urządzenia, które już są w Denali (ten sam MAC, IP albo nazwa — np. przeniesione z HLC).
+  „Przypnij dopasowane” połączy je z istniejącymi kartami zamiast tworzyć duplikaty. Najpierw przypnij, potem zatwierdź resztę.</span></div>
+{% endif %}
 {% if not rows %}
 <div class="card"><p class="muted">Nic nie czeka. Nowe obiekty pojawią się tu, gdy integracje (Etap 3) je znajdą.</p></div>
 {% else %}
@@ -33,10 +45,19 @@
         <td>{% if p.parent %}{{ p.parent.values() | first }}{% else %}—{% endif %}</td>
         <td>
           {% if sess.role == "admin" %}
+          {% set m = matches.get(r.id) %}
+          {% if m %}
+          <p class="small">Wygląda na: <a href="/urzadzenia/{{ m.id }}">{{ m.name }}</a></p>
+          <div class="actions">
+            <form method="post" action="/zatwierdz/{{ r.id }}/przypnij"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="device_id" value="{{ m.id }}"><button class="btn small primary" type="submit">Przypnij do „{{ m.name }}”</button></form>
+            <form method="post" action="/zatwierdz/{{ r.id }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">To inne — dodaj jako nowe</button></form>
+          </div>
+          {% else %}
           <div class="actions">
             <form method="post" action="/zatwierdz/{{ r.id }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small primary" type="submit">Zatwierdź</button></form>
             <form method="post" action="/zatwierdz/{{ r.id }}/odrzuc"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Pomiń na stałe</button></form>
           </div>
+          {% endif %}
           {% if all_devices %}
           <details class="mt">
             <summary>To urządzenie już jest</summary>

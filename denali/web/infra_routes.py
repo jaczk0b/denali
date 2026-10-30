@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from .. import auth, discovery, docs, files, incidents, inventory as inv, profiles, status, vault
+from .. import auth, discovery, docs, files, incidents, integrations, inventory as inv, profiles, status, vault
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook)
 from ..templating import render
@@ -103,6 +103,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "files": files.for_device(conn, device_id),
         "secrets": vault.list_secrets(conn, role="admin", device_id=device_id) if is_admin else [],
         "marks": (marks := status.device_marks(conn)), "mark": marks.get(device_id),
+        "sources": integrations.states_for_device(conn, device_id),
         "refs": conn.execute(select(external_ref).where(external_ref.c.device_id == device_id)).mappings().all(),
     }
     return render(request, "urzadzenie.html", ctx, status_code)
@@ -355,10 +356,10 @@ def secret_remove(request: Request, device_id: int, secret_id: int, sess: dict =
 
 # ───────────────────────── kolejka „do zatwierdzenia” ─────────────────────────
 def _queue_page(request, conn, error=None, status_code=200):
-    integrations = {r.id: r.name for r in conn.execute(select(integration.c.id,
-                                                              integration.c.name))}
+    sources = {r.id: r.name for r in conn.execute(select(integration.c.id, integration.c.name))}
     all_devices = conn.execute(select(device.c.id, device.c.name).order_by(device.c.name)).mappings().all()
-    return render(request, "kolejka.html", {"rows": discovery.pending(conn), "integrations": integrations,
+    return render(request, "kolejka.html", {"rows": discovery.pending(conn), "integrations": sources,
+                                            "matches": discovery.suggest_matches(conn),
                                             "all_devices": all_devices, "error": error}, status_code)
 
 
@@ -375,6 +376,11 @@ def _queue_action(request, sess, fn):
         except inv.InventoryError as e:
             return _queue_page(request, conn, str(e), 400)
     return _back("/zatwierdz")
+
+
+@router.post("/zatwierdz/dopasowane")
+def queue_link_matches(request: Request, sess: dict = Depends(require_admin)):
+    return _queue_action(request, sess, lambda c: discovery.link_matches(c, user=sess["login"], ip=client_ip(request)))
 
 
 @router.post("/zatwierdz/wszystko")

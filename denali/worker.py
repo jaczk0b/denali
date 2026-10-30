@@ -1,11 +1,12 @@
-"""Worker: zadania w tle (w kolejnych etapach także odpytywanie integracji i alerty). Osobny proces, żeby jego
+"""Worker: zadania w tle — odczyt integracji, eksport awaryjny, kopia zapasowa. Osobny proces, żeby jego
 restart nie wyłączał panelu."""
 import asyncio
 import logging
 import time
 
-from . import backup, export
+from . import backup, export, integrations
 from .config import Settings
+from .crypto import Box
 from .db import kv_get, kv_set, make_engine
 
 log = logging.getLogger("denali.worker")
@@ -43,10 +44,16 @@ def tick(engine, settings: Settings, state: dict, now: float | None = None) -> N
 async def run(settings: Settings, stop: asyncio.Event | None = None, interval: float = 30) -> None:
     stop = stop or asyncio.Event()
     engine = make_engine(settings.db_url)
+    box = Box(settings.encryption_key) if settings.encryption_key else None
     state: dict = {}
     log.info("worker start")
     try:
         while not stop.is_set():
+            if box:
+                try:
+                    await integrations.poll_due(engine, box)
+                except Exception:   # błąd odczytu integracji nie może zatrzymać workera
+                    log.exception("Odczyt integracji nie powiódł się")
             await asyncio.to_thread(tick, engine, settings, state)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=interval)

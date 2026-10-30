@@ -97,3 +97,21 @@ def test_zaleznosc_wykryta_przez_adres(conn):
     g = inv.load_graph(conn)
     immich, truenas = dev(conn, "immich")["id"], dev(conn, "truenas")["id"]
     assert truenas in g.ancestors(immich)
+
+
+def test_dopasowanie_do_urzadzen_z_hlc(conn):
+    """Po migracji z HLC Proxmox zgłasza te same maszyny — kolejka podpowiada istniejące karty."""
+    pve_old = inv.create_device(conn, "pve", "host")
+    inv.add_address(conn, pve_old, "ip", "192.168.1.10")
+    truenas_old = inv.create_device(conn, "TrueNAS", "vm", parent_id=pve_old)          # bez IP — po nazwie
+    inv.create_device(conn, "docker", "vm")
+    inv.create_device(conn, "docker", "lxc")                                          # dwie „docker” — niejednoznaczne
+    refs = report_homelab(conn)
+    m = discovery.suggest_matches(conn)
+    assert m[refs["pve"]]["id"] == pve_old                 # po IP
+    assert m[refs["truenas"]]["id"] == truenas_old         # po nazwie (bez względu na wielkość liter)
+    assert refs["docker"] not in m                         # dwa kandydaty — decyzja człowieka
+    assert discovery.link_matches(conn) == 2
+    assert discovery.suggest_matches(conn) == {}
+    left = {r["external_id"] for r in discovery.pending(conn)}
+    assert "node/pve" not in left and "qemu/100" not in left

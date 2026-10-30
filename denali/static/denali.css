@@ -134,6 +134,11 @@ td a:hover { text-decoration: underline; }
 .pill.warn { border-color: var(--warn-border); background: var(--warn-bg); color: var(--warn-text); }
 .pill.ok { border-color: #285a3f; background: #14261d; color: #c6f0d8; }
 
+.source-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.card.source { padding: 16px; }
+.source-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+.source-state { display: flex; gap: 8px; align-items: center; font-weight: 600; margin: 6px 0; }
+
 /* ───────── formularze i przyciski ───────── */
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 14px; color: var(--text-2); }
 .field input, .field select, .field textarea, .form-row input:not([type=checkbox]):not([type=file]), input.grow, .small-input {

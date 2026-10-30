@@ -152,6 +152,7 @@ integration = Table(
     Column("enabled", Boolean, nullable=False, default=True),
     Column("poll_seconds", Integer, nullable=False, default=60),
     Column("last_ok_at", Float),
+    Column("last_attempt_at", Float),
     Column("last_error", String(500), nullable=False, default=""),
 )
 
@@ -285,4 +286,15 @@ incident_event = Table(
     Column("kind", String(32), nullable=False),     # otwarty | dowod | skutek | notatka | potwierdzony | zamkniety | wznowiony
     Column("text", Text, nullable=False),
     Column("user", String(64), nullable=False, default=""),
+)
+
+# Ostatni znany stan obiektu z integracji (bez historii — tę mają same systemy źródłowe).
+observed_state = Table(
+    "observed_state", metadata,
+    Column("integration_id", Integer, ForeignKey("integration.id", ondelete="CASCADE"), primary_key=True),
+    Column("external_id", String(200), primary_key=True),
+    Column("state", String(16), nullable=False),            # ok | warn | down | off | unknown
+    Column("summary", String(300), nullable=False, default=""),
+    Column("data", JSON, nullable=False, default=dict),
+    Column("observed_at", Float, nullable=False),
 )

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st %}
+{% block title %}Integracje{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Integracje</h1>
+    <p class="lead">Systemy, z których Denali sam czyta stan i nowe urządzenia. Tylko odczyt — panel niczego w nich nie zmienia.</p>
+  </div>
+  <div class="actions">
+    {% for t, cls in types.items() %}<a class="btn primary" href="/admin/integracje/nowa?typ={{ t }}">Dodaj: {{ cls.label }}</a>{% endfor %}
+  </div>
+</div>
+{% if not rows %}
+<div class="card">
+  <h2>Nic jeszcze nie jest podłączone</h2>
+  <p class="muted">Zacznij od Proxmoxa: po podłączeniu węzły, VM-ki i kontenery pojawią się w „Do zatwierdzenia”, a ich stan na kartach urządzeń.</p>
+</div>
+{% else %}
+<section class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nazwa</th><th>Rodzaj</th><th>Ostatni odczyt</th><th>Obiekty</th><th>Do zatwierdzenia</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rows %}{% set s = stats[r.id] %}
+      <tr>
+        <td><a href="/admin/integracje/{{ r.id }}">{{ r.name }}</a>{% if not r.enabled %} <span class="pill">wyłączona</span>{% endif %}</td>
+        <td>{{ types[r.type].label if r.type in types else r.type }}</td>
+        <td>{% if r.last_error %}<span class="pill down">{{ st("down", 12) }} błąd</span> <span class="muted small">{{ r.last_error }}</span>
+          {% elif r.last_ok_at %}<span class="pill ok">{{ st("ok", 12) }} {{ r.last_ok_at | hm }}</span>
+          {% else %}<span class="muted">jeszcze nie</span>{% endif %}</td>
+        <td>{% for state, n in s.states.items() %}<span class="chip">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(state, "unknown"), 12) }} {{ n }}</span> {% endfor %}</td>
+        <td>{% if s.pending %}<a href="/zatwierdz">{{ s.pending }}</a>{% else %}—{% endif %}</td>
+        <td>
+          <form class="inline" method="post" action="/admin/integracje/{{ r.id }}/{{ 'wylacz' if r.enabled else 'wlacz' }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">{{ "wyłącz" if r.enabled else "włącz" }}</button></form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -185,6 +185,46 @@ def link(conn, ref_id, device_id, user="system", ip=""):
     auth.audit(conn, "device_link", user=user, ip=ip, target=dev["name"], params={"external_id": ref["external_id"]})
 
 
+def suggest_matches(conn):
+    """{ref_id: urządzenie} — czekające obiekty, które wyglądają na urządzenia już obecne w Denali
+    (np. przeniesione z HLC): ten sam MAC, IP albo nazwa. Tylko jednoznaczne dopasowania."""
+    linked = {(r.integration_id, r.device_id) for r in conn.execute(
+        select(external_ref.c.integration_id, external_ref.c.device_id).where(external_ref.c.status == "zatwierdzony"))}
+    devices = conn.execute(select(inventory.device.c.id, inventory.device.c.name, inventory.device.c.kind)).mappings().all()
+    by_name = {}
+    for d in devices:
+        by_name.setdefault(d["name"].strip().lower(), []).append(d)
+    out = {}
+    for ref in pending(conn):
+        candidates = []
+        for kind in ("mac", "ip"):
+            for a in ref["proposed"]["addresses"]:
+                if a["kind"] == kind:
+                    did = inventory.find_by_address(conn, kind, a["value"])
+                    if did:
+                        candidates.append(did)
+            if candidates:
+                break
+        if not candidates:
+            candidates = [d["id"] for d in by_name.get(ref["proposed"]["name"].strip().lower(), [])]
+        candidates = [c for c in dict.fromkeys(candidates) if (ref["integration_id"], c) not in linked]
+        if len(candidates) == 1:
+            out[ref["id"]] = next(d for d in devices if d["id"] == candidates[0])
+    return out
+
+
+def link_matches(conn, user="system", ip=""):
+    """Przypina wszystkie jednoznaczne dopasowania naraz. Zwraca ich liczbę."""
+    matches = suggest_matches(conn)
+    taken = set()
+    for ref_id, dev in matches.items():
+        if dev["id"] in taken:          # dwa obiekty wskazują to samo urządzenie — zostawiamy do decyzji
+            continue
+        taken.add(dev["id"])
+        link(conn, ref_id, dev["id"], user=user, ip=ip)
+    return len(taken)
+
+
 def ignore(conn, ref_id, user="system", ip=""):
     ref = _get(conn, ref_id)
     conn.execute(external_ref.update().where(external_ref.c.id == ref_id).values(status="ignorowany"))
