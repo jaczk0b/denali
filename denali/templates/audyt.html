@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Audyt{% endblock %}
+{% block content %}
+<h1>Dziennik audytu</h1>
+<p class="muted">Kto, co, kiedy i z jakim wynikiem. Ostatnie 300 wpisów.</p>
+<section class="card table-wrap">
+  <table>
+    <thead><tr><th>Kiedy</th><th>Kto</th><th>Adres</th><th>Co</th><th>Cel</th><th>Wynik</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.ts | dt }}</td><td>{{ r.user }}</td><td class="mono">{{ r.ip }}</td><td>{{ r.action }}</td>
+          <td>{{ r.target }}</td><td>{{ r.result }}</td></tr>
+    {% else %}
+      <tr><td colspan="6" class="muted">Brak wpisów.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

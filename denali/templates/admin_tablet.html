@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Tablet{% endblock %}
+{% block content %}
+<div>
+  <h1>Tablet na ścianie</h1>
+  <p class="muted">Tablet nie zna żadnego hasła. Łączysz go jednorazowym kodem; dostaje sam podgląd, działa tylko z adresu, z którego się połączył, i odświeża się co minutę.</p>
+</div>
+<section class="card">
+  <h2>Połącz nowy tablet</h2>
+  {% if code %}
+    <p>Na tablecie otwórz <span class="mono">/tablet</span> i wpisz:</p>
+    <p class="pair-code mono">{{ code }}</p>
+    <p class="muted">Kod działa raz, przez 10 minut.</p>
+  {% elif pending_until %}
+    <p class="muted">Jest aktywny kod (ważny do {{ pending_until | hm }}). Nowy kod unieważni poprzedni.</p>
+  {% endif %}
+  <form method="post" action="/admin/tablet/kod" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn primary" type="submit">Utwórz kod</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Połączone tablety</h2>
+  {% if kiosks %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Urządzenie</th><th>Adres</th><th>Połączony</th><th>Ostatnio</th><th>Wygasa</th><th></th></tr></thead>
+    <tbody>
+    {% for k in kiosks %}
+    <tr>
+      <td>{{ k.user_agent[:60] or "—" }}</td><td class="mono">{{ k.ip }}</td><td>{{ k.created_at | dt }}</td>
+      <td>{{ k.last_seen_at | dt }}</td><td>{{ k.expires_at | dt }}</td>
+      <td><form method="post" action="/admin/tablet/{{ k.public_id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger" type="submit">Odłącz</button></form></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted">Żaden tablet nie jest połączony.</p>{% endif %}
+</section>
+{% endblock %}

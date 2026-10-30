@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_makra.html" import severity, inc_status %}
+{% block title %}Incydenty{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>{{ "Wszystkie problemy" if all else "Trwające problemy" }}</h1>
+    <p class="muted">Awarie wykryte automatycznie i Twoje wpisy — jeden log.
+      {% if all %}<a href="/incydenty">Pokaż tylko trwające</a>{% else %}<a href="/incydenty?wszystkie=1">Pokaż też zamknięte</a>{% endif %}</p>
+  </div>
+  {% if sess.role == "admin" %}<a class="btn primary" href="/incydenty/nowy">Zapisz problem</a>{% endif %}
+</div>
+{% if not rows %}
+<div class="card"><p class="muted">{{ "Nic nie zapisano." if all else "Nic się nie dzieje." }}</p></div>
+{% else %}
+<section class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Od</th><th>Co</th><th>Waga</th><th>Stan</th><th>Skąd</th></tr></thead>
+      <tbody>
+      {% for i in rows %}
+      <tr>
+        <td class="mono">{{ i.started_at | dt }}</td>
+        <td><a href="/incydenty/{{ i.id }}">{{ i.title }}</a></td>
+        <td>{{ severity(i.severity) }}</td>
+        <td>{{ inc_status(i.status) }}</td>
+        <td class="muted">{{ {"auto": "wykryte", "reczny": "wpis", "hlc": "z HLC"}.get(i.source, i.source) }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

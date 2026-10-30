@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Kod logowania{% endblock %}
+{% block body %}
+<main class="center">
+  <div class="card narrow">
+    <form method="post" action="/login/2fa">
+      <h1>Kod z aplikacji</h1>
+      <p class="muted">Wpisz 6 cyfr z aplikacji uwierzytelniającej albo jeden z kodów zapasowych.</p>
+      {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="field">Kod
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+      </label>
+      <button class="btn primary wide" type="submit">Dalej</button>
+    </form>
+    <form method="post" action="/logout" class="mt">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="link" type="submit">Wróć do logowania</button>
+    </form>
+  </div>
+</main>
+{% endblock %}

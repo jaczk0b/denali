@@ -1,0 +1,9 @@
+# Do obrazu idzie tylko pyproject.toml, README.md i denali/ — reszta nie musi nawet trafiać do kontekstu budowania.
+.git
+.venv
+.env
+data
+_migracja
+**/__pycache__
+*.egg-info
+tests

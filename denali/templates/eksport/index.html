@@ -1,0 +1,35 @@
+{% extends "eksport/_base.html" %}
+{% block title %}Spis{% endblock %}
+{% block content %}
+<h1>Co robić, gdy coś padło</h1>
+<p class="lead">Panel nie działa albo nie masz do niego dostępu? Tu są te same procedury, runbooki i kontakty.</p>
+
+{% set panel = procedures | selectattr("scope", "equalto", "panel") | list %}
+{% set infra = procedures | selectattr("scope", "equalto", "infrastruktura") | list %}
+<section class="box urgent">
+  <h2>Gdy nie działa sam panel</h2>
+  {% if panel %}<ul>{% for p in panel %}<li><a href="procedura-{{ p.id }}.html">{{ p.title }}</a></li>{% endfor %}</ul>
+  {% else %}<p>Brak procedury — dopisz w panelu procedurę „Jak odtworzyć Denali” (zakres: panel).</p>{% endif %}
+</section>
+
+<section class="box">
+  <h2>Procedury na awarie</h2>
+  {% if infra %}<ul>{% for p in infra %}<li><a href="procedura-{{ p.id }}.html">{{ p.title }}</a>{% if p.devices %} <span class="muted">— {{ p.devices | map(attribute="name") | join(", ") }}</span>{% endif %}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">Brak.</p>{% endif %}
+</section>
+
+{% if contacts %}
+<section class="box">
+  <h2>Kontakty</h2>
+  <ul>{% for c in contacts %}<li><strong>{{ c.name }}</strong>{% if c.phone %} — <a href="tel:{{ c.phone | replace(' ', '') }}">{{ c.phone }}</a>{% endif %}{% if c.note %} <span class="muted">({{ c.note }})</span>{% endif %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="box">
+  <h2>Runbooki</h2>
+  {% if runbooks %}<ul>{% for r in runbooks %}<li><a href="runbook-{{ r.id }}.html">{{ r.title }}</a>{% if r.devices %} <span class="muted">— {{ r.devices | join(", ") }}</span>{% endif %}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">Brak.</p>{% endif %}
+</section>
+
+<p><a href="urzadzenia.html">Spis urządzeń: adresy, na czym działa, co od czego zależy →</a></p>
+{% endblock %}

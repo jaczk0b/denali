@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Logowanie dwuetapowe{% endblock %}
+{% block content %}
+<h1>Logowanie dwuetapowe</h1>
+{% if enabled %}
+  <div class="card">
+    <p>Włączone. Przy każdym logowaniu panel poprosi o kod z aplikacji.</p>
+    <p class="muted">Zgubiony telefon: w konsoli serwera <span class="mono">python -m denali reset-password LOGIN --disable-2fa</span>.</p>
+  </div>
+{% else %}
+  {% if forced %}<div class="alert error" role="alert">Konto administratora musi mieć włączone logowanie dwuetapowe. Bez tego panel nie pokaże innych stron.</div>{% endif %}
+  {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+  <div class="card">
+    <h2>1. Zeskanuj kod w aplikacji</h2>
+    <p class="muted">Np. Aegis, 2FAS, Google Authenticator, Bitwarden.</p>
+    <img class="qr" src="{{ qr }}" alt="Kod QR do aplikacji uwierzytelniającej">
+    <p class="muted">Nie możesz zeskanować? Wpisz ręcznie: <span class="mono">{{ secret }}</span></p>
+    <h2 class="mt">2. Wpisz kod z aplikacji</h2>
+    <form method="post" action="/konto/2fa" class="narrow-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label class="field">Kod (6 cyfr)<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+      <button class="btn primary" type="submit">Włącz</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

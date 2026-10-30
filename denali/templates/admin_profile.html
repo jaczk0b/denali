@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+<div>
+  <h1>Profile</h1>
+  <p class="muted">Ustawienia na poziomie typu. Urządzenie dostaje profil samo, po typie — zmiana tutaj dotyczy wszystkich urządzeń z profilem, poza świadomymi wyjątkami na karcie urządzenia.</p>
+</div>
+{{ alerts(error) }}
+{% for p in rows %}
+<section class="card" aria-label="{{ p.name }}">
+  <h2>{{ p.name }} <span class="muted">· {{ usage[p.id] }} urządz.</span></h2>
+  <p class="muted small">Typy: {% if p.kinds %}{% for k in p.kinds %}{{ KINDS.get(k, k) }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}wszystko, co nie pasuje do innych profili{% endif %}</p>
+  <table>
+    {% for key in edit_settings %}
+      {% set val = p.settings.get(key, defs[key][1]) %}
+      <tr>
+        <td>{{ defs[key][2] }}</td>
+        <td>{% if val is sameas true %}tak{% elif val is sameas false %}nie{% else %}{{ val }}{% endif %}
+          {% if key not in p.settings %}<span class="muted small">(domyślne)</span>{% endif %}</td>
+        <td>
+          <form class="inline" method="post" action="/admin/profile/{{ p.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="key" value="{{ key }}">
+            {% if val is sameas true or val is sameas false %}<input type="hidden" name="value" value="{{ 'nie' if val else 'tak' }}"><button class="link" type="submit">zmień na „{{ 'nie' if val else 'tak' }}”</button>
+            {% elif key == "updates" %}{% set other = "ignoruj" if val == "powiadom" else "powiadom" %}<input type="hidden" name="value" value="{{ other }}"><button class="link" type="submit">zmień na „{{ other }}”</button>
+            {% else %}<input class="small-input" name="value" inputmode="numeric" value="{{ val }}" aria-label="{{ defs[key][2] }} — {{ p.name }}"> <button class="link" type="submit">zapisz</button>{% endif %}
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endfor %}
+{% endblock %}

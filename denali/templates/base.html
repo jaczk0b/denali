@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% if sess and sess.kind == "kiosk" %}<meta http-equiv="refresh" content="60">{% endif %}
+<title>{% block title %}Denali{% endblock %} · Denali</title>
+<link rel="stylesheet" href="/static/denali.css">
+</head>
+<body{% if sess and sess.kind == "kiosk" %} class="kiosk"{% endif %}>
+{% set signed_in = sess and sess.kind != "pending" %}
+{% if signed_in %}
+<header class="top">
+  <a class="brand" href="/">Denali</a>
+  <form class="top-search" method="get" action="/szukaj" role="search">
+    <input name="q" placeholder="Szukaj: urządzenie, IP, procedura…" aria-label="Szukaj" value="{{ q or '' }}">
+  </form>
+  <nav class="top-links" aria-label="Konto">
+    {% if sess.role == "admin" %}
+      <a href="/zatwierdz">Do zatwierdzenia{% if counts.queue %} <span class="badge">{{ counts.queue }}</span>{% endif %}</a>
+      <a href="/admin/profile">Profile</a>
+      <a href="/admin/tablet">Tablet</a>
+      <a href="/admin/audyt">Audyt</a>
+    {% endif %}
+    {% if sess.kind != "kiosk" %}
+    <a href="/konto">{{ sess.login }}</a>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="link" type="submit">Wyloguj</button>
+    </form>
+    {% endif %}
+  </nav>
+</header>
+{% endif %}
+{% block body %}<main class="page">{% block content %}{% endblock %}</main>{% endblock %}
+{% if signed_in %}
+<nav class="dock" aria-label="Główne">
+  <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>Pulpit</a>
+  <a href="/urzadzenia" {% if path.startswith("/urzadzenia") %}aria-current="page"{% endif %}>Infrastruktura</a>
+  <a href="/incydenty" {% if path.startswith("/incydenty") %}aria-current="page"{% endif %}>Incydenty{% if counts.incidents %} <span class="badge down">{{ counts.incidents }}</span>{% endif %}</a>
+  <a href="/procedury" {% if path.startswith("/procedury") %}aria-current="page"{% endif %}>Procedury</a>
+</nav>
+{% endif %}
+</body>
+</html>

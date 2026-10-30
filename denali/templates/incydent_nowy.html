@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}Zapisz problem{% endblock %}
+{% block content %}
+<div>
+  <p class="muted small"><a href="/incydenty">Incydenty</a></p>
+  <h1>Zapisz problem</h1>
+  <p class="muted">Ręczny wpis do logu problemów — np. coś działało wolno albo wymieniłeś dysk.</p>
+</div>
+{{ alerts(error) }}
+<form class="card narrow-form wide-form" method="post" action="/incydenty/nowy">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label class="field">Krótko: co się dzieje<input name="title" value="{{ form.get('title', '') }}" required maxlength="200" autofocus></label>
+  <label class="field">Którego urządzenia dotyczy
+    <select name="device_id"><option value="">— żadnego konkretnego —</option>
+      {% for x in devices %}<option value="{{ x.id }}" {% if device_id == x.id %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+  <label class="field">Waga
+    <select name="severity">
+      <option value="ostrzezenie">ostrzeżenie</option>
+      <option value="krytyczny">krytyczny</option>
+      <option value="info">informacja</option>
+    </select></label>
+  <label class="field">Szczegóły<textarea name="text" rows="5">{{ form.get('text', '') }}</textarea></label>
+  <button class="btn primary" type="submit">Zapisz</button>
+</form>
+{% endblock %}

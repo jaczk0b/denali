@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Konto{% endblock %}
+{% block content %}
+<div>
+  <h1>Konto: {{ sess.login }}</h1>
+  <p class="muted">Rola: {{ "administrator" if sess.role == "admin" else "podgląd" }} ·
+    logowanie dwuetapowe: {% if sess.totp_ct %}włączone{% else %}<a href="/konto/2fa">wyłączone — włącz</a>{% endif %}</p>
+</div>
+{% if message %}<div class="alert ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+
+<section class="card" aria-labelledby="sesje">
+  <h2 id="sesje">Aktywne sesje</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Urządzenie</th><th>Adres</th><th>Rodzaj</th><th>Ostatnio</th><th></th></tr></thead>
+      <tbody>
+      {% for s in sessions %}
+        <tr>
+          <td>{{ s.user_agent[:80] or "—" }}{% if s.public_id == current %} <strong>(ta sesja)</strong>{% endif %}</td>
+          <td class="mono">{{ s.ip }}</td>
+          <td>{{ "tablet (kiosk)" if s.kind == "kiosk" else "zwykła" }}</td>
+          <td>{{ s.last_seen_at | dt }}</td>
+          <td>
+            <form method="post" action="/konto/sesje/{{ s.public_id }}/usun">
+              <input type="hidden" name="csrf_token" value="{{ csrf }}">
+              <button class="btn small" type="submit">Wyloguj</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="/konto/wyloguj-wszedzie" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn danger" type="submit">Wyloguj wszystkie inne sesje</button>
+  </form>
+</section>
+
+<section class="card" aria-labelledby="haslo">
+  <h2 id="haslo">Zmiana hasła</h2>
+  <form method="post" action="/konto/haslo" class="narrow-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="field">Obecne hasło<input name="old" type="password" autocomplete="current-password" required></label>
+    <label class="field">Nowe hasło (min. 12 znaków)<input name="new" type="password" autocomplete="new-password" minlength="12" required></label>
+    <label class="field">Powtórz nowe hasło<input name="new2" type="password" autocomplete="new-password" minlength="12" required></label>
+    <button class="btn primary" type="submit">Zmień hasło</button>
+    <p class="muted mt">Po zmianie wszystkie inne sesje zostaną wylogowane.</p>
+  </form>
+</section>
+{% endblock %}

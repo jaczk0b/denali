@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}Procedury{% endblock %}
+{% block content %}
+{% set admin = sess.role == "admin" %}
+<div class="row-between">
+  <div>
+    <h1>Procedury</h1>
+    <p class="muted">Co robić, krok po kroku. Procedura z wyzwalaczem pokazuje się sama przy awarii.</p>
+  </div>
+  {% if admin %}<a class="btn primary" href="/procedury/nowa">Nowa procedura</a>{% endif %}
+</div>
+{{ alerts(error) }}
+{% for scope, label in [("infrastruktura", "Na awarie infrastruktury"), ("panel", "Gdy nie działa sam panel")] %}
+  {% set items = rows | selectattr("scope", "equalto", scope) | list %}
+  <section class="card" aria-label="{{ label }}">
+    <h2>{{ label }}</h2>
+    {% if items %}
+    <ul class="plain">
+      {% for p in items %}
+      <li><a href="/procedury/{{ p.id }}">{{ p.title }}</a>
+        <span class="muted small">{% if p.trigger %}· przy: <span class="mono">{{ p.trigger }}</span> {% endif %}· sprawdzona: {{ p.last_tested_at | dt if p.last_tested_at else "nigdy" }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Brak.</p>{% endif %}
+  </section>
+{% endfor %}
+
+<section class="card" aria-labelledby="kontakty" id="kontakty">
+  <h2 id="kontakty-h">Kontakty</h2>
+  {% if contacts %}
+  <ul class="plain">
+    {% for c in contacts %}
+    <li><strong>{{ c.name }}</strong>{% if c.phone %} · <a href="tel:{{ c.phone | replace(' ', '') }}">{{ c.phone }}</a>{% endif %}{% if c.note %} <span class="muted small">· {{ c.note }}</span>{% endif %}
+      {% if admin %}<form class="inline" method="post" action="/kontakty/{{ c.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted">Brak kontaktów.</p>{% endif %}
+  {% if admin %}
+  <form method="post" action="/kontakty" class="form-row mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="field">Kto<input name="name" required maxlength="200" placeholder="np. dostawca internetu"></label>
+    <label class="field">Telefon<input name="phone" maxlength="40" inputmode="tel"></label>
+    <label class="field">Notatka<input name="note" maxlength="300" placeholder="np. numer umowy"></label>
+    <button class="btn" type="submit">Dodaj</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

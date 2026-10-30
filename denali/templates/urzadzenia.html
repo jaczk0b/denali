@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_makra.html" import mark_badge %}
+{% block title %}Infrastruktura{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Infrastruktura</h1>
+    <p class="muted">Od góry to, czego używasz, na dole to, na czym stoi.</p>
+  </div>
+  {% if sess.role == "admin" %}
+  <div class="actions">
+    {% if counts.queue %}<a class="btn" href="/zatwierdz">Do zatwierdzenia: {{ counts.queue }}</a>{% endif %}
+    <a class="btn primary" href="/urzadzenia/nowe">Dodaj urządzenie</a>
+  </div>
+  {% endif %}
+</div>
+{% if not groups %}
+  <div class="card"><p class="muted">Nie ma jeszcze urządzeń.</p></div>
+{% endif %}
+{% for label, devs in groups %}
+<section class="card" aria-label="{{ label }}">
+  <h2>{{ label }} <span class="muted">· {{ devs | length }}</span></h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nazwa</th><th>Typ</th><th>Na czym działa</th><th>Adres</th><th>Ważność</th><th>Stan</th></tr></thead>
+      <tbody>
+      {% for d in devs %}
+        <tr>
+          <td><a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a>{% if d.role %}<div class="muted small">{{ d.role }}</div>{% endif %}</td>
+          <td>{{ KINDS.get(d.kind, d.kind) }}</td>
+          <td>{% if d.parent_id %}<a href="/urzadzenia/{{ d.parent_id }}">{{ names.get(d.parent_id) }}</a>{% else %}—{% endif %}</td>
+          <td class="mono">{{ ips.get(d.id, "—") }}</td>
+          <td>{{ PRIORITY[d.criticality] }}</td>
+          <td>{{ mark_badge(marks.get(d.id)) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

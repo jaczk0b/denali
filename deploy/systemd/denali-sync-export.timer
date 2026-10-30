@@ -1,0 +1,10 @@
+[Unit]
+Description=Denali: eksport awaryjny na VPS co 5 minut
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

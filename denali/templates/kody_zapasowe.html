@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Kody zapasowe{% endblock %}
+{% block content %}
+<h1>Logowanie dwuetapowe włączone</h1>
+<div class="card">
+  <h2>Kody zapasowe — zapisz je teraz</h2>
+  <p>Każdy działa raz, zamiast kodu z aplikacji (np. gdy zgubisz telefon). <strong>Więcej ich nie zobaczysz.</strong>
+    Zapisz je w menedżerze haseł.</p>
+  <ul class="codes">{% for c in codes %}<li>{{ c }}</li>{% endfor %}</ul>
+  <a class="btn primary" href="/">Zapisałem — dalej</a>
+</div>
+{% endblock %}

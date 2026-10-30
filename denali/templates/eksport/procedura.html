@@ -1,0 +1,19 @@
+{% extends "eksport/_base.html" %}
+{% block title %}{{ p.title }}{% endblock %}
+{% block content %}
+<article class="page-break">
+<p class="muted"><a href="index.html">← spis</a></p>
+<h1>{{ p.title }}</h1>
+<p class="muted">Sprawdzona: {{ p.last_tested_at | dt if p.last_tested_at else "nigdy" }}{% if p.devices %} · dotyczy: {{ p.devices | map(attribute="name") | join(", ") }}{% endif %}</p>
+{% if p.intro_md %}<div class="md">{{ p.intro_md | md }}</div>{% endif %}
+<ol class="steps">
+  {% for s in p.steps %}
+  <li><h2>{{ s.title }}</h2>{% if s.body_md %}<div class="md">{{ s.body_md | md }}</div>{% endif %}</li>
+  {% endfor %}
+</ol>
+{% if p.contacts %}
+<h2>Kontakty</h2>
+<ul>{% for c in p.contacts %}<li><strong>{{ c.name }}</strong>{% if c.phone %} — <a href="tel:{{ c.phone | replace(' ', '') }}">{{ c.phone }}</a>{% endif %}{% if c.note %} <span class="muted">({{ c.note }})</span>{% endif %}</li>{% endfor %}</ul>
+{% endif %}
+</article>
+{% endblock %}

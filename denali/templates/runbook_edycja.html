@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}{{ "Nowy runbook" if not r.id else "Edycja: " ~ r.title }}{% endblock %}
+{% block content %}
+<div>
+  <h1>{{ "Nowy runbook" if not r.id else "Edycja runbooka" }}</h1>
+  <p class="muted">Opis obsługi w Markdown: jak wejść, jak zrestartować, gdzie są logi.</p>
+</div>
+{{ alerts(error) }}
+<form class="card wide-form" method="post" action="{{ '/runbooki/%d/edycja' % r.id if r.id else '/runbooki/nowy' }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label class="field">Tytuł<input name="title" value="{{ r.title }}" required maxlength="200"></label>
+  <label class="field">Treść (Markdown)<textarea name="body_md" rows="16" class="mono">{{ r.body_md }}</textarea></label>
+  <fieldset>
+    <legend>Dotyczy urządzeń</legend>
+    <div class="checklist">
+    {% for d in devices %}<label class="check"><input type="checkbox" name="device_ids" value="{{ d.id }}" {% if d.id in r.device_ids %}checked{% endif %}> {{ d.name }}</label>{% endfor %}
+    </div>
+  </fieldset>
+  <div class="actions mt">
+    <button class="btn primary" type="submit">Zapisz</button>
+    <a class="btn" href="{{ '/runbooki/%d' % r.id if r.id else '/urzadzenia' }}">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

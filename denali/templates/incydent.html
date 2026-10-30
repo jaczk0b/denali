@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_makra.html" import severity, inc_status, alerts %}
+{% block title %}{{ inc.title }}{% endblock %}
+{% block content %}
+{% set admin = sess.role == "admin" %}
+<div>
+  <p class="muted small"><a href="/incydenty">Incydenty</a> / #{{ inc.id }}</p>
+  <h1>{{ inc.title }}</h1>
+  <p>{{ severity(inc.severity) }} {{ inc_status(inc.status) }}
+    <span class="muted">od {{ inc.started_at | dt }}{% if inc.ended_at %} do {{ inc.ended_at | dt }}{% endif %}
+    {%- if inc.acked_by %} · zajmuje się: {{ inc.acked_by }}{% endif %}</span></p>
+</div>
+{{ alerts(error) }}
+
+<div class="cols">
+<div class="col">
+  {% set causes = inc.devices | selectattr("role", "equalto", "przyczyna") | list %}
+  {% set effects = inc.devices | selectattr("role", "equalto", "skutek") | list %}
+  {% set degraded = inc.devices | selectattr("role", "equalto", "gorzej") | list %}
+  <section class="card cause" aria-labelledby="co">
+    <h2 id="co">Co się stało</h2>
+    {% if causes %}<p><strong>Przyczyna:</strong> {% for d in causes %}<a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+    {% if effects %}<p><strong>Przez to nie działa:</strong> {% for d in effects %}<a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+      <span class="muted small">— to skutek, nie osobne awarie</span></p>{% endif %}
+    {% if degraded %}<p><strong>Działa gorzej:</strong> {% for d in degraded %}<a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+    {% if not inc.devices %}<p class="muted">Bez przypiętego urządzenia.</p>{% endif %}
+  </section>
+
+  {% if procedures or runbooks %}
+  <section class="card" aria-labelledby="robic">
+    <h2 id="robic">Co robić</h2>
+    <ul class="plain">
+      {% for p in procedures %}<li>Procedura: <a href="/procedury/{{ p.id }}">{{ p.title }}</a></li>{% endfor %}
+      {% for r in runbooks %}<li>Runbook: <a href="/runbooki/{{ r.id }}">{{ r.title }}</a></li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="card" aria-labelledby="przebieg">
+    <h2 id="przebieg">Przebieg i dlaczego panel tak uważa</h2>
+    <ol class="timeline">
+      {% for e in inc.events %}
+      <li class="ev-{{ e.kind }}"><span class="mono muted">{{ e.ts | dt }}</span> {{ e.text }}{% if e.user and e.user != "system" %} <span class="muted small">· {{ e.user }}</span>{% endif %}</li>
+      {% endfor %}
+    </ol>
+    {% if admin %}
+    <form method="post" action="/incydenty/{{ inc.id }}/notatka" class="form-row mt">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input name="text" class="grow" aria-label="Notatka" placeholder="Co sprawdziłeś, co zrobiłeś…" required>
+      <button class="btn" type="submit">Dopisz</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+
+<div class="col">
+  {% if admin and inc.status == "trwa" %}
+  <section class="card">
+    <form method="post" action="/incydenty/{{ inc.id }}/potwierdz">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn primary wide" type="submit">Zajmuję się tym</button>
+    </form>
+    <p class="muted small mt">Wycisza kolejne powiadomienia o tym problemie.</p>
+  </section>
+  {% endif %}
+
+  <section class="card" aria-labelledby="wnioski">
+    <h2 id="wnioski">Przyczyna i naprawa</h2>
+    {% if admin %}
+    <form method="post" action="/incydenty/{{ inc.id }}/zamknij">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label class="field">Co było przyczyną<textarea name="cause_md" rows="4">{{ inc.cause_md }}</textarea></label>
+      <label class="field">Jak naprawiono<textarea name="fix_md" rows="4">{{ inc.fix_md }}</textarea></label>
+      <button class="btn {{ 'primary' if inc.status != 'zamkniety' else '' }}" type="submit">{{ "Zapisz i zamknij" if inc.status != "zamkniety" else "Zapisz opis" }}</button>
+    </form>
+    {% if inc.status == "zamkniety" %}
+    <form method="post" action="/incydenty/{{ inc.id }}/wznow" class="mt">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn" type="submit">Wznów — problem wrócił</button>
+    </form>
+    {% endif %}
+    {% else %}
+      {% if inc.cause_md %}<h3>Przyczyna</h3><div class="md">{{ inc.cause_md | md }}</div>{% endif %}
+      {% if inc.fix_md %}<h3>Naprawa</h3><div class="md">{{ inc.fix_md | md }}</div>{% endif %}
+      {% if not inc.cause_md and not inc.fix_md %}<p class="muted">Jeszcze nie opisano.</p>{% endif %}
+    {% endif %}
+  </section>
+</div>
+</div>
+{% endblock %}

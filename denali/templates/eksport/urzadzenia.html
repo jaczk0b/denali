@@ -1,0 +1,22 @@
+{% extends "eksport/_base.html" %}
+{% block title %}Urządzenia{% endblock %}
+{% block content %}
+<article class="page-break">
+<p class="muted"><a href="index.html">← spis</a></p>
+<h1>Urządzenia</h1>
+<table>
+  <thead><tr><th>Nazwa</th><th>Typ / ważność</th><th>Adresy</th><th>Na czym działa / zależy od</th><th>Gdy padnie, stanie</th></tr></thead>
+  <tbody>
+  {% for d in devices %}
+  <tr>
+    <td><strong>{{ d.name }}</strong>{% if d.role %}<br><span class="muted">{{ d.role }}</span>{% endif %}{% if d.place %}<br><span class="muted">{{ d.place }}</span>{% endif %}</td>
+    <td>{{ KINDS.get(d.kind, d.kind) }}<br>{{ PRIORITY[d.criticality] }}</td>
+    <td class="mono">{{ addrs.get(d.id, []) | join("<br>" | safe) }}</td>
+    <td>{% if d.parent_id %}na: {{ names.get(d.parent_id) }}<br>{% endif %}{{ deps.get(d.id, []) | join(", ") }}</td>
+    <td>{{ impact[d.id] | join(", ") }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</article>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_makra.html" import inc_status %}
+{% block title %}Szukaj{% endblock %}
+{% block content %}
+<div>
+  <h1>Szukaj</h1>
+  <form method="get" action="/szukaj" role="search" class="form-row">
+    <input name="q" value="{{ q }}" aria-label="Czego szukasz" placeholder="nazwa, IP, MAC, słowo z procedury…" autofocus class="grow">
+    <button class="btn primary" type="submit">Szukaj</button>
+  </form>
+</div>
+{% if q %}
+  {% if not total %}<div class="card"><p class="muted">Nic nie znaleziono dla „{{ q }}”.</p></div>{% endif %}
+  {% if res.devices %}
+  <section class="card"><h2>Urządzenia</h2><ul class="plain">
+    {% for d in res.devices %}<li><a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a> <span class="muted small">{{ KINDS.get(d.kind, d.kind) }}{% if d.role %} · {{ d.role }}{% endif %}</span></li>{% endfor %}
+  </ul></section>
+  {% endif %}
+  {% if res.procedures %}
+  <section class="card"><h2>Procedury</h2><ul class="plain">
+    {% for p in res.procedures %}<li><a href="/procedury/{{ p.id }}">{{ p.title }}</a></li>{% endfor %}
+  </ul></section>
+  {% endif %}
+  {% if res.runbooks %}
+  <section class="card"><h2>Runbooki</h2><ul class="plain">
+    {% for r in res.runbooks %}<li><a href="/runbooki/{{ r.id }}">{{ r.title }}</a></li>{% endfor %}
+  </ul></section>
+  {% endif %}
+  {% if res.incidents %}
+  <section class="card"><h2>Problemy</h2><ul class="plain">
+    {% for i in res.incidents %}<li>{{ i.started_at | dt }} · <a href="/incydenty/{{ i.id }}">{{ i.title }}</a> {{ inc_status(i.status) }}</li>{% endfor %}
+  </ul></section>
+  {% endif %}
+{% endif %}
+{% endblock %}

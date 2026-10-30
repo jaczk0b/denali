@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}{{ "Nowa procedura" if not p.id else "Edycja: " ~ p.title }}{% endblock %}
+{% block content %}
+{% set chosen_devices = p.devices | map(attribute="id") | list %}
+{% set chosen_contacts = p.contacts | map(attribute="id") | list %}
+<div>
+  <p class="muted small"><a href="/procedury">Procedury</a>{% if p.id %} / <a href="/procedury/{{ p.id }}">{{ p.title }}</a>{% endif %}</p>
+  <h1>{{ "Nowa procedura" if not p.id else "Edycja procedury" }}</h1>
+</div>
+{{ alerts(error) }}
+<form class="card wide-form" method="post" action="{{ '/procedury/%d/edycja' % p.id if p.id else '/procedury/nowa' }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label class="field">Tytuł<input name="title" value="{{ p.title }}" required maxlength="200" placeholder="np. Padł pve"></label>
+  <label class="field">Dotyczy
+    <select name="scope">
+      <option value="infrastruktura" {% if p.scope == "infrastruktura" %}selected{% endif %}>awarii infrastruktury</option>
+      <option value="panel" {% if p.scope == "panel" %}selected{% endif %}>sytuacji, gdy nie działa sam panel</option>
+    </select></label>
+  <label class="field">Pokazuj samo przy awarii <span class="muted small">(device_down:pve — po nazwie; device_down:typ:ap — każdy AP; puste — tylko przypięte urządzenia)</span>
+    <input name="trigger" value="{{ p.trigger }}" maxlength="100" class="mono"></label>
+  <label class="field">Wstęp (Markdown)<textarea name="intro_md" rows="3">{{ p.intro_md }}</textarea></label>
+
+  <h2 class="mt">Kroki</h2>
+  <p class="muted small">Puste kroki są pomijane. Po zapisie pojawią się kolejne wolne pola.</p>
+  {% for s in steps %}
+  <fieldset class="step-edit">
+    <legend>Krok {{ loop.index }}</legend>
+    <label class="field">Co zrobić<input name="step_title" value="{{ s.title }}" maxlength="200"></label>
+    <label class="field">Szczegóły (Markdown)<textarea name="step_body" rows="3">{{ s.body_md }}</textarea></label>
+  </fieldset>
+  {% endfor %}
+
+  <div class="cols mt">
+    <fieldset class="col">
+      <legend>Przypnij do urządzeń</legend>
+      <div class="checklist">
+      {% for d in devices %}<label class="check"><input type="checkbox" name="device_ids" value="{{ d.id }}" {% if d.id in chosen_devices %}checked{% endif %}> {{ d.name }}</label>{% endfor %}
+      </div>
+    </fieldset>
+    <fieldset class="col">
+      <legend>Kontakty</legend>
+      <div class="checklist">
+      {% for c in contacts %}<label class="check"><input type="checkbox" name="contact_ids" value="{{ c.id }}" {% if c.id in chosen_contacts %}checked{% endif %}> {{ c.name }}</label>{% endfor %}
+      {% if not contacts %}<p class="muted small">Kontakty dodasz na liście procedur.</p>{% endif %}
+      </div>
+    </fieldset>
+  </div>
+  <div class="actions mt">
+    <button class="btn primary" type="submit">Zapisz</button>
+    <a class="btn" href="{{ '/procedury/%d' % p.id if p.id else '/procedury' }}">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

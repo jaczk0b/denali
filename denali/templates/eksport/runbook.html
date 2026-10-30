@@ -1,0 +1,10 @@
+{% extends "eksport/_base.html" %}
+{% block title %}{{ r.title }}{% endblock %}
+{% block content %}
+<article class="page-break">
+<p class="muted"><a href="index.html">← spis</a></p>
+<h1>{{ r.title }}</h1>
+<p class="muted">Runbook{% if r.devices %} · {{ r.devices | join(", ") }}{% endif %} · zmieniony {{ r.updated_at | dt }}</p>
+<div class="md">{{ r.body_md | md }}</div>
+</article>
+{% endblock %}

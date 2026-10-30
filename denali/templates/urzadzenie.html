@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% from "_makra.html" import mark_badge, alerts, inc_status %}
+{% block title %}{{ d.name }}{% endblock %}
+{% block content %}
+{% set admin = sess.role == "admin" %}
+<div class="row-between">
+  <div>
+    <p class="muted small"><a href="/urzadzenia">Infrastruktura</a> / {{ KINDS.get(d.kind, d.kind) }}</p>
+    <h1>{{ d.name }} {{ mark_badge(mark) }}</h1>
+    <p class="muted">{{ d.role or "Brak opisu, do czego służy." }} · {{ PRIORITY[d.criticality] }}
+      {%- if parent %} · działa na <a href="/urzadzenia/{{ parent.id }}">{{ parent.name }}</a>{% endif %}
+      {%- if d.place %} · {{ d.place }}{% endif %}</p>
+  </div>
+  <div class="actions">
+    {% if d.app_url %}<a class="btn" href="{{ d.app_url }}" target="_blank" rel="noopener noreferrer">Otwórz aplikację</a>{% endif %}
+    {% if admin %}<a class="btn" href="/urzadzenia/{{ d.id }}/edycja">Edytuj</a>
+      <a class="btn" href="/incydenty/nowy?urzadzenie={{ d.id }}">Zapisz problem</a>{% endif %}
+  </div>
+</div>
+{{ alerts(error, message) }}
+
+<div class="cols">
+<div class="col">
+  <section class="card" aria-labelledby="skutki">
+    <h2 id="skutki">Gdy {{ d.name }} padnie</h2>
+    {% if impact_hard %}<p><strong>Przestanie działać:</strong> {{ impact_hard | join(", ") }}</p>{% endif %}
+    {% if impact_soft %}<p><strong>Będzie działać gorzej:</strong> {{ impact_soft | join(", ") }}</p>{% endif %}
+    {% if not impact_hard and not impact_soft %}<p class="muted">Nic od tego nie zależy.</p>{% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="co-robic">
+    <h2 id="co-robic">Co robić</h2>
+    {% if procedures or runbooks %}
+    <ul class="plain">
+      {% for p in procedures %}<li>Procedura: <a href="/procedury/{{ p.id }}">{{ p.title }}</a></li>{% endfor %}
+      {% for r in runbooks %}<li>Runbook: <a href="/runbooki/{{ r.id }}">{{ r.title }}</a></li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted">Brak procedur i runbooków.</p>{% endif %}
+    {% if admin %}<p class="mt"><a href="/runbooki/nowy?urzadzenie={{ d.id }}">Dodaj runbook</a> · <a href="/procedury/nowa">Dodaj procedurę</a></p>{% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="zaleznosci">
+    <h2 id="zaleznosci">Zależności</h2>
+    {% set uplinks = cables | selectattr("b_device_id", "equalto", d.id) | list %}
+    {% set downlinks = cables | selectattr("a_device_id", "equalto", d.id) | list %}
+    <h3>Od czego zależy</h3>
+    {% if parent or deps_up or uplinks %}
+    <ul class="plain">
+      {% if parent %}<li>działa na <a href="/urzadzenia/{{ parent.id }}">{{ parent.name }}</a></li>{% endif %}
+      {% for x in deps_up %}
+      <li><a href="/urzadzenia/{{ x.depends_on_id }}">{{ x.name }}</a> — {{ DEP_TYPES.get(x.type, x.type) }}, {{ "twardo" if x.hard else "miękko" }}{% if x.note %} ({{ x.note }}){% endif %}
+        {%- if x.source == "integracja" %} <span class="muted small">· wykryte</span>{% endif %}
+        {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/zaleznosci/{{ x.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>
+      {% endfor %}
+      {% for c in uplinks %}
+      <li>kabel do <a href="/urzadzenia/{{ c.a_device_id }}">{{ names.get(c.a_device_id) }}</a>{% if c.a_port %} (port {{ c.a_port }}){% endif %}{% if c.label %} · {{ c.label }}{% endif %}
+        {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/kable/{{ c.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Niczego nie wpisano.</p>{% endif %}
+    <h3>Co od niego zależy</h3>
+    {% if children or deps_down or downlinks %}
+    <ul class="plain">
+      {% for c in children %}<li><a href="/urzadzenia/{{ c.id }}">{{ c.name }}</a> — działa na nim</li>{% endfor %}
+      {% for x in deps_down %}<li><a href="/urzadzenia/{{ x.device_id }}">{{ x.name }}</a> — {{ DEP_TYPES.get(x.type, x.type) }}, {{ "twardo" if x.hard else "miękko" }}</li>{% endfor %}
+      {% for c in downlinks %}
+      <li>wpięty kablem: <a href="/urzadzenia/{{ c.b_device_id }}">{{ names.get(c.b_device_id) }}</a>{% if c.a_port %} (port {{ c.a_port }}){% endif %}
+        {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/kable/{{ c.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Nic.</p>{% endif %}
+    {% if admin %}
+    <details class="mt">
+      <summary>Dodaj zależność albo kabel</summary>
+      <form method="post" action="/urzadzenia/{{ d.id }}/zaleznosci" class="form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <label class="field">Zależy od
+          <select name="depends_on_id" required><option value="">—</option>
+            {% for x in all_devices if x.id != d.id %}<option value="{{ x.id }}">{{ x.name }}</option>{% endfor %}</select></label>
+        <label class="field">Rodzaj
+          <select name="type">{% for k, v in DEP_TYPES.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+        <label class="check"><input type="checkbox" name="hard" value="1" checked> twarda (bez tego nie działa)</label>
+        <label class="field">Notatka<input name="note" maxlength="300"></label>
+        <button class="btn" type="submit">Dodaj zależność</button>
+      </form>
+      <form method="post" action="/urzadzenia/{{ d.id }}/kable" class="form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <label class="field">Kabel z
+          <select name="other_id" required><option value="">—</option>
+            {% for x in all_devices if x.id != d.id %}<option value="{{ x.id }}">{{ x.name }}</option>{% endfor %}</select></label>
+        <label class="field">Które jest bliżej routera
+          <select name="side"><option value="b">tamto (to jest w nie wpięte)</option><option value="a">to (tamto jest wpięte tutaj)</option></select></label>
+        <label class="field">Port tutaj<input name="my_port" maxlength="40"></label>
+        <label class="field">Port tam<input name="other_port" maxlength="40"></label>
+        <label class="field">Opis kabla<input name="label" maxlength="200" placeholder="np. niebieski, szafa"></label>
+        <button class="btn" type="submit">Dodaj kabel</button>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="historia">
+    <h2 id="historia">Historia problemów</h2>
+    {% if incidents %}
+    <ul class="plain">
+      {% for i in incidents %}<li>{{ i.started_at | dt }} · <a href="/incydenty/{{ i.id }}">{{ i.title }}</a> {{ inc_status(i.status) }}</li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted">Nic nie zapisano.</p>{% endif %}
+  </section>
+
+  {% if d.notes_md %}<section class="card md" aria-label="Notatki">{{ d.notes_md | md }}</section>{% endif %}
+</div>
+
+<div class="col">
+  <section class="card" aria-labelledby="adresy">
+    <h2 id="adresy">Adresy</h2>
+    {% if addresses %}
+    <ul class="plain">
+      {% for a in addresses %}
+      <li><span class="muted">{{ a.kind }}</span> <span class="mono">{{ a.value }}</span>
+        {%- if a.is_primary %} <span class="muted small">· główny</span>{% endif %}
+        {%- if a.source == "integracja" %} <span class="muted small">· z integracji</span>{% endif %}
+        {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/adresy/{{ a.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Brak adresów.</p>{% endif %}
+    {% if admin %}
+    <form method="post" action="/urzadzenia/{{ d.id }}/adresy" class="form-row mt">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label class="field">Rodzaj<select name="kind"><option value="ip">IP</option><option value="mac">MAC</option><option value="hostname">nazwa hosta</option></select></label>
+      <label class="field">Adres<input name="value" required></label>
+      <label class="check"><input type="checkbox" name="primary" value="1"> główny</label>
+      <button class="btn" type="submit">Dodaj</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="ustawienia">
+    <h2 id="ustawienia">Ustawienia</h2>
+    <p class="muted small">Z profilu <strong>{{ profile_name }}</strong>. Zmieniasz je raz w profilu{% if admin %} (<a href="/admin/profile">Profile</a>){% endif %}; tutaj tylko świadome wyjątki.</p>
+    <table>
+      {% for key in edit_settings %}{% set s = settings[key] %}
+      <tr>
+        <td>{{ setting_defs[key][2] }}</td>
+        <td>{% if s.value is sameas true %}tak{% elif s.value is sameas false %}nie{% else %}{{ s.value }}{% endif %}
+          {% if s.source == "urzadzenie" %}<span class="pill warn">inne niż profil</span>{% endif %}</td>
+        <td>{% if admin %}
+          <form class="inline" method="post" action="/urzadzenia/{{ d.id }}/ustawienia">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="key" value="{{ key }}">
+            {% if s.source == "urzadzenie" %}<input type="hidden" name="clear" value="1"><button class="link" type="submit">jak w profilu</button>
+            {% elif s.value is sameas true or s.value is sameas false %}<input type="hidden" name="value" value="{{ 'nie' if s.value else 'tak' }}"><button class="link" type="submit">zmień na „{{ 'nie' if s.value else 'tak' }}”</button>
+            {% elif key == "updates" %}{% set other = "ignoruj" if s.value == "powiadom" else "powiadom" %}<input type="hidden" name="value" value="{{ other }}"><button class="link" type="submit">zmień na „{{ other }}”</button>
+            {% else %}<input class="small-input" name="value" inputmode="numeric" value="{{ s.value }}" aria-label="{{ setting_defs[key][2] }}"> <button class="link" type="submit">zapisz</button>{% endif %}
+          </form>
+        {% endif %}</td>
+      </tr>
+      {% endfor %}
+      <tr><td>Dozwolone akcje</td><td colspan="2" class="muted">brak — akcje dojdą w Etapie 5</td></tr>
+    </table>
+  </section>
+
+  <section class="card" aria-labelledby="pliki">
+    <h2 id="pliki">Pliki</h2>
+    {% if files %}
+    <ul class="plain">
+      {% for f in files %}
+      <li><a href="/pliki/{{ f.id }}">{{ f.name }}</a> <span class="muted small">{{ f.size | size }} · {{ f.uploaded_at | dt }}</span>
+        {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/pliki/{{ f.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Brak plików.</p>{% endif %}
+    {% if admin %}
+    <form method="post" action="/urzadzenia/{{ d.id }}/pliki" enctype="multipart/form-data" class="form-row mt">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="file" name="plik" required aria-label="Plik">
+      <button class="btn" type="submit">Wgraj (do 25 MB)</button>
+    </form>
+    {% endif %}
+  </section>
+
+  {% if admin %}
+  <section class="card" aria-labelledby="skarbiec-h" id="skarbiec">
+    <h2 id="skarbiec-h">Skarbiec</h2>
+    {% if secrets %}
+    <ul class="plain">
+      {% for s in secrets %}
+      <li><strong>{{ s.label }}</strong>{% if s.username %} · <span class="mono">{{ s.username }}</span>{% endif %}
+        {% if revealed and revealed.id == s.id %}<div class="secret mono">{{ revealed.value }}</div>
+        {% else %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/skarbiec/{{ s.id }}/odslon"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">pokaż hasło</button></form>{% endif %}
+        <form class="inline" method="post" action="/urzadzenia/{{ d.id }}/skarbiec/{{ s.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>
+        {% if s.note %}<div class="muted small">{{ s.note }}</div>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Brak haseł.</p>{% endif %}
+    <p class="muted small">Pokazanie hasła wymaga potwierdzenia hasłem i kodem 2FA (ważne 5 minut) i trafia do audytu.</p>
+    <details>
+      <summary>Dodaj hasło</summary>
+      <form method="post" action="/urzadzenia/{{ d.id }}/skarbiec" class="narrow-form mt">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <label class="field">Nazwa<input name="label" required maxlength="200" placeholder="np. panel WWW"></label>
+        <label class="field">Login<input name="username" maxlength="200" autocomplete="off"></label>
+        <label class="field">Hasło<input name="secret" type="password" required autocomplete="new-password"></label>
+        <label class="field">Notatka<input name="note" maxlength="500"></label>
+        <button class="btn" type="submit">Zapisz w skarbcu</button>
+      </form>
+    </details>
+  </section>
+  {% endif %}
+
+  <section class="card" aria-labelledby="szczegoly">
+    <h2 id="szczegoly">Szczegóły</h2>
+    <table>
+      <tr><td>Typ</td><td>{{ KINDS.get(d.kind, d.kind) }}</td></tr>
+      {% if d.serial %}<tr><td>Numer seryjny</td><td class="mono">{{ d.serial }}</td></tr>{% endif %}
+      <tr><td>Na pulpicie</td><td>{{ {"codzien": "na co dzień", "zarzadzanie": "zarządzanie", "brak": "nie"}[d.pulpit_group] }}</td></tr>
+      {% for r in refs %}<tr><td>Z integracji</td><td class="mono">{{ r.external_id }}</td></tr>{% endfor %}
+      <tr><td>Dodane</td><td>{{ d.created_at | dt }}</td></tr>
+    </table>
+    {% if admin %}
+    <details class="mt">
+      <summary>Usuń urządzenie</summary>
+      <form method="post" action="/urzadzenia/{{ d.id }}/usun" class="narrow-form mt">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <label class="field">Przepisz nazwę „{{ d.name }}”, żeby potwierdzić<input name="confirm" required autocomplete="off"></label>
+        <button class="btn danger" type="submit">Usuń na zawsze</button>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+</div>
+</div>
+{% endblock %}

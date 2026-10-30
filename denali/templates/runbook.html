@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ r.title }}{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <p class="muted small">Runbook{% if r.device_ids %} · {% for i in r.device_ids %}<a href="/urzadzenia/{{ i }}">{{ names.get(i) }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</p>
+    <h1>{{ r.title }}</h1>
+    <p class="muted">Zmieniony {{ r.updated_at | dt }}{% if r.updated_by %} ({{ r.updated_by }}){% endif %}</p>
+  </div>
+  {% if sess.role == "admin" %}<a class="btn" href="/runbooki/{{ r.id }}/edycja">Edytuj</a>{% endif %}
+</div>
+<section class="card md">{{ r.body_md | md }}</section>
+{% if sess.role == "admin" %}
+<details class="card">
+  <summary>Usuń runbook</summary>
+  <form method="post" action="/runbooki/{{ r.id }}/usun" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn danger" type="submit">Usuń na zawsze</button>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ p.title }}{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <p class="muted small"><a href="/procedury">Procedury</a></p>
+    <h1>{{ p.title }}</h1>
+    <p class="muted">Sprawdzona: {{ p.last_tested_at | dt if p.last_tested_at else "nigdy" }} · zmieniona {{ p.updated_at | dt }}{% if p.updated_by %} ({{ p.updated_by }}){% endif %}</p>
+  </div>
+  {% if sess.role == "admin" %}
+  <div class="actions">
+    <a class="btn" href="/procedury/{{ p.id }}/edycja">Edytuj</a>
+    <form method="post" action="/procedury/{{ p.id }}/sprawdzona"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn" type="submit">Sprawdziłem, działa</button></form>
+  </div>
+  {% endif %}
+</div>
+{% if p.intro_md %}<section class="card md">{{ p.intro_md | md }}</section>{% endif %}
+<ol class="steps">
+  {% for s in p.steps %}
+  <li class="card step">
+    <h2><span class="step-no">{{ s.position }}</span> {{ s.title }}</h2>
+    {% if s.body_md %}<div class="md">{{ s.body_md | md }}</div>{% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% if p.contacts %}
+<section class="card"><h2>Kontakty</h2><ul class="plain">
+  {% for c in p.contacts %}<li><strong>{{ c.name }}</strong>{% if c.phone %} · <a class="big-link" href="tel:{{ c.phone | replace(' ', '') }}">{{ c.phone }}</a>{% endif %}{% if c.note %} <span class="muted small">· {{ c.note }}</span>{% endif %}</li>{% endfor %}
+</ul></section>
+{% endif %}
+{% if p.devices %}
+<section class="card"><h2>Dotyczy</h2><p>{% for d in p.devices %}<a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p></section>
+{% endif %}
+{% if sess.role == "admin" %}
+<details class="card">
+  <summary>Usuń procedurę</summary>
+  <form method="post" action="/procedury/{{ p.id }}/usun" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn danger" type="submit">Usuń na zawsze</button>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

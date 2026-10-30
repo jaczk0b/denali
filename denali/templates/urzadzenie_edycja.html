@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}{{ "Nowe urządzenie" if not d.id else "Edycja: " ~ d.name }}{% endblock %}
+{% block content %}
+<div>
+  <p class="muted small"><a href="/urzadzenia">Infrastruktura</a>{% if d.id %} / <a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a>{% endif %}</p>
+  <h1>{{ "Nowe urządzenie" if not d.id else "Edycja" }}</h1>
+  <p class="muted">Wymagane są tylko nazwa i typ. Resztę uzupełnisz, kiedy zechcesz.</p>
+</div>
+{{ alerts(error) }}
+<form class="card narrow-form wide-form" method="post" action="{{ '/urzadzenia/%d/edycja' % d.id if d.id else '/urzadzenia/nowe' }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label class="field">Nazwa<input name="name" value="{{ d.name }}" required maxlength="200" autofocus></label>
+  <label class="field">Typ
+    <select name="kind">{% for k, v in KINDS.items() %}<option value="{{ k }}" {% if d.kind == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+  <label class="field">Na czym działa <span class="muted small">(VM na hoście, stack na VM, usługa w stacku)</span>
+    <select name="parent_id"><option value="">— nic —</option>
+      {% for x in all_devices if x.id != d.id %}<option value="{{ x.id }}" {% if d.parent_id == x.id %}selected{% endif %}>{{ x.name }} ({{ KINDS.get(x.kind, x.kind) }})</option>{% endfor %}</select></label>
+  <details {% if d.role or d.place or d.app_url or d.notes_md or d.serial %}open{% endif %}>
+    <summary>Więcej (opcjonalne)</summary>
+    <label class="field">Do czego służy<input name="role" value="{{ d.role }}" maxlength="300"></label>
+    <label class="field">Ważność
+      <select name="criticality">{% for k, v in [(1, "P1 — krytyczne"), (2, "P2 — ważne"), (3, "P3 — może poczekać")] %}<option value="{{ k }}" {% if d.criticality == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label class="field">Adres aplikacji <span class="muted small">(ikona na pulpicie)</span><input name="app_url" value="{{ d.app_url }}" placeholder="https://…" maxlength="500"></label>
+    <label class="field">Na pulpicie
+      <select name="pulpit_group">{% for k, v in [("brak", "nie pokazuj"), ("codzien", "na co dzień"), ("zarzadzanie", "zarządzanie")] %}<option value="{{ k }}" {% if d.pulpit_group == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label class="field">Skrót na ikonie <span class="muted small">(2–3 znaki; puste = z nazwy)</span><input name="icon" value="{{ d.icon }}" maxlength="3"></label>
+    <label class="field">Gdzie fizycznie<input name="place" value="{{ d.place }}" maxlength="200"></label>
+    <label class="field">Numer seryjny<input name="serial" value="{{ d.serial }}" maxlength="100"></label>
+    <label class="field">Profil
+      <select name="profile_id"><option value="">według typu (zalecane)</option>
+        {% for p in profiles %}<option value="{{ p.id }}" {% if d.profile_id == p.id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></label>
+    <label class="field">Notatki (Markdown)<textarea name="notes_md" rows="6">{{ d.notes_md }}</textarea></label>
+  </details>
+  <div class="actions mt">
+    <button class="btn primary" type="submit">Zapisz</button>
+    <a class="btn" href="{{ '/urzadzenia/%d' % d.id if d.id else '/urzadzenia' }}">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

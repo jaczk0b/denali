@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{% block title %}Denali{% endblock %} · Denali (kopia awaryjna)</title>
+<link rel="stylesheet" href="eksport.css">
+</head>
+<body>
+<header class="head">
+  <a href="index.html"><strong>Denali</strong> · kopia awaryjna</a>
+  <span class="stamp">stan z {{ generated_at | dt }}</span>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>Kopia tylko do odczytu, wygenerowana przez Denali {{ version }}. Bez haseł — te są w skarbcu panelu i w menedżerze haseł.</footer>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{# Wspólne kawałki. Stan zawsze kolorem i słowem/kształtem, nigdy samym kolorem. #}
+{% macro mark_badge(mark) -%}
+  {%- if mark == "przyczyna" %}<span class="pill down">✕ przyczyna</span>
+  {%- elif mark == "skutek" %}<span class="pill warn">▲ skutek</span>
+  {%- elif mark == "gorzej" %}<span class="pill warn">◐ działa gorzej</span>{% endif -%}
+{%- endmacro %}
+{% macro alerts(error=None, message=None) %}
+  {% if message %}<div class="alert ok" role="status">{{ message }}</div>{% endif %}
+  {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+{% endmacro %}
+{% macro severity(s) -%}
+  {%- if s == "krytyczny" %}<span class="pill down">● krytyczny</span>
+  {%- elif s == "ostrzezenie" %}<span class="pill warn">▲ ostrzeżenie</span>
+  {%- else %}<span class="pill">○ informacja</span>{% endif -%}
+{%- endmacro %}
+{% macro inc_status(s) -%}
+  {%- if s == "trwa" %}<span class="pill down">trwa</span>
+  {%- elif s == "potwierdzony" %}<span class="pill warn">ktoś się zajmuje</span>
+  {%- else %}<span class="pill ok">✓ zamknięty</span>{% endif -%}
+{%- endmacro %}

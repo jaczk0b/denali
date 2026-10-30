@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}Do zatwierdzenia{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Do zatwierdzenia</h1>
+    <p class="muted">Integracje znalazły nowe obiekty. Zatwierdzenie tworzy urządzenie z nazwą, adresami, „na czym działa” i profilem — bez formularza.
+      Zatwierdzenie VM zatwierdza też czekające stacki na niej i host, na którym stoi.</p>
+  </div>
+  {% if rows and sess.role == "admin" %}
+  <form method="post" action="/zatwierdz/wszystko">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn primary" type="submit">Zatwierdź wszystko ({{ rows | length }})</button>
+  </form>
+  {% endif %}
+</div>
+{{ alerts(error) }}
+{% if not rows %}
+<div class="card"><p class="muted">Nic nie czeka. Nowe obiekty pojawią się tu, gdy integracje (Etap 3) je znajdą.</p></div>
+{% else %}
+<section class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nazwa</th><th>Typ</th><th>Skąd</th><th>Adresy</th><th>Na czym działa</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rows %}{% set p = r.proposed %}
+      <tr>
+        <td><strong>{{ p.name }}</strong><div class="muted small mono">{{ r.external_id }}</div></td>
+        <td>{{ KINDS.get(p.kind, p.kind) }}</td>
+        <td>{{ integrations.get(r.integration_id, "?") }}</td>
+        <td class="mono">{% for a in p.addresses %}{{ a.value }}<br>{% endfor %}</td>
+        <td>{% if p.parent %}{{ p.parent.values() | first }}{% else %}—{% endif %}</td>
+        <td>
+          {% if sess.role == "admin" %}
+          <div class="actions">
+            <form method="post" action="/zatwierdz/{{ r.id }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small primary" type="submit">Zatwierdź</button></form>
+            <form method="post" action="/zatwierdz/{{ r.id }}/odrzuc"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Pomiń na stałe</button></form>
+          </div>
+          {% if all_devices %}
+          <details class="mt">
+            <summary>To urządzenie już jest</summary>
+            <form method="post" action="/zatwierdz/{{ r.id }}/przypnij" class="form-row">
+              <input type="hidden" name="csrf_token" value="{{ csrf }}">
+              <select name="device_id" aria-label="Urządzenie" required><option value="">—</option>
+                {% for x in all_devices %}<option value="{{ x.id }}">{{ x.name }}</option>{% endfor %}</select>
+              <button class="btn small" type="submit">Przypnij</button>
+            </form>
+          </details>
+          {% endif %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

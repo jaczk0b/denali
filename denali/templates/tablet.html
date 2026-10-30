@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}Tablet{% endblock %}
+{% block body %}
+<main class="center">
+  <form class="card narrow" method="post" action="/tablet">
+    <h1>Denali na tablecie</h1>
+    <p class="muted">Wpisz kod z panelu: <strong>Tablet → Utwórz kod</strong>. Tablet zostanie zalogowany w trybie podglądu na 90 dni, tylko z tego adresu w sieci.</p>
+    {{ alerts(error) }}
+    <input type="hidden" name="pre" value="{{ pre }}">
+    <label class="field">Kod<input name="code" required autofocus autocapitalize="characters" autocomplete="off" class="mono" placeholder="XXXX-XXXX"></label>
+    <button class="btn primary wide" type="submit">Połącz</button>
+  </form>
+</main>
+{% endblock %}

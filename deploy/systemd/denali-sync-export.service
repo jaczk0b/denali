@@ -1,0 +1,15 @@
+[Unit]
+Description=Denali: wysyłka eksportu awaryjnego na VPS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/denali-sync-export
+ExecStart=/opt/denali/deploy/sync-export.sh
+# bez uprawnień roota: osobny użytkownik z dostępem do odczytu eksportu i klucza
+User=denali-sync
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes

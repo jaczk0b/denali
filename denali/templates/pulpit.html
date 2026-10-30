@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_makra.html" import mark_badge %}
+{% block title %}Pulpit{% endblock %}
+{% block body %}
+<main class="desk">
+  <div class="desk-head">
+    <div>
+      <div class="clock">{{ clock }}</div>
+      <div class="muted">{{ date }}</div>
+    </div>
+  </div>
+
+  {% for i in open_incidents[:2] %}
+  <a class="banner {{ 'down' if i.severity == 'krytyczny' else 'warn' }}" href="/incydenty/{{ i.id }}">
+    <span><strong>{{ i.title }}</strong> od {{ i.started_at | hm }}.
+      {% if effects[i.id] %}{{ effects[i.id] }} {{ "urządzenie to" if effects[i.id] == 1 else "urządzeń to" }} skutek, nie osobne awarie.{% endif %}</span>
+    <span class="banner-link">Co się stało →</span>
+  </a>
+  {% endfor %}
+
+  <div class="desk-grid">
+    <div class="desk-apps">
+      {% if no_devices %}
+        <div class="card">
+          <h2>Pusto — zacznij od urządzeń</h2>
+          <p class="muted">Urządzenia przyjdą same z integracji (Etap 3) albo dodaj je ręcznie. Aplikacja z adresem i grupą pulpitu pojawi się tutaj jako ikona.</p>
+          {% if sess.role == "admin" %}<a class="btn primary" href="/urzadzenia/nowe">Dodaj urządzenie</a>{% endif %}
+        </div>
+      {% endif %}
+      {% for group, label in [("codzien", "Na co dzień"), ("zarzadzanie", "Zarządzanie")] %}
+        {% set items = apps | selectattr("pulpit_group", "equalto", group) | list %}
+        {% if items %}
+        <section aria-label="{{ label }}">
+          <h2 class="desk-label">{{ label }}</h2>
+          <div class="icons">
+            {% for a in items %}
+              {% set m = marks.get(a.id) %}
+              <a class="icon-tile {{ 'is-down' if m == 'przyczyna' else ('is-warn' if m else '') }}"
+                 href="{{ a.app_url or '/urzadzenia/%d' % a.id }}" {% if a.app_url %}target="_blank" rel="noopener noreferrer"{% endif %}>
+                <span class="icon">{{ a.icon or (a.name | initials) }}</span>
+                <span class="icon-name">{{ a.name }}</span>
+                {% if m == "przyczyna" %}<span class="icon-state">✕ nie działa</span>
+                {% elif m %}<span class="icon-state">▲ bez danych</span>{% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        </section>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <aside class="desk-side">
+      <section class="card" aria-labelledby="gdzie">
+        <h2 id="gdzie">Gdzie jest problem</h2>
+        <p class="muted small">Od góry to, czego używasz, na dole to, na czym stoi</p>
+        <ol class="layers">
+          {% for l in layers %}
+          <li class="layer {{ l.state }}">
+            <span class="layer-dot" aria-hidden="true">{{ {"down": "✕", "warn": "▲", "unknown": "?", "none": "·"}[l.state] }}</span>
+            <span class="layer-text"><strong>{{ l.label }}</strong> · {{ l.text }}</span>
+            {% if l.link %}<a href="/urzadzenia/{{ l.link.id }}">otwórz →</a>{% endif %}
+          </li>
+          {% endfor %}
+        </ol>
+        <p class="muted small">Stan na żywo pojawi się po podłączeniu integracji (Etap 3).</p>
+      </section>
+      <section class="card" aria-labelledby="ostatnio">
+        <h2 id="ostatnio">Ostatnio</h2>
+        {% if recent %}
+        <ul class="plain">
+          {% for e in recent %}<li><span class="mono muted">{{ e.ts | hm }}</span> <a href="/incydenty/{{ e.incident_id }}">{{ e.text }}</a></li>{% endfor %}
+        </ul>
+        {% else %}<p class="muted">Nic się nie działo.</p>{% endif %}
+      </section>
+    </aside>
+  </div>
+</main>
+{% endblock %}

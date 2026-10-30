@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Logowanie{% endblock %}
+{% block body %}
+<main class="center">
+  <form class="card narrow" method="post" action="/login">
+    <h1>Denali</h1>
+    <p class="muted">Zaloguj się, żeby zobaczyć stan infrastruktury.</p>
+    {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+    <input type="hidden" name="pre" value="{{ pre }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="field">Login
+      <input name="login" autocomplete="username" autocapitalize="none" required autofocus>
+    </label>
+    <label class="field">Hasło
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn primary wide" type="submit">Zaloguj</button>
+  </form>
+</main>
+{% endblock %}
