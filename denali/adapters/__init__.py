@@ -72,5 +72,6 @@ class Adapter:
 
 
 def registry() -> dict:
+    from .komodo import Komodo
     from .proxmox import Proxmox
-    return {a.type: a for a in (Proxmox,)}
+    return {a.type: a for a in (Proxmox, Komodo)}

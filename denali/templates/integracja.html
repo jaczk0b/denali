@@ -74,6 +74,17 @@
     </ol>
     <p class="muted small">PVEAuditor pozwala tylko czytać. Adresy IP maszyn wirtualnych wymagają agenta QEMU w VM (qemu-guest-agent); bez niego VM pojawi się bez IP.</p>
   </section>
+  {% elif cls.type == "komodo" %}
+  <section class="card md">
+    <h2>Jak założyć klucz (tylko odczyt)</h2>
+    <ol>
+      <li>W Komodo: <strong>Settings → Users</strong> — dodaj użytkownika usługowego, np. <code>denali</code>, <strong>bez</strong> uprawnień administratora.</li>
+      <li>Daj mu prawo <strong>Read</strong> do serwerów i stacków (bez Execute i Write).</li>
+      <li>Na tym użytkowniku: <strong>API Keys → New</strong>. Skopiuj <strong>Key</strong> i <strong>Secret</strong> — Secret widać tylko raz.</li>
+    </ol>
+    <p class="muted small">Adres to adres panelu Komodo (Core), nie periphery na serwerach. Serwery Komodo pojawią się w kolejce
+      z adresem IP — „Przypnij dopasowane” połączy je z VM-kami z Proxmoxa, a stacki trafią pod swoje VM-ki.</p>
+  </section>
   {% endif %}
 
   {% if row %}
