@@ -4,7 +4,8 @@
 # DENALI_DATA_PATH: katalog na hoście z bazą, plikami i kopiami. W Komodo ustaw stałą ścieżkę (np. /opt/denali/data),
 # bo katalog z klonem repozytorium Komodo może wyczyścić przy aktualizacji. Katalog musi należeć do UID 1000.
 x-denali: &denali
-  image: denali:local
+  image: denali:local     # budowany lokalnie z Dockerfile, nie ma go w żadnym rejestrze
+  pull_policy: never      # worker używa obrazu zbudowanego dla app — nigdy nie pobieraj z Docker Hub
   restart: unless-stopped
   env_file:
     - path: .env          # DENALI_ENCRYPTION_KEY, DENALI_TRUSTED_PROXIES, DENALI_BASE_URL (w Komodo: Environment)
@@ -17,6 +18,7 @@ services:
   app:
     <<: *denali
     build: .
+    pull_policy: build    # przy każdym wdrożeniu buduj z bieżącego kodu (nowa wersja z repo = nowy obraz)
     command: sh -c "python -m denali migrate && python -m denali serve --host 0.0.0.0 --port 8000"
     ports:
       - "${DENALI_PORT:-8000}:8000"
