@@ -25,9 +25,18 @@ class Settings(BaseSettings):
         return f"sqlite:///{self.db_path.as_posix()}"
 
     def check(self) -> None:
-        """Bez klucza szyfrowania aplikacja nie wstaje (poza trybem deweloperskim)."""
-        if not self.encryption_key and not self.dev:
-            raise SystemExit("Brak DENALI_ENCRYPTION_KEY w .env. Wygeneruj: python -m denali genkeys >> .env")
+        """Bez poprawnego klucza szyfrowania aplikacja nie wstaje (poza trybem deweloperskim bez klucza)."""
+        if not self.encryption_key:
+            if not self.dev:
+                raise SystemExit("Brak DENALI_ENCRYPTION_KEY w .env. Wygeneruj: python -m denali genkeys >> .env")
+            return
+        from cryptography.fernet import Fernet
+        try:
+            Fernet(self.encryption_key)
+        except ValueError:
+            raise SystemExit("DENALI_ENCRYPTION_KEY to nie jest klucz szyfrowania, tylko zwykły tekst. Klucz to 44 losowe "
+                             "znaki — wygeneruj go: python -m denali genkeys (w Dockerze: docker run --rm denali:local "
+                             "python -m denali genkeys)") from None
 
 
 @lru_cache

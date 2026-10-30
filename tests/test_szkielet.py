@@ -74,3 +74,8 @@ def test_worker_zapisuje_sygnal_zycia(settings):
     with engine.connect() as conn:
         assert kv_get(conn, "worker.heartbeat") >= before
     engine.dispose()
+
+
+def test_haslo_zamiast_klucza_jest_odrzucone(tmp_path):
+    with pytest.raises(SystemExit, match="nie jest klucz szyfrowania"):
+        Settings(_env_file=None, data_dir=tmp_path, encryption_key="Haslo123").check()
