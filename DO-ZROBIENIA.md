@@ -1,6 +1,6 @@
 # Do zrobienia
 
-Stan na 30.10.2026. Etap 2 (rdzeń) i kod Etapu 3 (stan na żywo) są gotowe; Etap 3 czeka na sprawdzenie na prawdziwych
+Stan na 31.10.2026. Etap 2 (rdzeń) i kod Etapu 3 (stan na żywo) są gotowe; Etap 3 czeka na sprawdzenie na prawdziwych
 serwerach i akceptację. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
 
 ---
@@ -24,6 +24,10 @@ serwerach i akceptację. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), dec
 - [ ] `HLC_FERNET_KEY` trafił do rozmowy — po wyłączeniu HLC usuń jego stare kopie (`/var/lib/hlc/backups`).
 - [ ] **Usuń zasób `hlc.serwispowers.com` z Pangolina** (audyt, problem B0), gdy Denali zastąpi HLC.
 - [ ] Wyłącz HLC (kontener `hlc-dom`), gdy upewnisz się, że w Denali niczego nie brakuje.
+- [ ] Razem z HLC **usuń stare agenty HLC** z maszyn (usługa systemd jako root, konfiguracja z tokenem
+      w `/etc/hlc-agent/`): `systemctl list-units | grep -i hlc` → `sudo systemctl disable --now <nazwa>` →
+      `systemctl cat <nazwa>` (gdzie leży program) → usuń program i `/etc/hlc-agent`. Denali ich nie używa;
+      nowy, odchudzony agent przyjdzie w Etapie 4.
 - [ ] Wyjaśnij, czym było „627379008” (jeśli to hasło routera — wpisz je tylko w formularzu Denali).
 
 ## 3. Etap 3 — sprawdzenie na prawdziwych serwerach
