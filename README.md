@@ -41,6 +41,33 @@ przeglądarka / tablet ──HTTPS──▶ Nginx Proxy Manager ──HTTP w LAN
    (LAN albo Tailscale)           certyfikat, lista dostępu
 ```
 
+### Instalacja przez Komodo (z repozytorium na GitHubie)
+
+Zamiast kroków 1–3 poniżej:
+
+1. Na serwerze, na którym Komodo uruchomi stack, przygotuj stały katalog danych (poza katalogiem repozytorium —
+   ten Komodo może wyczyścić przy aktualizacji):
+   ```sh
+   mkdir -p /opt/denali/data && chown 1000:1000 /opt/denali/data
+   ```
+2. Klucz szyfrowania wygeneruj na dowolnym komputerze z Pythonem i biblioteką `cryptography`:
+   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+   i **zapisz go w menedżerze haseł**.
+3. W Komodo: *Stacks → New Stack*, źródło: to repozytorium, plik `compose.yaml`. Włącz budowanie obrazu przy
+   wdrożeniu (obraz `denali:local` powstaje z `Dockerfile`, nie jest pobierany z rejestru) — inaczej aktualizacja
+   repozytorium nie zmieni działającej wersji. W *Environment* wpisz (Komodo zapisze to jako `.env` obok compose):
+   ```
+   DENALI_ENCRYPTION_KEY=…klucz z punktu 2…
+   DENALI_TRUSTED_PROXIES=["IP-twojego-NPM"]
+   DENALI_DATA_PATH=/opt/denali/data
+   DENALI_PORT=8000
+   DENALI_BASE_URL=https://denali.serwispowers.com
+   ```
+4. *Deploy*. Dalej jak w krokach 4 i 5 — polecenia `python -m denali …` uruchamiasz w terminalu kontenera `app`
+   w Komodo albo na serwerze: `docker exec -it <nazwa-stacka>-app-1 python -m denali create-user jakub`.
+
+Compose korzysta z `env_file` z `required: false`, co wymaga Docker Compose 2.24 lub nowszego.
+
 ### 1. Pliki na serwer
 
 Skopiuj katalog repozytorium do `/opt/denali` (np. `scp -r new/ root@VM:/opt/denali`) i przygotuj katalog danych.

@@ -1,0 +1,29 @@
+# HTTPS robi istniejący Nginx Proxy Manager w LAN (proxy host denali.serwispowers.com → IP-tej-VM:8000).
+# Panelu NIE dodajemy do Pangolina/Newt ani do tunelu Cloudflare — dostęp tylko z LAN i Tailscale.
+#
+# DENALI_DATA_PATH: katalog na hoście z bazą, plikami i kopiami. W Komodo ustaw stałą ścieżkę (np. /opt/denali/data),
+# bo katalog z klonem repozytorium Komodo może wyczyścić przy aktualizacji. Katalog musi należeć do UID 1000.
+x-denali: &denali
+  image: denali:local
+  restart: unless-stopped
+  env_file:
+    - path: .env          # DENALI_ENCRYPTION_KEY, DENALI_TRUSTED_PROXIES, DENALI_BASE_URL (w Komodo: Environment)
+      required: false
+  environment:
+    DENALI_DATA_DIR: /data
+  volumes:
+    - ${DENALI_DATA_PATH:-./data}:/data
+services:
+  app:
+    <<: *denali
+    build: .
+    command: sh -c "python -m denali migrate && python -m denali serve --host 0.0.0.0 --port 8000"
+    ports:
+      - "${DENALI_PORT:-8000}:8000"
+
+  worker:
+    <<: *denali
+    command: python -m denali worker
+    depends_on:
+      app:
+        condition: service_healthy

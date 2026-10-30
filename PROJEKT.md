@@ -297,7 +297,7 @@ Własne logowanie:
 ## 8. Wdrożenie
 
 - VM `denali` na pve: Debian 13, 2 vCPU, 2 GB RAM, 20 GB dysku, `qemu-guest-agent`, start z hostem (wcześnie w kolejności).
-- `/srv/denali/`: `compose.yml`, `.env`, `data/` (baza, pliki, kopie konfiguracji), `export/` (statyczne procedury).
+- `/srv/denali/`: `compose.yaml`, `.env`, `data/` (baza, pliki, kopie konfiguracji), `export/` (statyczne procedury).
 - Kontenery: `app` (FastAPI), `worker` (integracje i alerty), HTTPS przez NPM. Aktualizacja: `git pull && docker compose up -d --build`
   albo nowy tag obrazu — **bez samoaktualizacji z panelu** (uprawnienia roota z panelu były ryzykiem w HLC).
 - Backup VM w PBS, kopia `data/` na VPS. Replikacja na pve2 + HA — gdy pve2 powstanie.
