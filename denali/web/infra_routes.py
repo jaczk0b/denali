@@ -1,4 +1,4 @@
-"""Pulpit, infrastruktura (lista, karta urządzenia, edycja), kolejka „do zatwierdzenia”, wyszukiwarka.
+"""Pulpit, infrastruktura (lista, karta urządzenia, edycja), kolejka „do zatwierdzenia”, aktualizacje, wyszukiwarka.
 
 Odczyt: każdy zalogowany. Zmiany: tylko administrator (require_admin sprawdza też CSRF).
 """
@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from .. import auth, checks, discovery, docs, files, incidents, integrations, inventory as inv, live, profiles, status, vault
+from .. import (auth, checks, discovery, docs, files, incidents, integrations, inventory as inv, live, profiles, status,
+               updates, vault)
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook)
 from ..templating import render
@@ -53,6 +54,17 @@ def pulpit(request: Request, sess: dict = Depends(require_user)):
     now = datetime.now()
     ctx.update(clock=now.strftime("%H:%M"), date=f"{DAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]}")
     return render(request, "pulpit.html", ctx)
+
+
+# ───────────────────────── aktualizacje ─────────────────────────
+@router.get("/aktualizacje")
+def updates_list(request: Request, sess: dict = Depends(require_user)):
+    with request.app.state.engine.connect() as conn:
+        rows = updates.overview(conn)
+        used = {s for r in rows for s in r["sources"]}
+        stale = sorted(r.name for r in conn.execute(select(integration.c.name, integration.c.last_error))
+                       if r.last_error and r.name in used)
+    return render(request, "aktualizacje.html", {"rows": rows, "stale": stale})
 
 
 # ───────────────────────── lista i karta ─────────────────────────
@@ -110,6 +122,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "sources": integrations.states_for_device(conn, device_id),
         "checks": checks.for_device(conn, device_id), "now": time.time(),
         "live": live.saved(conn).get(device_id),
+        "updates": updates.for_device(conn, device_id),
         "refs": conn.execute(select(external_ref).where(external_ref.c.device_id == device_id)).mappings().all(),
     }
     return render(request, "urzadzenie.html", ctx, status_code)

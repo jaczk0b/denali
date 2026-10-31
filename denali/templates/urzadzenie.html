@@ -36,6 +36,7 @@
   <a href="#zaleznosci">Zależności</a>
   <a href="#co-robic">Co robić</a>
   <a href="#historia">Log problemów ({{ incidents | length }})</a>
+  {% if updates.rows or updates.reboot %}<a href="#aktualizacje">Aktualizacje ({{ updates.rows | length }})</a>{% endif %}
   <a href="#adresy">Adresy</a>
   <a href="#pliki">Pliki</a>
   {% if admin %}<a href="#skarbiec">Hasła</a>{% endif %}
@@ -175,6 +176,19 @@
 </div>
 
 <div class="col">
+  {% if updates.rows or updates.reboot %}
+  <section class="card" aria-labelledby="aktualizacje">
+    <h2 id="aktualizacje">Aktualizacje</h2>
+    {% if updates.reboot %}<p><span class="pill warn">{{ st("warn", 12) }} wymagany restart</span>
+      <span class="muted small">według: {{ updates.reboot | join(", ") }}</span></p>{% endif %}
+    {% if updates.rows %}
+    <ul class="plain small">
+      {% for i in updates.rows %}<li><span class="mono">{{ i.component }}</span> <span class="muted">{{ version_text(i) }} · {{ i.source }}</span>
+        {% if i.security %}<span class="pill warn">bezpieczeństwo</span>{% endif %}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endif %}
   <section class="card" aria-labelledby="adresy">
     <h2 id="adresy">Adresy</h2>
     {% if addresses %}

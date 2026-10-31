@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st %}
+{% block title %}Aktualizacje{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Aktualizacje</h1>
+    <p class="lead">Jedna lista ze wszystkich źródeł: Proxmox i PBS (pakiety węzła), Komodo (nowsze obrazy stacków),
+      agent na maszynach (pakiety apt i „wymagany restart”). Panel tylko pokazuje — aktualizujesz tam, gdzie zawsze.</p>
+  </div>
+</div>
+{% if not rows %}
+<div class="card">
+  <h2>Wszystko aktualne</h2>
+  <p class="muted">Albo żadne źródło jeszcze nie podało listy: Proxmox, PBS i Komodo podają ją same po podłączeniu
+    (Integracje), maszyny bez API — przez agenta (Integracje → Dodaj: Agent na maszynie).</p>
+</div>
+{% else %}
+<section class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Urządzenie</th><th>Do zaktualizowania</th><th>Restart</th><th>Źródło</th><th>Od</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr{% if r.ignored %} class="muted"{% endif %}>
+        <td><a href="/urzadzenia/{{ r.device.id }}#aktualizacje">{{ r.device.name }}</a>
+          {% if r.ignored %}<span class="pill">profil: ignoruj</span>{% endif %}</td>
+        <td>
+          {% if r.rows %}
+          <details>
+            <summary>{{ r.rows | length }} {{ "pozycja" if r.rows | length == 1 else "pozycji" }}
+              {%- if r.security %} · <span class="pill warn">{{ st("warn", 12) }} bezpieczeństwo: {{ r.security }}</span>{% endif %}</summary>
+            <ul class="plain small">
+              {% for i in r.rows %}<li><span class="mono">{{ i.component }}</span> <span class="muted">{{ version_text(i) }}</span>
+                {% if i.security %}<span class="pill warn">bezpieczeństwo</span>{% endif %}</li>{% endfor %}
+            </ul>
+          </details>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>{% if r.reboot %}<span class="pill warn">{{ st("warn", 12) }} wymagany</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="muted">{{ r.sources | join(", ") }}</td>
+        <td class="mono">{{ r.since | dt }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% if stale %}
+<p class="muted small">Źródła z błędem odczytu (lista może być nieaktualna): {{ stale | join(", ") }}.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

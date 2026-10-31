@@ -328,3 +328,17 @@ notification_channel = Table(
     Column("last_sent_at", Float),
     Column("last_error", String(300), nullable=False, default=""),
 )
+
+# Dostępne aktualizacje: obiekt z integracji (VM przez agenta, węzeł Proxmoxa, stack Komodo) → co można zaktualizować.
+# Każdy odczyt źródła zastępuje jego listę; detected_at zostaje, dopóki wersja docelowa się nie zmieni.
+update_item = Table(
+    "update_item", metadata,
+    Column("integration_id", Integer, ForeignKey("integration.id", ondelete="CASCADE"), primary_key=True),
+    Column("external_id", String(200), primary_key=True),
+    Column("component", String(200), primary_key=True),          # pakiet, usługa stacka, system
+    Column("kind", String(16), nullable=False, default="pakiet"),  # pakiet | obraz | system
+    Column("current", String(100), nullable=False, default=""),
+    Column("available", String(100), nullable=False, default=""),
+    Column("security", Boolean, nullable=False, default=False),
+    Column("detected_at", Float, nullable=False),
+)

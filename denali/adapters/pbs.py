@@ -2,6 +2,7 @@
 Tylko odczyt (token z rolą DatastoreAudit / Audit).
 
 Kopia starsza niż MAX_AGE_H godzin = „uwaga” na karcie VM (to nie awaria — maszyna działa, tylko bez świeżej kopii).
+Aktualizacje samego PBS: `/nodes/localhost/apt/update` (jak w jego panelu: Administration → Updates).
 """
 import time
 from datetime import datetime
@@ -9,7 +10,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from . import Adapter, AdapterError, Field, Found, PollResult, State
+from . import Adapter, AdapterError, Field, Found, PollResult, State, apt_updates
 from .tls import ssl_context, validate_pem_field
 
 CA_HINT = "cat /etc/proxmox-backup/proxy.pem"
@@ -86,6 +87,10 @@ class Pbs(Adapter):
             groups = {}
             for store in stores:
                 groups[store] = await self._get(cli, f"/admin/datastore/{store}/groups") or []
+            try:
+                self._apt = await self._get(cli, "/nodes/localhost/apt/update") or []
+            except AdapterError:
+                self._apt = None    # token bez Sys.Audit — lista aktualizacji zostaje bez zmian
         return stores, usage, groups
 
     async def test(self):
@@ -100,6 +105,8 @@ class Pbs(Adapter):
         now = time.time()
         stores, usage, groups = await self._collect()
         out = PollResult()
+        if self._apt is not None:
+            out.updates = apt_updates("server", self._apt)
         host = urlsplit(str(self.config["url"])).hostname or "pbs"
         ip = host if host.replace(".", "").isdigit() else None
         out.found.append(Found("server", {"name": "PBS" if ip else host, "kind": "vm",

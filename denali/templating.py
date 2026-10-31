@@ -8,7 +8,7 @@ from markdown_it import MarkdownIt
 from markupsafe import Markup
 from sqlalchemy import func, select
 
-from . import incidents, inventory, live
+from . import incidents, inventory, live, updates
 from .models import external_ref, incident
 from .status import initials, tile_color
 
@@ -41,17 +41,19 @@ def _size(n: int) -> str:
 
 templates.env.filters.update(dt=_dt, hm=_hm, md=_md_filter, initials=initials, tile_color=tile_color, size=_size)
 templates.env.globals.update(KINDS=inventory.KINDS, DEP_TYPES=inventory.DEP_TYPES, VIA=incidents.VIA,
+                             version_text=updates.version_text,
                              PRIORITY={1: "P1", 2: "P2", 3: "P3"})
 
 
 def _counts(request: Request) -> dict:
-    """Liczniki w nawigacji: otwarte incydenty i kolejka „do zatwierdzenia”."""
+    """Liczniki w nawigacji: otwarte incydenty, urządzenia do aktualizacji i kolejka „do zatwierdzenia”."""
     with request.app.state.engine.connect() as conn:
         return {
             "incidents": conn.execute(select(func.count()).select_from(incident)
                                       .where(incident.c.status != "zamkniety")).scalar(),
             "queue": conn.execute(select(func.count()).select_from(external_ref)
                                   .where(external_ref.c.status == "nowy")).scalar(),
+            "updates": updates.count(conn),
         }
 
 

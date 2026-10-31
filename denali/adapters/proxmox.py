@@ -1,13 +1,15 @@
 """Proxmox VE: węzły, VM i kontenery LXC — stan, zasoby, adresy IP. Tylko odczyt (token z rolą PVEAuditor).
 
 Zatrzymana maszyna to „off” (wyłączona celowo), chyba że ma startować z hostem (onboot) — wtedy „down”.
+Aktualizacje węzła: lista pakietów z `/nodes/<węzeł>/apt/update` (ta sama co w Proxmoxie: Węzeł → Updates;
+Proxmox odświeża ją sam raz dziennie). PVEAuditor ją widzi (Sys.Audit).
 """
 import asyncio
 from urllib.parse import urlsplit
 
 import httpx
 
-from . import Adapter, AdapterError, Field, Found, PollResult, State
+from . import Adapter, AdapterError, Field, Found, PollResult, State, apt_updates
 from .tls import clean_pem as _clean_pem, ssl_context, validate_pem_field
 
 GB = 1024 ** 3
@@ -147,8 +149,18 @@ class Proxmox(Adapter):
                     return [], await self._onboot(cli, g)
 
             extra = await asyncio.gather(*(details(g) for g in guests))
+            node_updates = {}
+            for n in nodes:
+                if n.get("status") != "online":
+                    continue
+                try:
+                    node_updates[n["node"]] = await self._get(cli, f"/nodes/{n['node']}/apt/update") or []
+                except AdapterError:
+                    pass        # brak uprawnień albo węzeł nie odpowiada — zostaje poprzednia lista
 
         out = PollResult()
+        if node_updates:
+            out.updates = [u for name, pkgs in node_updates.items() for u in apt_updates(f"node/{name}", pkgs)]
         for n in nodes:
             name = n["node"]
             eid = f"node/{name}"

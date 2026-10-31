@@ -4,13 +4,15 @@ Serwer Komodo to zwykle VM z Proxmoxa — zgłaszamy go z adresem IP, a kolejka 
 przypięcie do istniejącej VM. Stack „działa na” swoim serwerze.
 Stan stacka: running → działa; unhealthy/restarting → uwaga; down/dead → nie działa;
 stopped/paused/created → wyłączony celowo.
+Aktualizacje: usługa stacka z `update_available` (Komodo samo sprawdza, czy w rejestrze jest nowszy obraz tego samego
+tagu — „Poll for updates” w ustawieniach stacka) = pozycja na liście aktualizacji.
 """
 import socket
 from urllib.parse import urlsplit
 
 import httpx
 
-from . import Adapter, AdapterError, Field, Found, PollResult, State
+from . import Adapter, AdapterError, Field, Found, PollResult, State, Update
 
 STACK_STATE = {
     "running": "ok", "deploying": "ok",
@@ -97,7 +99,7 @@ class Komodo(Adapter):
         async with self._client() as cli:
             servers = await self._read(cli, "ListServers") or []
             stacks = await self._read(cli, "ListStacks") or []
-        out = PollResult()
+        out = PollResult(updates=[])
         for s in servers:
             sid, info = s.get("id"), s.get("info") or {}
             if not sid:
@@ -123,6 +125,8 @@ class Komodo(Adapter):
             st = str(info.get("state") or "unknown").lower()
             services = info.get("services") or []
             updates = [x.get("service") for x in services if isinstance(x, dict) and x.get("update_available")]
+            out.updates += [Update(eid, str(x.get("service") or "?"), "obraz", current=str(x.get("image") or ""))
+                            for x in services if isinstance(x, dict) and x.get("update_available")]
             summary = f"stack {STACK_LABEL.get(st, st)}"
             if services:
                 summary += f" · usługi: {len(services)}"

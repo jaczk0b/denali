@@ -13,7 +13,7 @@ from sqlalchemy import delete, select
 
 from . import discovery, inventory as inv
 from .adapters import AdapterError, registry
-from .models import dependency, external_ref, integration, observed_state
+from .models import dependency, external_ref, integration, observed_state, update_item
 
 log = logging.getLogger("denali.integrations")
 POLL_TIMEOUT = 90
@@ -118,8 +118,29 @@ def record(conn, integration_id, result, now=None):
             conn.execute(observed_state.update().where(
                 observed_state.c.integration_id == integration_id, observed_state.c.external_id == row.external_id
             ).values(state="unknown", summary="nie ma go już w źródle", observed_at=now))
+    if result.updates is not None:
+        record_updates(conn, integration_id, result.updates, now)
     conn.execute(integration.update().where(integration.c.id == integration_id).values(
         last_ok_at=now, last_attempt_at=now, last_error=""))
+
+
+def record_updates(conn, integration_id, updates, now):
+    """Lista aktualizacji źródła = dokładnie to, co podało teraz. „Od kiedy” zostaje, dopóki wersja się nie zmieni."""
+    old = {(r.external_id, r.component): r for r in conn.execute(
+        select(update_item).where(update_item.c.integration_id == integration_id))}
+    conn.execute(delete(update_item).where(update_item.c.integration_id == integration_id))
+    seen = set()
+    for u in updates:
+        key = (str(u.external_id)[:200], str(u.component)[:200])
+        if key in seen:
+            continue
+        seen.add(key)
+        prev = old.get(key)
+        available = str(u.available or "")[:100]
+        conn.execute(update_item.insert().values(
+            integration_id=integration_id, external_id=key[0], component=key[1], kind=u.kind,
+            current=str(u.current or "")[:100], available=available, security=bool(u.security),
+            detected_at=prev.detected_at if prev and prev.available == available else now))
 
 
 def record_error(conn, integration_id, message, now=None):

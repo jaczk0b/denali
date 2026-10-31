@@ -1,6 +1,7 @@
 """Adaptery integracji. Każdy system (Proxmox, Komodo, TrueNAS…) to jedna klasa z tym samym interfejsem.
 
-Adapter tylko czyta: zgłasza obiekty (trafiają do kolejki „do zatwierdzenia”) i ich bieżący stan.
+Adapter tylko czyta: zgłasza obiekty (trafiają do kolejki „do zatwierdzenia”), ich bieżący stan
+i dostępne aktualizacje.
 Nowy typ urządzenia = nowa klasa tutaj, bez zmian w rdzeniu.
 """
 from dataclasses import dataclass, field
@@ -44,9 +45,34 @@ class State:
 
 
 @dataclass
+class Update:
+    """Dostępna aktualizacja obiektu (pakiet na węźle, nowszy obraz usługi stacka)."""
+    external_id: str
+    component: str              # nazwa pakietu albo usługi
+    kind: str = "pakiet"        # pakiet | obraz | system
+    current: str = ""
+    available: str = ""
+    security: bool = False
+
+
+def apt_updates(external_id, packages):
+    """Lista z `/nodes/<węzeł>/apt/update` (Proxmox VE i PBS — to samo, co ich panel pokazuje w „Updates”)."""
+    out = []
+    for p in packages or []:
+        if not isinstance(p, dict) or not p.get("Package"):
+            continue
+        origin = f"{p.get('Origin', '')} {p.get('Section', '')}".lower()
+        out.append(Update(external_id, str(p["Package"]), "pakiet", str(p.get("OldVersion") or ""),
+                          str(p.get("Version") or ""), "security" in origin))
+    return out
+
+
+@dataclass
 class PollResult:
     found: list = field(default_factory=list)
     states: list = field(default_factory=list)
+    # None = źródło nie podaje aktualizacji (lista zostaje bez zmian); [] = sprawdzone, nic nie ma
+    updates: list | None = None
 
 
 class Adapter:
