@@ -102,7 +102,8 @@ Zakładka źródła (Proxmox, TrueNAS, Docker, Sieć) pokazuje się dopiero, gdy
       zakresy, konflikty. Bez ręcznego wpisywania sieci; Tailscale i adresy publiczne pominięte.
 - [x] **Szafa** — przód i tył szafy, co na której wysokości (U): urządzenie w szynach, sam opis (patch panel,
       zaślepka) albo **półka**, na której stoi obok siebie kilka rzeczy (router, terminal, zwykły komputer — np.
-      dół szafy U1–U8). Kolizje i wysokość sprawdzane; na karcie urządzenia „Szafa · U6”. Migracje bazy 0010–0011.
+      dół szafy U1–U8). Edycja kliknięciami: wolne U → dodaj (kafelek + wysokość), urządzenie → zmień wysokość,
+      przesuń o 1U, przód/tył, wyjmij. Na karcie urządzenia „Szafa · U6”. Migracje bazy 0010–0011.
 - [x] **Mapa** — rysowana sama z dokumentacji (sieć → serwery → maszyny → aplikacje; klienci sieci na żądanie),
       stan na żywo, zależność „dane” czerwona, gdy źródło nie działa.
 - [ ] **Do sprawdzenia u Ciebie:** wygląd na prawdziwych danych (mapa przy wielu urządzeniach, tablet), czy liczby

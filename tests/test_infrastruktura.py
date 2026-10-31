@@ -161,7 +161,7 @@ def test_szafa_przez_strone(app):
                     data={"csrf_token": csrf, "device_id": str(sw), "u": "6", "height": "1"})
         assert r.status_code == 303
         page = cl.get("/infrastruktura/szafa").text
-        assert f'href="/urzadzenia/{sw}"' in page and "rk-dev" in page
+        assert "/infrastruktura/szafa?pozycja=" in page and "rk-dev" in page
         assert "Szafa · U6" in cl.get(f"/urzadzenia/{sw}").text
 
 
@@ -192,3 +192,44 @@ def test_stary_adres_po_dhcp_to_nie_konflikt(full):
         assert cell["state"] == "zajety" and cell["stale"]
         assert cell["owners"][0]["name"] == "iPhone-Jakub" and cell["owners"][1]["stale"]
         assert "192.168.1.50" not in {x["ip"] for x in net["conflicts"]}
+
+
+def test_szafa_klikanie(app):
+    make_user(app)
+    with app.state.engine.begin() as c:
+        sw = inv.create_device(c, "switch", "switch")
+        pc = inv.create_device(c, "komputer", "komputer")
+        rid = racks.save_rack(c, "Szafa", 12)
+    with new_client(app) as cl:
+        do_login(cl)
+        enable_2fa(cl, app)
+        page = cl.get("/infrastruktura/szafa").text
+        csrf = csrf_from(page)
+        assert f"/infrastruktura/szafa?szafa={rid}&u=12" in page          # każde wolne U da się kliknąć
+        page = cl.get(f"/infrastruktura/szafa?szafa={rid}&u=1").text
+        assert "Dodaj w U1" in page and "wolne w górę: 12U" in page
+        # półka na dole: kafelek „Półka”, wysokość 4U
+        r = cl.post(f"/infrastruktura/szafa/{rid}/umiesc", data={"csrf_token": csrf, "what": "polka", "u": "1", "height": "4"})
+        assert r.status_code == 303 and "pozycja=" in r.headers["location"]
+        shelf = int(r.headers["location"].split("pozycja=")[1])
+        page = cl.get(r.headers["location"]).text
+        assert "Postaw na półce" in page and "U1–U4" in page
+        r = cl.post(f"/infrastruktura/szafa/{rid}/umiesc", data={"csrf_token": csrf, "what": "urzadzenie",
+                                                                  "device_id": str(pc), "shelf_id": str(shelf)})
+        assert r.status_code == 303
+        # switch w U10, potem 2U i 1U w górę
+        r = cl.post(f"/infrastruktura/szafa/{rid}/umiesc", data={"csrf_token": csrf, "what": "urzadzenie",
+                                                                  "device_id": str(sw), "u": "10", "height": "1"})
+        item = int(r.headers["location"].split("pozycja=")[1])
+        assert cl.post(f"/infrastruktura/szafa/pozycja/{item}", data={"csrf_token": csrf, "height": "2"}).status_code == 303
+        assert cl.post(f"/infrastruktura/szafa/pozycja/{item}", data={"csrf_token": csrf, "u": "11"}).status_code == 303
+        with app.state.engine.connect() as c:
+            assert (racks.for_device(c, sw)["u"], racks.for_device(c, sw)["height"]) == (11, 2)
+        r = cl.post(f"/infrastruktura/szafa/pozycja/{item}", data={"csrf_token": csrf, "height": "4"})
+        assert r.status_code == 400 and "nie mieści" in r.text                  # 11 + 4 > 12
+        # półka 1U w górę przenosi komputer
+        assert cl.post(f"/infrastruktura/szafa/pozycja/{shelf}", data={"csrf_token": csrf, "u": "2"}).status_code == 303
+        with app.state.engine.connect() as c:
+            assert racks.for_device(c, pc)["u"] == 2
+        r = cl.post(f"/infrastruktura/szafa/{rid}/umiesc", data={"csrf_token": csrf, "what": "urzadzenie", "u": "8"})
+        assert r.status_code == 400 and "Wybierz urządzenie" in r.text

@@ -149,3 +149,34 @@ def _rows(units, items):
             rows.append({"item": None, "top": u, "row": units - u + 1, "span": 1})
             u -= 1
     return rows
+
+
+def get_item(conn, item_id):
+    row = conn.execute(select(rack_item, device.c.name, device.c.kind).outerjoin(
+        device, device.c.id == rack_item.c.device_id).where(rack_item.c.id == item_id)).mappings().first()
+    if not row:
+        raise RackError("Nie ma takiej pozycji w szafie.")
+    return dict(row)
+
+
+def change(conn, item_id, u=None, height=None, back=None, label=None):
+    """Zmień pozycję: przesuń (u), zmień wysokość, przód/tył, opis. Półka przenosi to, co na niej stoi."""
+    i = get_item(conn, item_id)
+    if i["shelf_id"]:
+        raise RackError("To stoi na półce — przesuwasz całą półkę albo zdejmujesz to z niej.")
+    place(conn, i["rack_id"], i["u"] if u is None else u, i["height"] if height is None else height,
+          device_id=i["device_id"], label=i["label"] if label is None else label,
+          back=i["back"] if back is None else back, shelf=i["shelf"], item_id=item_id)
+    if i["shelf"]:
+        new = get_item(conn, item_id)
+        conn.execute(rack_item.update().where(rack_item.c.shelf_id == item_id)
+                     .values(u=new["u"], height=new["height"], back=new["back"]))
+
+
+def free_above(rows, u):
+    """Ile wolnych U jest od `u` w górę (rows z _rows) — największa wysokość, jaką można tu wstawić."""
+    empty = {x["top"] for x in rows if not x["item"]}
+    n = 0
+    while u + n in empty:
+        n += 1
+    return n

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_makra.html" import infra_nav, alerts, st %}
 {% block title %}Szafa · Infrastruktura{% endblock %}
+{% set admin = sess.role == "admin" %}
 
 {% macro led(i) -%}
   {%- set m = marks.get(i.device_id) %}{% set s = states.get(i.device_id, {}).get("state") -%}
@@ -10,45 +11,60 @@
   {%- set m = marks.get(i.device_id) %}{% set s = states.get(i.device_id, {}).get("state") -%}
   {{ "down" if m == "przyczyna" or s == "down" else ("warn" if s == "warn" else "") }}
 {%- endmacro %}
-
-{# Jedna rzecz stojąca na półce (komputer, router, terminal) #}
-{% macro boxed(x) -%}
-  {% if x.device_id %}<a class="rk-box {{ tone(x) }}" href="/urzadzenia/{{ x.device_id }}" title="{{ x.name }}{% if x.label %} · {{ x.label }}{% endif %}">
-    <span class="rk-led">{{ led(x) }}</span><b>{{ x.name }}</b><small>{{ x.label or KINDS.get(x.kind, x.kind) }}</small></a>
-  {%- else %}<span class="rk-box blank" title="{{ x.label }}"><b>{{ x.label }}</b></span>{% endif %}
+{# wygląd przodu zależnie od tego, co to jest #}
+{% macro face(i) -%}
+  {%- if not i.device_id -%}{{ "patch" if "patch" in (i.label or "") | lower else "blank" }}
+  {%- elif i.kind in ("switch", "router", "firewall", "ap", "modem") %}ports
+  {%- elif i.kind in ("host", "nas", "vm", "lxc") %}bays
+  {%- elif i.kind == "ups" %}ups
+  {%- elif i.kind in ("komputer", "drukarka") %}tower
+  {%- else %}plain{% endif -%}
+{%- endmacro %}
+{% macro href(r, i) -%}
+  {%- if admin %}/infrastruktura/szafa?pozycja={{ i.id }}#rack-{{ r.id }}{% elif i.device_id %}/urzadzenia/{{ i.device_id }}{% endif -%}
 {%- endmacro %}
 
-{% macro rack_view(r, rows, side) %}
-<div class="rk" aria-label="{{ r.name }} — {{ side }}">
+{# Rzecz stojąca na półce (komputer, router, terminal) #}
+{% macro boxed(r, x, sel) -%}
+  {%- set h = href(r, x) %}
+  <{{ "a" if h else "span" }} class="rk-box face-{{ face(x) }} {{ tone(x) }}{% if sel %} sel{% endif %}"{% if h %} href="{{ h }}"{% endif %}
+     title="{{ x.name or x.label }}{% if x.name and x.label %} · {{ x.label }}{% endif %}">
+    {% if x.device_id %}<span class="rk-led">{{ led(x) }}</span>{% endif %}
+    <span class="rk-face" aria-hidden="true"></span>
+    <b>{{ x.name or x.label }}</b>{% if x.device_id %}<small>{{ x.label or KINDS.get(x.kind, x.kind) }}</small>{% endif %}
+  </{{ "a" if h else "span" }}>
+{%- endmacro %}
+
+{% macro rack_view(x, rows, side_back) %}{% set r = x.rack %}
+<div class="rk" aria-label="{{ r.name }} — {{ 'tył' if side_back else 'przód' }}">
   <div class="rk-cap"></div>
   <div class="rk-body" style="--units: {{ r.units }}">
     <div class="rk-rail">{% for u in range(r.units, 0, -1) %}<div class="rk-u"><i></i><span>{{ u }}</span><i></i></div>{% endfor %}</div>
     <div class="rk-slots">
-      {% for x in rows %}
-      {% if not x.item %}<div class="rk-empty" style="grid-row: {{ x.row }}"></div>
-      {% else %}{% set i = x.item %}{% set pos = "U" ~ i.u ~ ("–U" ~ (i.u + i.height - 1) if i.height > 1 else "") %}
+      {% for row in rows %}
+      {% if not row.item %}
+        {% if admin %}{% set on = x.sel_u == row.top and x.sel_back == side_back %}
+        <a class="rk-empty add{% if on %} sel{% endif %}" style="grid-row: {{ row.row }}" title="Dodaj w U{{ row.top }}"
+           href="/infrastruktura/szafa?szafa={{ r.id }}&u={{ row.top }}{% if side_back %}&tyl=1{% endif %}#rack-{{ r.id }}"><span>{{ "+ dodaj w U" ~ row.top if on else "+ U" ~ row.top }}</span></a>
+        {% else %}<div class="rk-empty" style="grid-row: {{ row.row }}"></div>{% endif %}
+      {% else %}{% set i = row.item %}{% set pos = "U" ~ i.u ~ ("–U" ~ (i.u + i.height - 1) if i.height > 1 else "") %}
+        {% set sel = x.sel_item and x.sel_item.id == i.id %}
         {% if i.shelf %}
-        <div class="rk-shelf" style="grid-row: {{ x.row }} / span {{ x.span }}" title="{{ i.label or 'półka' }} · {{ pos }}">
+        <div class="rk-shelf{% if sel %} sel{% endif %}" style="grid-row: {{ row.row }} / span {{ row.span }}">
           <div class="rk-shelf-items">
-            {% for s in i.on_shelf %}{{ boxed(s) }}{% else %}<span class="rk-shelf-empty">{{ i.label or "półka" }} — pusta</span>{% endfor %}
+            {% for s in i.on_shelf %}{{ boxed(r, s, sel) }}{% else %}<a class="rk-shelf-empty" {% if admin %}href="{{ href(r, i) }}"{% endif %}>{{ i.label or "półka" }} — pusta{% if admin %}, kliknij, żeby coś postawić{% endif %}</a>{% endfor %}
           </div>
-          <div class="rk-shelf-bar"><span>{{ i.label or "półka" }} · {{ pos }}</span></div>
+          <a class="rk-shelf-bar"{% if admin %} href="{{ href(r, i) }}"{% endif %} title="{{ i.label or 'półka' }} · {{ pos }}"><span>{{ i.label or "półka" }} · {{ pos }}</span></a>
         </div>
-        {% elif i.device_id %}
-        <a class="rk-dev {{ tone(i) }}" href="/urzadzenia/{{ i.device_id }}" style="grid-row: {{ x.row }} / span {{ x.span }}"
-           title="{{ i.name }} · {{ pos }}">
+        {% else %}{% set h = href(r, i) %}
+        <{{ "a" if h else "div" }} class="rk-dev face-{{ face(i) }} {{ tone(i) }}{% if sel %} sel{% endif %}"{% if h %} href="{{ h }}"{% endif %}
+           style="grid-row: {{ row.row }} / span {{ row.span }}; --h: {{ row.span }}" title="{{ i.name or i.label }} · {{ pos }}">
           <span class="rk-ear"></span>
-          <span class="rk-name"><b>{{ i.name }}</b><small>{{ i.label or KINDS.get(i.kind, i.kind) }}</small></span>
-          <span class="rk-led">{{ led(i) }}</span>
+          <span class="rk-name"><b>{{ i.name or i.label }}</b>{% if i.device_id %}<small>{{ i.label or KINDS.get(i.kind, i.kind) }}</small>{% endif %}</span>
+          <span class="rk-face" aria-hidden="true"></span>
+          {% if i.device_id %}<span class="rk-led">{{ led(i) }}</span>{% else %}<span></span>{% endif %}
           <span class="rk-ear"></span>
-        </a>
-        {% else %}
-        <div class="rk-dev blank{% if 'patch' in i.label | lower %} patch{% endif %}" style="grid-row: {{ x.row }} / span {{ x.span }}" title="{{ i.label }} · {{ pos }}">
-          <span class="rk-ear"></span>
-          <span class="rk-name"><b>{{ i.label }}</b></span>
-          {% if 'patch' in i.label | lower %}<span class="rk-ports" aria-hidden="true"></span>{% endif %}
-          <span class="rk-ear"></span>
-        </div>
+        </{{ "a" if h else "div" }}>
         {% endif %}
       {% endif %}
       {% endfor %}
@@ -56,6 +72,13 @@
     <div class="rk-rail">{% for u in range(r.units, 0, -1) %}<div class="rk-u"><i></i><span>{{ u }}</span><i></i></div>{% endfor %}</div>
   </div>
   <div class="rk-cap"></div>
+</div>
+{% endmacro %}
+
+{% macro heights_pick(name, current, max_h) %}
+<div class="pills" role="radiogroup" aria-label="Wysokość">
+  {% for h in heights %}<label class="pill-opt{% if h > max_h %} off{% endif %}"><input type="radio" name="{{ name }}" value="{{ h }}"
+    {% if h == current %}checked{% endif %}{% if h > max_h %} disabled{% endif %}><span>{{ h }}U</span></label>{% endfor %}
 </div>
 {% endmacro %}
 
@@ -70,72 +93,124 @@
     serwer, UPS) albo na półce (router, terminal, zwykły komputer). W awarii od razu widać, co gdzie stoi.</p>
 </div>
 {% endif %}
-<div class="racks">
+
 {% for x in racks %}{% set r = x.rack %}
-<section class="card rack" aria-labelledby="rack-{{ r.id }}">
-  <h2 id="rack-{{ r.id }}">{{ r.name }} <span class="muted">· {{ r.units }} U · wolne {{ r.units - x.used }} U</span></h2>
-  {% if r.place or r.notes %}<p class="muted small">{{ r.place }}{% if r.place and r.notes %} · {% endif %}{{ r.notes }}</p>{% endif %}
-  {% set has_back = x.back | selectattr("item") | list %}
-  <div class="rack-sides">
-    <div>{% if has_back %}<h3>Przód</h3>{% endif %}{{ rack_view(r, x.front, "przód") }}</div>
-    {% if has_back %}<div><h3>Tył</h3>{{ rack_view(r, x.back, "tył") }}</div>{% endif %}
+<section class="card rack-card" id="rack-{{ r.id }}" aria-labelledby="rack-h-{{ r.id }}">
+  <div class="row-between">
+    <h2 id="rack-h-{{ r.id }}">{{ r.name }} <span class="muted">· {{ r.units }} U · wolne {{ r.units - x.used }} U{% if r.place %} · {{ r.place }}{% endif %}</span></h2>
+    {% if admin %}<div class="actions">
+      {% set back_open = x.sel_back or (x.sel_item and x.sel_item.back) or (x.back | selectattr("item") | list) %}
+      {% if not back_open %}<a class="btn small" href="/infrastruktura/szafa?szafa={{ r.id }}&tyl=1#rack-{{ r.id }}">Pokaż tył</a>{% endif %}
+    </div>{% endif %}
   </div>
-  {% if sess.role == "admin" %}
-  <details class="mt"{% if not x.entries %} open{% endif %}>
-    <summary>Umieść w szafie</summary>
-    <form method="post" action="/infrastruktura/szafa/{{ r.id }}/umiesc" class="narrow-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <label class="field">Urządzenie
-        <select name="device_id"><option value="">— bez urządzenia (półka, patch panel, zaślepka) —</option>
-          {% for d in devices %}<option value="{{ d.id }}">{{ d.name }}{% if d.id in placed %} (przeniesie z „{{ placed[d.id] }}”){% endif %}</option>{% endfor %}</select></label>
-      <label class="field">Opis <span class="muted small">— np. „półka”, „patch panel 24”; przy urządzeniu krótki dopisek</span>
-        <input name="label" maxlength="200"></label>
-      <label class="field">Gdzie
-        <select name="shelf_id"><option value="">w szynach — od U podanego niżej</option>
-          {% for s in x.shelves %}<option value="{{ s.id }}">na półce: {{ s.label or "półka" }} (U{{ s.u }}{% if s.height > 1 %}–U{{ s.u + s.height - 1 }}{% endif %})</option>{% endfor %}</select></label>
-      <div class="form-row">
-        <label class="field">Od U (licząc od dołu) <input name="u" type="number" min="1" max="{{ r.units }}" class="small-input"></label>
-        <label class="field">Wysokość (U) <input name="height" type="number" min="1" max="{{ r.units }}" value="1" class="small-input"></label>
-      </div>
-      <label class="check"><input type="checkbox" name="shelf" value="1"> to jest półka — postawisz na niej urządzenia
-        (np. dół szafy na komputer: od U1, wysokość 8)</label>
-      <label class="check"><input type="checkbox" name="back" value="1"> z tyłu szafy</label>
-      <button class="btn primary" type="submit">Umieść</button>
-    </form>
-  </details>
-  {% if x.entries %}
-  <details>
-    <summary>Pozycje ({{ x.entries | length }})</summary>
-    <ul class="plain small">
-      {% for i in x.entries %}
-      <li class="row-between"><span>{% if i.shelf_id %}<span class="muted">↳ na półce</span>{% else %}U{{ i.u }}{% if i.height > 1 %}–U{{ i.u + i.height - 1 }}{% endif %}{% endif %}{% if i.back %} · tył{% endif %}
-        · {{ i.name or i.label or "półka" }}{% if i.shelf %} <span class="pill">półka</span>{% endif %}</span>
-        <form method="post" action="/infrastruktura/szafa/pozycja/{{ i.id }}/usun" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">wyjmij</button></form></li>
-      {% endfor %}
-    </ul>
-  </details>
-  {% endif %}
-  <details>
-    <summary>Zmień szafę</summary>
-    <form method="post" action="/infrastruktura/szafa/{{ r.id }}" class="narrow-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <label class="field">Nazwa <input name="name" value="{{ r.name }}" required maxlength="100"></label>
-      <label class="field">Wysokość (U) <input name="units" type="number" min="1" max="60" value="{{ r.units }}" class="small-input"></label>
-      <label class="field">Gdzie stoi <input name="place" value="{{ r.place }}" maxlength="200"></label>
-      <label class="field">Notatka <input name="notes" value="{{ r.notes }}" maxlength="500"></label>
-      <button class="btn" type="submit">Zapisz</button>
-    </form>
-    <form method="post" action="/infrastruktura/szafa/{{ r.id }}/usun" class="mt">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <button class="btn danger" type="submit">Usuń szafę „{{ r.name }}”</button>
-      <span class="muted small">urządzenia zostają w dokumentacji, znika tylko ich pozycja</span>
-    </form>
-  </details>
-  {% endif %}
+  <div class="rack-layout">
+    <div class="rack-sides">
+      {% set show_back = x.sel_back or (x.sel_item and x.sel_item.back) or (x.back | selectattr("item") | list) %}
+      <div>{% if show_back %}<h3>Przód</h3>{% endif %}{{ rack_view(x, x.front, false) }}</div>
+      {% if show_back %}<div><h3>Tył</h3>{{ rack_view(x, x.back, true) }}</div>{% endif %}
+    </div>
+
+    {% if admin %}
+    <aside class="rack-panel">
+    {% if x.sel_u %}
+      {# ───── dodawanie w klikniętym U ───── #}
+      <div class="row-between"><h3 class="panel-title">Dodaj w U{{ x.sel_u }}{% if x.sel_back %} · tył{% endif %}</h3>
+        <a class="small" href="/infrastruktura/szafa#rack-{{ r.id }}">anuluj</a></div>
+      <form method="post" action="/infrastruktura/szafa/{{ r.id }}/umiesc">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <input type="hidden" name="u" value="{{ x.sel_u }}">
+        {% if x.sel_back %}<input type="hidden" name="back" value="1">{% endif %}
+        <div class="what-tiles" role="radiogroup" aria-label="Co dodać">
+          {% for key, label in what.items() %}<label class="what-tile"><input type="radio" name="what" value="{{ key }}"{% if loop.first %} checked{% endif %}>
+            <span class="rk-mini face-{{ {'urzadzenie': 'bays', 'polka': 'shelf', 'patch': 'patch', 'opis': 'blank'}[key] }}" aria-hidden="true"></span><span>{{ label }}</span></label>{% endfor %}
+        </div>
+        <label class="field">Urządzenie <span class="muted small">(gdy „Urządzenie”)</span>
+          <select name="device_id"><option value="">— wybierz —</option>
+            {% for d in devices %}<option value="{{ d.id }}">{{ d.name }} · {{ KINDS.get(d.kind, d.kind) }}{% if d.id in placed %} (przeniesie z „{{ placed[d.id] }}”){% endif %}</option>{% endfor %}</select></label>
+        <label class="field">Podpis <span class="muted small">(opcjonalnie, np. „24 porty”, „dół szafy”)</span><input name="label" maxlength="200"></label>
+        <div class="field"><span>Wysokość <span class="muted small">· wolne w górę: {{ x.max_h }}U</span></span>{{ heights_pick("height", 1, x.max_h) }}</div>
+        <button class="btn primary wide" type="submit">Dodaj w U{{ x.sel_u }}</button>
+      </form>
+
+    {% elif x.sel_item %}{% set i = x.sel_item %}
+      {# ───── zmiany zaznaczonej pozycji ───── #}
+      <div class="row-between"><h3 class="panel-title">{{ i.name or i.label or "półka" }}</h3>
+        <a class="small" href="/infrastruktura/szafa#rack-{{ r.id }}">zamknij</a></div>
+      <p class="muted small">U{{ i.u }}{% if i.height > 1 %}–U{{ i.u + i.height - 1 }}{% endif %} · {{ i.height }}U · {{ "tył" if i.back else "przód" }}{% if i.shelf %} · półka{% endif %}
+        {% if i.device_id %} · <a href="/urzadzenia/{{ i.device_id }}">karta urządzenia →</a>{% endif %}</p>
+
+      <form method="post" action="/infrastruktura/szafa/pozycja/{{ i.id }}" class="panel-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <span class="panel-label">Wysokość</span>
+        <div class="pills">{% for h in heights %}<button class="pill-opt{% if h == i.height %} on{% endif %}" type="submit" name="height" value="{{ h }}"
+          {% if h > x.max_h or h == i.height %}disabled{% endif %}><span>{{ h }}U</span></button>{% endfor %}</div>
+      </form>
+      <form method="post" action="/infrastruktura/szafa/pozycja/{{ i.id }}" class="panel-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <span class="panel-label">Przesuń</span>
+        <div class="pills">
+          <button class="pill-opt" type="submit" name="u" value="{{ i.u + 1 }}"{% if not x.can_up %} disabled{% endif %} title="1U w górę"><span>▲ w górę</span></button>
+          <button class="pill-opt" type="submit" name="u" value="{{ i.u - 1 }}"{% if not x.can_down %} disabled{% endif %} title="1U w dół"><span>▼ w dół</span></button>
+          <button class="pill-opt" type="submit" name="back" value="{{ '0' if i.back else '1' }}"><span>{{ "na przód" if i.back else "na tył" }}</span></button>
+        </div>
+      </form>
+      <form method="post" action="/infrastruktura/szafa/pozycja/{{ i.id }}" class="panel-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <span class="panel-label">Do U</span>
+        <input name="u" type="number" min="1" max="{{ r.units }}" value="{{ i.u }}" class="small-input">
+        <span class="panel-label">Podpis</span>
+        <input name="label" value="{{ i.label }}" maxlength="200" class="grow">
+        <button class="btn small" type="submit">Zapisz</button>
+      </form>
+
+      {% if i.shelf %}
+      <h3>Na półce</h3>
+      {% if i.on_shelf %}<ul class="plain small">{% for s in i.on_shelf %}
+        <li class="row-between"><span>{% if s.device_id %}<a href="/urzadzenia/{{ s.device_id }}">{{ s.name }}</a>{% else %}{{ s.label }}{% endif %}</span>
+          <form method="post" action="/infrastruktura/szafa/pozycja/{{ s.id }}/usun" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <input type="hidden" name="wroc" value="{{ i.id }}"><button class="link" type="submit">zdejmij</button></form></li>{% endfor %}</ul>
+      {% else %}<p class="muted small">Pusta.</p>{% endif %}
+      <form method="post" action="/infrastruktura/szafa/{{ r.id }}/umiesc" class="panel-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <input type="hidden" name="shelf_id" value="{{ i.id }}">
+        <select name="device_id" class="grow"><option value="">— urządzenie —</option>
+          {% for d in devices %}<option value="{{ d.id }}">{{ d.name }}{% if d.id in placed %} (przeniesie){% endif %}</option>{% endfor %}</select>
+        <button class="btn small primary" type="submit" name="what" value="urzadzenie">Postaw na półce</button>
+      </form>
+      {% endif %}
+
+      <form method="post" action="/infrastruktura/szafa/pozycja/{{ i.id }}/usun" class="mt">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button class="btn danger small" type="submit">Wyjmij z szafy</button>
+        {% if i.shelf and i.on_shelf %}<span class="muted small">razem z tym, co stoi na półce</span>{% endif %}
+      </form>
+
+    {% else %}
+      <p class="muted small">Kliknij wolne <b>U</b>, żeby coś tam dodać. Kliknij urządzenie albo półkę, żeby zmienić
+        wysokość, przesunąć albo wyjąć.</p>
+      <details class="mt">
+        <summary>Zmień szafę</summary>
+        <form method="post" action="/infrastruktura/szafa/{{ r.id }}" class="narrow-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <label class="field">Nazwa <input name="name" value="{{ r.name }}" required maxlength="100"></label>
+          <label class="field">Wysokość (U) <input name="units" type="number" min="1" max="60" value="{{ r.units }}" class="small-input"></label>
+          <label class="field">Gdzie stoi <input name="place" value="{{ r.place }}" maxlength="200"></label>
+          <label class="field">Notatka <input name="notes" value="{{ r.notes }}" maxlength="500"></label>
+          <button class="btn" type="submit">Zapisz</button>
+        </form>
+        <form method="post" action="/infrastruktura/szafa/{{ r.id }}/usun" class="mt">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <button class="btn danger small" type="submit">Usuń szafę „{{ r.name }}”</button>
+        </form>
+      </details>
+    {% endif %}
+    </aside>
+    {% endif %}
+  </div>
 </section>
 {% endfor %}
-</div>
-{% if sess.role == "admin" %}
+
+{% if admin %}
 <details class="card mt"{% if not racks %} open{% endif %}>
   <summary>Dodaj szafę</summary>
   <form method="post" action="/infrastruktura/szafa" class="narrow-form">

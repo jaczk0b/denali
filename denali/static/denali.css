@@ -153,10 +153,42 @@ a.ipcell:hover { color: var(--text); border-color: var(--link); }
 .legend .ipcell { min-height: 14px; width: 18px; }
 @media (max-width: 700px) { .ipgrid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
 
-/* szafa: widok przodu, 1U = 28 px; szyny z otworami, panele z uszami, półki */
-.racks { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
-.rack { flex: 0 1 auto; min-width: 320px; }
+/* szafa: widok przodu, 1U = 28 px; szyny z otworami, panele z uszami, półki; edycja kliknięciami */
+.rack-card { margin-bottom: 20px; }
+.rack-layout { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; margin-top: 8px; }
 .rack-sides { display: flex; flex-wrap: wrap; gap: 20px; }
+.rack-panel { flex: 1 1 320px; max-width: 520px; background: var(--surface-2); border: 1px solid var(--border-strong);
+  border-radius: 10px; padding: 16px; position: sticky; top: 12px; }
+.panel-title { margin: 0; font-size: 16px; color: var(--text); font-weight: 600; }
+.panel-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.panel-label { color: var(--muted); font-size: 13px; min-width: 64px; }
+.panel-row .grow { flex: 1 1 140px; min-width: 0; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill-opt { position: relative; display: inline-flex; }
+.pill-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.pill-opt span, button.pill-opt { display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+button.pill-opt span { min-height: 0; padding: 0; border: 0; background: none; }
+.pill-opt input:checked + span, button.pill-opt.on { border-color: var(--accent); background: #1d2b3a; }
+.pill-opt input:focus-visible + span { outline: 2px solid var(--link); outline-offset: 2px; }
+.pill-opt.off span, button.pill-opt:disabled { opacity: .4; cursor: not-allowed; }
+button.pill-opt.on:disabled { opacity: 1; }
+button.pill-opt:not(:disabled):hover, .pill-opt:not(.off) span:hover { border-color: var(--link); }
+.what-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+.what-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px;
+  border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); cursor: pointer; font-size: 12px; text-align: center; }
+.what-tile input { position: absolute; opacity: 0; }
+.what-tile:has(input:checked) { border-color: var(--accent); background: #1d2b3a; }
+.what-tile:has(input:focus-visible) { outline: 2px solid var(--link); outline-offset: 2px; }
+.rk-mini { display: block; width: 64px; height: 16px; border-radius: 2px; border: 1px solid #3a4450;
+  background: linear-gradient(180deg, #262e38, #1b2129); }
+.rk-mini.face-shelf { border: 0; background: linear-gradient(transparent 0 11px, #56616e 11px); }
+.rk-mini.face-patch { background: repeating-linear-gradient(90deg, #07090b 0 4px, #262e38 4px 6px) 4px 4px / 56px 7px no-repeat,
+  linear-gradient(180deg, #262e38, #1b2129); }
+.rk-mini.face-bays { background: repeating-linear-gradient(90deg, #11161c 0 12px, #3a4450 12px 13px) 3px 3px / 58px 9px no-repeat,
+  linear-gradient(180deg, #262e38, #1b2129); }
+@media (max-width: 520px) { .what-tiles { grid-template-columns: repeat(2, 1fr); } }
+
 .rk { width: 460px; max-width: 100%; border-radius: 8px; background: #2a3038; padding: 0 6px;
   box-shadow: inset 0 0 0 1px #3a434d, 0 6px 18px rgba(0, 0, 0, .35); }
 .rk-cap { height: 12px; }
@@ -169,36 +201,57 @@ a.ipcell:hover { color: var(--text); border-color: var(--link); }
 .rk-u i { width: 5px; height: 4px; background: #070809; border-radius: 1px; }
 .rk-slots { display: grid; grid-template-rows: repeat(var(--units), 28px); padding: 0 2px; }
 .rk-empty { border-bottom: 1px solid #12161b; }
-.rk-dev { display: grid; grid-template-columns: 16px 1fr auto 16px; align-items: center; gap: 8px; margin: 1px 0;
+a.rk-empty { display: flex; align-items: center; justify-content: center; text-decoration: none; color: transparent;
+  font-size: 12px; border-radius: 3px; }
+a.rk-empty:hover, a.rk-empty:focus-visible { color: var(--link); background: rgba(106, 168, 255, .08); outline: 1px dashed #2f4a66; }
+a.rk-empty.sel { color: var(--text); background: rgba(106, 168, 255, .18); outline: 2px solid var(--accent); }
+.rk-dev { display: grid; grid-template-columns: 16px minmax(0, auto) 1fr auto 16px; align-items: center; gap: 8px; margin: 1px 0;
   background: linear-gradient(180deg, #262e38, #1b2129); border: 1px solid #3a4450; border-radius: 3px;
   color: var(--text); text-decoration: none; overflow: hidden; min-height: 0; }
 a.rk-dev:hover, a.rk-box:hover { border-color: var(--link); color: var(--text); }
+.rk-dev.sel, .rk-box.sel, .rk-shelf.sel .rk-shelf-bar { outline: 2px solid var(--accent); outline-offset: 1px; }
 .rk-dev.down, .rk-box.down { background: linear-gradient(180deg, #3a1a1d, #2a1517); border-color: var(--down); }
 .rk-dev.warn, .rk-box.warn { border-color: var(--warn); }
-.rk-ear { align-self: stretch; background: radial-gradient(circle at 50% 50%, #0b0e12 0 2.5px, transparent 3px), #313a45; }
-.rk-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; overflow: hidden; }
+.rk-ear { align-self: stretch; background: radial-gradient(circle at 50% 50%, #0b0e12 0 2.5px, transparent 3px) center / 100% 28px repeat-y, #313a45; }
+.rk-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; overflow: hidden; max-width: 220px; }
 .rk-name b { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
 .rk-name small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
 .rk-led { display: flex; align-items: center; }
-.rk-dev.blank { background: linear-gradient(180deg, #1d232b, #161b21); color: var(--text-3); }
-.rk-dev.blank .rk-name b { font-weight: 500; }
-.rk-dev.patch { grid-template-columns: 16px auto 1fr 16px; }
-.rk-ports { height: 12px; margin-right: 6px; background: repeating-linear-gradient(90deg, #07090b 0 9px, transparent 9px 13px);
-  border-radius: 1px; }
+.rk-face { align-self: center; height: 12px; min-width: 0; }
+.rk-dev.face-blank { background: linear-gradient(180deg, #1d232b, #161b21); color: var(--text-3); }
+.rk-dev.face-blank .rk-name b { font-weight: 500; }
+/* przody wg typu: switch/router — porty, serwer — kieszenie na dyski, UPS — wyświetlacz, komputer na półce — tower */
+.face-patch .rk-face, .face-ports .rk-face { height: 12px;
+  background: repeating-linear-gradient(90deg, #07090b 0 9px, transparent 9px 13px); border-radius: 1px; }
+.rk-dev.face-ports .rk-face { height: min(26px, calc(var(--h) * 28px - 14px));
+  background: repeating-linear-gradient(90deg, #07090b 0 9px, transparent 9px 13px) top / 100% 9px no-repeat,
+              repeating-linear-gradient(90deg, #07090b 0 9px, transparent 9px 13px) bottom / 100% 9px no-repeat; }
+.rk-dev.face-bays .rk-face { align-self: stretch; height: auto; margin: 4px 0;
+  background: repeating-linear-gradient(90deg, #11161c 0 calc(25% - 3px), transparent calc(25% - 3px) 25%),
+              repeating-linear-gradient(180deg, transparent 0 9px, #3a4450 9px 10px); border-radius: 2px; }
+.rk-dev.face-ups .rk-face { align-self: stretch; height: auto; margin: 6px 0;
+  background: linear-gradient(90deg, #102a1e 0 36px, transparent 36px 44px),
+              repeating-linear-gradient(90deg, transparent 0 44px, #11161c 44px 47px, transparent 47px 50px); }
 .rk-shelf { display: flex; flex-direction: column; margin: 1px 0; min-height: 0; }
 .rk-shelf-items { flex: 1; display: flex; align-items: flex-end; gap: 6px; padding: 4px 6px 0; min-height: 0; }
 .rk-shelf-bar { height: 12px; background: linear-gradient(180deg, #56616e, #3a434d); border-radius: 2px;
-  display: flex; align-items: center; justify-content: flex-end; padding: 0 6px; }
+  display: flex; align-items: center; justify-content: flex-end; padding: 0 6px; text-decoration: none; }
+a.rk-shelf-bar:hover { background: linear-gradient(180deg, #6aa8ff, #3a434d); }
 .rk-shelf-bar span { font-size: 9px; line-height: 1; color: #0e1114; font-weight: 600; white-space: nowrap; }
-.rk-shelf-empty { align-self: center; margin: 0 auto; color: #5d6772; font-size: 12px; }
-.rk-box { flex: 1 1 0; max-width: 170px; min-width: 0; height: calc(100% - 2px); max-height: 120px; min-height: 22px;
-  display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 4px 8px; position: relative;
+.rk-shelf-empty { align-self: center; margin: 0 auto; color: #5d6772; font-size: 12px; text-decoration: none; }
+a.rk-shelf-empty:hover { color: var(--link); }
+.rk-box { flex: 1 1 0; max-width: 170px; min-width: 0; height: calc(100% - 2px); max-height: 160px; min-height: 22px;
+  display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; padding: 3px 8px 4px; position: relative;
   background: linear-gradient(180deg, #262e38, #1b2129); border: 1px solid #3a4450; border-radius: 4px 4px 1px 1px;
   color: var(--text); text-decoration: none; overflow: hidden; }
 .rk-box b { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rk-box small { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rk-box .rk-led { position: absolute; top: 5px; right: 6px; }
-.rk-box.blank { color: var(--text-3); background: #161b21; }
+.rk-box .rk-face { display: none; }
+.rk-box.face-tower { max-width: 92px; justify-content: flex-end; padding-bottom: 8px; }
+.rk-box.face-tower .rk-face { display: block; position: absolute; top: 8px; left: 8px; right: 8px; height: 22px;
+  background: linear-gradient(#11161c, #11161c) top / 100% 5px no-repeat, linear-gradient(#11161c, #11161c) 0 9px / 100% 5px no-repeat; }
+.rk-box.face-blank { color: var(--text-3); background: #161b21; }
 
 /* mapa — kolory są też w samym SVG; tu tylko podświetlenie */
 .map-wrap { overflow-x: auto; background: #12161b; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
