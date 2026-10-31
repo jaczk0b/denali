@@ -3,7 +3,9 @@
 Stan urządzenia łączy wszystkie źródła:
 - integracje (np. Proxmox): ok | warn | down | off | unknown,
 - sprawdzenia z LAN (ping, HTTP): „nie działa” dopiero, gdy nie odpowiada dłużej niż próg z profilu
-  (down_after_s) — krótka czkawka nie robi alarmu.
+  (down_after_s) — krótka czkawka nie robi alarmu,
+- sprawdzenie z internetu: najwyżej „uwaga” — w domu aplikacja działa, więc nie jest przyczyną awarii;
+  zwykle winny jest Pangolin, DNS albo certyfikat.
 
 Pierwszeństwo: off (wyłączone celowo — wtedy milczący ping nie jest awarią) → down → warn → ok → unknown.
 Worker co minutę liczy stany, zapisuje je (strony panelu tylko je czytają), puszcza analizę przyczyny
@@ -46,8 +48,10 @@ def compute(conn, now=None):
             if c["ok"]:
                 soon = c["cert_expires_at"] and c["cert_expires_at"] - now < 14 * 86400
                 states.append(("warn" if soon else "ok", c["summary"]))
-            elif c["first_fail_at"] and now - c["first_fail_at"] >= down_after:
-                states.append(("down", c["summary"]))
+            elif not c["first_fail_at"]:
+                states.append(("unknown", c["summary"]))
+            elif now - c["first_fail_at"] >= down_after:
+                states.append(("warn" if c["kind"] == "internet" else "down", c["summary"]))
             else:
                 states.append(("unknown", f"{c['summary']} (czekam {down_after} s, zanim uznam za awarię)"))
         if not states:

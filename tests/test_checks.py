@@ -118,3 +118,88 @@ def test_pelny_obieg_i_karta(app, monkeypatch):
         enable_2fa(cl, app)
         html = cl.get(f"/urzadzenia/{d}").text
     assert "Ping z LAN" in html and "ping 2 ms" in html
+
+
+# ───────────────────────── z internetu ─────────────────────────
+PUBLIC_IP = "203.0.113.7"       # adres VPS-a z Pangolinem (tu: z puli dokumentacyjnej, w teście udajemy publiczny)
+
+
+def internet_transport(answers, app_status=302, dns_down=(), seen=None):
+    """Publiczny DNS (DoH) i aplikacja za Pangolinem — bez sieci."""
+    def handler(request):
+        if request.url.path in ("/dns-query", "/resolve"):
+            if request.url.host in dns_down:
+                raise httpx.ConnectError("brak sieci")
+            name = request.url.params["name"]
+            return httpx.Response(200, json={"Status": 0, "Answer": [{"type": 1, "data": ip} for ip in answers.get(name, [])]})
+        if seen is not None:
+            seen.append((str(request.url), request.headers["host"], request.extensions.get("sni_hostname")))
+        return httpx.Response(app_status, headers={"location": "https://auth.example.com/"})
+    return httpx.MockTransport(handler)
+
+
+@pytest.fixture
+def vps_is_public(monkeypatch):
+    real = checks._public_ip
+    monkeypatch.setattr(checks, "_public_ip", lambda ip: ip == PUBLIC_IP or real(ip))
+
+
+def test_co_moze_byc_publiczne(conn):
+    for url, expected in [("https://immich.serwispowers.com", True), ("http://ha.example.org:8123/", True),
+                          ("https://immich.lan", False), ("https://192.168.1.40", False), ("http://nas", False),
+                          ("https://nas.home.arpa", False), ("ftp://pliki.example.org", False)]:
+        assert checks.public_candidate(url) is expected, url
+    d = inv.create_device(conn, "Immich", "kontener", app_url="https://immich.serwispowers.com")
+    assert set(checks.plan(conn)) == {checks.Spec(d, "http", "https://immich.serwispowers.com"),
+                                      checks.Spec(d, "internet", "https://immich.serwispowers.com")}
+
+
+def test_z_internetu_przez_publiczny_dns(vps_is_public):
+    seen = []
+    t = internet_transport({"immich.serwispowers.com": [PUBLIC_IP]}, seen=seen)
+    r = run(checks.internet("https://immich.serwispowers.com/foto?x=1", t))
+    assert r.ok and r.summary.startswith("z internetu: HTTP 302")          # logowanie Pangolina = droga działa
+    # łączymy się z adresem z publicznego DNS, z prawdziwą nazwą (Host i SNI — certyfikat jest sprawdzany)
+    assert seen == [(f"https://{PUBLIC_IP}/foto?x=1", "immich.serwispowers.com", "immich.serwispowers.com")]
+    r = run(checks.internet("https://immich.serwispowers.com", internet_transport(
+        {"immich.serwispowers.com": [PUBLIC_IP]}, app_status=502)))
+    assert not r.ok and "502" in r.summary and "Pangolin" in r.summary
+
+
+def test_z_internetu_tylko_lan_i_brak_internetu(vps_is_public):
+    # rekord z adresem prywatnym (szara chmurka) albo brak rekordu = aplikacja tylko w LAN → nie sprawdzamy
+    for answers in ({"denali.serwispowers.com": ["192.168.1.5"]}, {}):
+        r = run(checks.internet("https://denali.serwispowers.com", internet_transport(answers)))
+        assert r.skip
+    # pierwszy DNS nie odpowiada → drugi
+    r = run(checks.internet("https://immich.serwispowers.com", internet_transport(
+        {"immich.serwispowers.com": [PUBLIC_IP]}, dns_down=("1.1.1.1",))))
+    assert r.ok
+    # żaden DNS nie odpowiada → w domu nie ma internetu; to nie jest awaria aplikacji
+    r = run(checks.internet("https://immich.serwispowers.com", internet_transport(
+        {}, dns_down=("1.1.1.1", "8.8.8.8"))))
+    assert r.unknown and not r.skip
+
+
+def test_z_internetu_w_stanie_urzadzenia(conn, vps_is_public):
+    from denali import live
+    d = inv.create_device(conn, "Immich", "kontener", app_url="https://immich.serwispowers.com")
+    lan = checks.Spec(d, "http", "https://immich.serwispowers.com")
+    net = checks.Spec(d, "internet", "https://immich.serwispowers.com")
+    ok_lan = (lan, checks.Result(True, "HTTP 200"))
+    down_after = profiles.value(conn, d, "down_after_s")
+
+    checks.record(conn, [ok_lan, (net, checks.Result(False, "z internetu: błąd 502"))], [lan, net], now=1000)
+    checks.record(conn, [ok_lan, (net, checks.Result(False, "z internetu: błąd 502"))], [lan, net],
+                  now=1000 + down_after)
+    s = live.compute(conn, now=1000 + down_after)[d]
+    assert s["state"] == "warn" and "502" in s["why"]                       # „uwaga”, nie awaria i nie incydent
+
+    checks.record(conn, [ok_lan, (net, checks.Result(False, "brak internetu w domu", unknown=True))], [lan, net],
+                  now=5000)
+    row = conn.execute(select(check_state).where(check_state.c.kind == "internet")).mappings().first()
+    assert row["first_fail_at"] is None
+    assert live.compute(conn, now=5000 + down_after)[d]["state"] == "ok"   # LAN działa, z internetu: nie wiadomo
+
+    checks.record(conn, [ok_lan, (net, checks.Result(False, "adres tylko w LAN", skip=True))], [lan, net], now=6000)
+    assert [r.kind for r in conn.execute(select(check_state))] == ["http"]  # rekord zmieniony na LAN → znika

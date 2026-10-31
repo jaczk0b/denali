@@ -212,7 +212,7 @@ do urządzeń, alerty, analiza przyczyny, audyt akcji. **Nowy typ urządzenia = 
 | OpenWrt | clients, status (WAN, porty, Wi-Fi), updates (apk/opkg), actions: **tylko kopia konfiguracji** | użytkownik rpcd z ACL tylko na potrzebne obiekty ubus | 3 / 5 |
 | TP-Link (fabryczny) | clients, status | konto admina routera (jedyne, jakie ma) — tylko odczyt po stronie panelu | 3 |
 | Agent | status (NFS), updates (apt, reboot-required), actions: `apt_upgrade` z lokalnej białej listy | token per maszyna, tylko HTTPS | 4 / 5 |
-| Sprawdzenia | status (http, tcp, ping, tls, dns) z LAN i z VPS | — | 3 |
+| Sprawdzenia | status (http, tcp, ping, tls, dns) z LAN i z internetu (adres z publicznego DNS, droga przez Pangolina — VPS nie jest w Tailscale; decyzja 31.10.2026) | — | 3 |
 
 Później, bez zmian w rdzeniu: Omada / UniFi (AP), UPS przez NUT, Home Assistant.
 

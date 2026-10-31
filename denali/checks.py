@@ -1,7 +1,9 @@
-"""Sprawdzenia z LAN, wyliczane same — bez ustawiania niczego na urządzeniu:
+"""Sprawdzenia wyliczane same — bez ustawiania niczego na urządzeniu:
 
-- każde urządzenie z adresem (IP, a gdy go brak — nazwa hosta) dostaje ping,
-- każde urządzenie z adresem aplikacji dostaje sprawdzenie HTTP (i datę ważności certyfikatu dla https),
+- każde urządzenie z adresem (IP, a gdy go brak — nazwa hosta) dostaje ping z LAN,
+- każde urządzenie z adresem aplikacji dostaje sprawdzenie HTTP z LAN (i datę ważności certyfikatu dla https),
+- adres aplikacji na domenie, która w publicznym DNS wskazuje adres publiczny, dostaje też sprawdzenie
+  „z internetu” (niżej) — tak, jak łączy się ktoś spoza domu,
 - profil „Monitoruj stan: nie” wyłącza sprawdzenia dla typu albo pojedynczego urządzenia.
 
 Ping działa bez uprawnień roota (gniazdo ICMP „datagramowe”, które Docker domyślnie pozwala otworzyć).
@@ -9,6 +11,7 @@ Gdy to niemożliwe, sprawdzamy kilka typowych portów TCP: nawet odmowa połącz
 """
 import asyncio
 import errno
+import ipaddress
 import socket
 import ssl
 import struct
@@ -45,6 +48,8 @@ class Result:
     ms: float | None = None
     cert_expires_at: float | None = None
     warn: bool = False                 # działa, ale certyfikat wkrótce wygasa (do stanu urządzenia w kroku 4)
+    unknown: bool = False              # nie da się sprawdzić (brak internetu w domu) — to nie awaria aplikacji
+    skip: bool = False                 # nie ma czego sprawdzać (adres tylko w LAN) — usuwamy stan
 
 
 # ───────────────────────── co sprawdzać ─────────────────────────
@@ -64,6 +69,8 @@ def plan(conn):
             specs.append(Spec(d["id"], "ping", ip or host))
         if d["app_url"]:
             specs.append(Spec(d["id"], "http", d["app_url"]))
+            if public_candidate(d["app_url"]):
+                specs.append(Spec(d["id"], "internet", d["app_url"]))
     return specs
 
 
@@ -189,6 +196,101 @@ async def http(url, transport=None, now=None):
     return res
 
 
+# ───────────────────────── z internetu ─────────────────────────
+# VPS nie jest w Tailscale i nie dosięgnie panelu, więc sprawdzamy od strony domu, ale drogą z zewnątrz:
+# adres z publicznego DNS (z pominięciem domowego — ten zwykle wskazuje adres w LAN), połączenie przez internet
+# do VPS-a (Pangolin) i tunelem z powrotem do aplikacji. Wykrywa: padnięty Pangolin/Newt, zły rekord DNS,
+# nieważny certyfikat publiczny. Nie wykrywa problemu z łączem w domu — to zgłasza strażnik z VPS-a.
+# Serwery DNS po adresie IP (certyfikaty obu mają ten adres), żeby nie zależeć od domowego DNS.
+PUBLIC_DNS = ("https://1.1.1.1/dns-query", "https://8.8.8.8/resolve")
+LOCAL_SUFFIXES = (".lan", ".local", ".home", ".home.arpa", ".internal", ".localdomain", ".localhost")
+
+
+def public_candidate(url):
+    """Czy adres aplikacji w ogóle może być publiczny: http(s) na nazwie domeny (nie IP, nie .lan)."""
+    u = urlsplit(url or "")
+    host = (u.hostname or "").lower().rstrip(".")
+    if u.scheme not in ("http", "https") or "." not in host or host.endswith(LOCAL_SUFFIXES):
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        return True
+
+
+def _public_ip(ip):
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return a.is_global and a not in ipaddress.ip_network("100.64.0.0/10")
+
+
+async def resolve_public(host, cli):
+    """Adresy A z publicznego DNS. None = żaden serwer DNS nie odpowiedział (brak internetu w domu)."""
+    for server in PUBLIC_DNS:
+        try:
+            r = await cli.get(server, params={"name": host, "type": "A"},
+                              headers={"Accept": "application/dns-json"}, timeout=5)
+            data = r.json()
+        except (httpx.HTTPError, ValueError):
+            continue
+        if r.status_code != 200 or not isinstance(data, dict):
+            continue
+        return [a["data"] for a in data.get("Answer") or [] if a.get("type") == 1 and a.get("data")]
+    return None
+
+
+async def internet(url, transport=None, now=None):
+    """Aplikacja odpowiada z internetu: kod poniżej 500 (także przekierowanie do logowania Pangolina) i ważny
+    certyfikat dla tej nazwy. 502/503/504 to zwykle Pangolin, który nie dosięga aplikacji."""
+    now = now or time.time()
+    u = urlsplit(url)
+    host = u.hostname.lower().rstrip(".")
+    kw = {"transport": transport} if transport else {}
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=False, **kw) as cli:
+        ips = await resolve_public(host, cli)
+        if ips is None:
+            return Result(False, "brak internetu w domu — nie da się sprawdzić", unknown=True)
+        public = [ip for ip in ips if _public_ip(ip)]
+        if not public:
+            # brak rekordu albo rekord z adresem prywatnym (np. denali — szara chmurka): aplikacja tylko w LAN
+            return Result(False, "adres tylko w LAN", skip=True)
+        port = f":{u.port}" if u.port else ""
+        target = f"{u.scheme}://{public[0]}{port}{u.path or '/'}" + (f"?{u.query}" if u.query else "")
+        start = time.perf_counter()
+        expires = None
+        try:
+            async with cli.stream("GET", target, headers={"Host": host + port, "User-Agent": "Denali-check"},
+                                  extensions={"sni_hostname": host}) as r:
+                ms = (time.perf_counter() - start) * 1000
+                stream = r.extensions.get("network_stream")
+                ssl_obj = stream.get_extra_info("ssl_object") if stream else None
+                if ssl_obj is not None:
+                    try:
+                        expires = ssl.cert_time_to_seconds(ssl_obj.getpeercert()["notAfter"])
+                    except (KeyError, TypeError, ValueError):
+                        pass
+                status = r.status_code
+        except httpx.ConnectError as e:
+            if "certificate" in str(e).lower():
+                return Result(False, f"z internetu: nieważny certyfikat dla {host}")
+            return Result(False, f"z internetu: brak połączenia z {public[0]}")
+        except httpx.TimeoutException:
+            return Result(False, "z internetu: nie odpowiada (przekroczony czas)")
+        except httpx.HTTPError as e:
+            return Result(False, f"z internetu: brak połączenia ({e.__class__.__name__})")
+    if status >= 500:
+        return Result(False, f"z internetu: błąd {status} (Pangolin nie dosięga aplikacji?)", ms)
+    res = Result(True, f"z internetu: HTTP {status} · {ms:.0f} ms", ms, cert_expires_at=expires)
+    if expires and (expires - now) / 86400 < CERT_WARN_DAYS:
+        res.warn = True
+        when = datetime.fromtimestamp(expires, timezone.utc).astimezone().strftime("%d.%m.%Y")
+        res.summary += f" · certyfikat wygasa {when}"
+    return res
+
+
 # ───────────────────────── uruchomienie i zapis ─────────────────────────
 async def run_all(specs, transport=None, now=None):
     sem = asyncio.Semaphore(CONCURRENCY)
@@ -197,6 +299,8 @@ async def run_all(specs, transport=None, now=None):
         async with sem:
             if spec.kind == "ping":
                 return spec, await ping(spec.target)
+            if spec.kind == "internet":
+                return spec, await internet(spec.target, transport, now)
             return spec, await http(spec.target, transport, now)
     return await asyncio.gather(*(one(s) for s in specs))
 
@@ -204,12 +308,17 @@ async def run_all(specs, transport=None, now=None):
 def record(conn, results, specs, now=None):
     now = now or time.time()
     current = {(r.device_id, r.kind, r.target): r for r in conn.execute(select(check_state)).mappings()}
+    skipped = set()
     for spec, res in results:
         key = (spec.device_id, spec.kind, spec.target)
         old = current.get(key)
+        if res.skip:
+            skipped.add(key)
+            continue
+        # „nie da się sprawdzić” nie liczy się do czasu awarii: puste first_fail_at przy błędzie = stan nieznany
+        failing_since = None if res.ok or res.unknown else (old["first_fail_at"] if old and old["first_fail_at"] else now)
         values = {"ok": res.ok, "summary": res.summary[:300], "ms": res.ms, "cert_expires_at": res.cert_expires_at,
-                  "checked_at": now,
-                  "first_fail_at": None if res.ok else ((old["first_fail_at"] if old and old["first_fail_at"] else now)),
+                  "checked_at": now, "first_fail_at": failing_since,
                   "last_ok_at": now if res.ok else (old["last_ok_at"] if old else None)}
         if old:
             conn.execute(check_state.update().where(check_state.c.device_id == spec.device_id,
@@ -218,7 +327,7 @@ def record(conn, results, specs, now=None):
         else:
             conn.execute(check_state.insert().values(device_id=spec.device_id, kind=spec.kind, target=spec.target,
                                                      **values))
-    planned = {(s.device_id, s.kind, s.target) for s in specs}
+    planned = {(s.device_id, s.kind, s.target) for s in specs} - skipped
     for key in set(current) - planned:          # adres albo link zmieniony / monitorowanie wyłączone
         conn.execute(delete(check_state).where(check_state.c.device_id == key[0], check_state.c.kind == key[1],
                                                check_state.c.target == key[2]))

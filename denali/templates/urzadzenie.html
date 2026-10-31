@@ -59,7 +59,7 @@
     {% for c in checks %}
     {% set soon = c.ok and c.cert_expires_at and c.cert_expires_at - now < 14 * 86400 %}
     <div class="card source">
-      <div class="source-head"><span>{{ "Ping z LAN" if c.kind == "ping" else "Aplikacja (HTTP)" }}</span><span>{{ c.checked_at | hm }}</span></div>
+      <div class="source-head"><span>{{ {"ping": "Ping z LAN", "internet": "Z internetu (przez publiczny DNS)"}.get(c.kind, "Aplikacja (HTTP)") }}</span><span>{{ c.checked_at | hm }}</span></div>
       <div class="source-state">{{ st("warn" if soon else ("ok" if c.ok else "down"), 15) }}
         {{ ("Działa — uwaga" if soon else "Działa") if c.ok else "Nie odpowiada" }}</div>
       <div class="small">{{ c.summary }}{% if not c.ok and c.first_fail_at %} · od {{ c.first_fail_at | hm }}{% endif %}</div>

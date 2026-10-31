@@ -9,8 +9,8 @@ Dokumenty: [PROJEKT.md](PROJEKT.md) (projekt i decyzje), [AUDYT.md](AUDYT.md) (a
 **Stan: Etap 3 (status) — kod gotowy, czeka na sprawdzenie na serwerach.** Jest: logowanie z 2FA, urządzenia,
 zależności i kable, profile, kolejka „do zatwierdzenia”, analiza przyczyny, incydenty, procedury, runbooki, pliki,
 skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo i router TP-Link,
-sprawdzenia z LAN, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS, odświeżanie
-pulpitu i list na żywo (SSE). Nie ma jeszcze: sprawdzeń z VPS i OpenWrt; aktualizacji — Etap 4; akcji — Etap 5.
+sprawdzenia z LAN i z internetu, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS,
+odświeżanie pulpitu i list na żywo (SSE). Nie ma jeszcze: OpenWrt (odłożone); aktualizacji — Etap 4; akcji — Etap 5.
 
 Spis treści:
 [Instalacja](#instalacja) ·

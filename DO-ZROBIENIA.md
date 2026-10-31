@@ -1,13 +1,14 @@
 # Do zrobienia
 
-Stan na 31.10.2026. Etap 2 (rdzeń) i kod Etapu 3 (stan na żywo) są gotowe; Etap 3 czeka na sprawdzenie na prawdziwych
-serwerach i akceptację. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
+Stan na 31.10.2026. Etap 2 (rdzeń) gotowy. Etap 3 (status): integracje i test kryterium (wyłączona VM → incydent
+→ Discord → „Rozwiązane”) działają na serwerach; czeka na wdrożenie ostatnich zmian i akceptację. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
 
 ---
 
 ## 1. Po Twojej stronie — teraz
 
-- [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (ostatnie zmiany: PBS, TrueNAS, strażnik, router, odświeżanie na żywo).
+- [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
+      od routera/AP, sprawdzenia z internetu).
 - [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).
       Instrukcja: README → Instalacja → krok 4.
@@ -32,26 +33,22 @@ serwerach i akceptację. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), dec
 
 ## 3. Etap 3 — sprawdzenie na prawdziwych serwerach
 
-Na prawdziwych danych działa na razie tylko **Proxmox**. Reszta jest sprawdzona testami na odpowiedziach w formacie
-z dokumentacji — pierwsze podłączenie może wymagać poprawki (wtedy wklej treść błędu).
-
-- [ ] Integracje → **Komodo** (klucz tylko do odczytu) → Do zatwierdzenia → „Przypnij dopasowane”.
-- [ ] Integracje → **PBS** (token z rolą Audit) — kopie pojawią się na kartach VM.
-- [ ] Integracje → **TrueNAS** (klucz API) — pule i snapshoty na karcie TrueNAS.
-- [ ] Integracje → **Router TP-Link** (+ drugi jako AP) — klienci sieci w „Do zatwierdzenia”. Po zatwierdzeniu
-      na karcie urządzenia w Wi-Fi: „zależy od <AP> · sieć · twarda · wykryta, aktualna” (pojawia się po kolejnym
-      odczycie, do 5 min). Sprawdź, czy router pokazuje klientów AP jako swoich (wtedy mają też miękką zależność od routera).
-- [ ] Powiadomienia → **webhook Discorda** (przyjdzie wiadomość testowa).
-- [ ] Powiadomienia → **strażnik**: Uptime Kuma na VPS, monitor *Push*, 60 s, Retries 2, powiadomienie na Discord.
-- [ ] **Test kryterium Etapu 3:** wyłącz testową VM z zaznaczonym *Start at boot* → po 1–2 min incydent na pulpicie
-      i wiadomość na Discordzie → po włączeniu „Rozwiązane”.
-- [ ] Przy tym teście: pulpit na tablecie i w przeglądarce (przez NPM) zmienia się **sam**, bez przeładowania strony.
+- [x] Integracje: Proxmox, Komodo, PBS, TrueNAS, router TP-Link; powiadomienia na Discord; strażnik (potwierdzone 31.10).
+- [x] **Test kryterium Etapu 3:** wyłączona testowa VM → incydent → Discord → „Rozwiązane” (potwierdzone 31.10).
+- [ ] Po wdrożeniu: pulpit na tablecie i w przeglądarce zmienia się **sam**, bez przeładowania strony.
+- [ ] Po wdrożeniu: na karcie urządzenia w Wi-Fi „zależy od <AP> · sieć · twarda · wykryta, aktualna” (do 5 min po
+      odczycie routera). Sprawdź, czy router pokazuje klientów AP jako swoich (wtedy mają też miękką zależność od routera).
+- [ ] Po wdrożeniu: na karcie aplikacji wystawionej przez Pangolina blok **„Z internetu (przez publiczny DNS)”**
+      z „HTTP 200/302”. Działa tylko, gdy *adres aplikacji* na karcie to publiczna nazwa (np. `https://immich.serwispowers.com`);
+      przy adresie z IP w LAN sprawdzenia z internetu nie ma.
 - [ ] Akceptacja Etapu 3.
 
 ## 4. Braki względem projektu (Etap 3)
 
-- [ ] **Sprawdzenia z VPS** („działa w LAN, nie działa z internetu”) — jest tylko strażnik; sprawdzenia aplikacji
-      z zewnątrz jeszcze nie.
+- [x] **Sprawdzenia z internetu** („działa w LAN, nie działa z internetu”) — zamiast skryptu na VPS (VPS nie jest
+      w Tailscale): Denali bierze adres z publicznego DNS (1.1.1.1 / 8.8.8.8) i łączy się przez internet → Pangolin →
+      aplikacja, z pełnym sprawdzeniem certyfikatu. Błąd daje „uwaga” na urządzeniu (bez incydentu i powiadomienia —
+      w domu aplikacja działa). Gdy padnie internet w domu: „nie da się sprawdzić”, a powiadomi strażnik (decyzja 31.10).
 - [x] **Odświeżanie na żywo (SSE)** — pulpit, listy urządzeń i incydentów oraz karta incydentu podmieniają treść
       przy zmianie stanu (do ~5 s po zapisie workera); nie w trakcie pisania. Do sprawdzenia na tablecie i przez NPM.
 - [ ] **OpenWrt** — odłożone (POMYSLY.md); router działa przez nieoficjalną bibliotekę TP-Link.
