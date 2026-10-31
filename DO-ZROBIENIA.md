@@ -8,7 +8,7 @@ i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), 
 ## 1. Po Twojej stronie — teraz
 
 - [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
-      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury — migracje bazy 0009 i 0010 wykonają się same przy
+      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury — migracje bazy 0009–0011 wykonają się same przy
       starcie).
 - [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).
@@ -100,8 +100,9 @@ Zakładka źródła (Proxmox, TrueNAS, Docker, Sieć) pokazuje się dopiero, gdy
 - [x] **Sieć** — router i AP, kto jest w sieci (kabel / Wi-Fi, sygnał, przez który AP), nieprzypisani klienci.
 - [x] **Adresy IP** — sieci /24 wyliczone same z adresów urządzeń i klientów routera: zajęte (przez co), wolne
       zakresy, konflikty. Bez ręcznego wpisywania sieci; Tailscale i adresy publiczne pominięte.
-- [x] **Szafa** — przód i tył szafy, co na której wysokości (U); pozycja to urządzenie albo sam opis (patch panel,
-      półka). Kolizje i wysokość szafy sprawdzane; na karcie urządzenia widać „Szafa · U6”. Migracja bazy 0010.
+- [x] **Szafa** — przód i tył szafy, co na której wysokości (U): urządzenie w szynach, sam opis (patch panel,
+      zaślepka) albo **półka**, na której stoi obok siebie kilka rzeczy (router, terminal, zwykły komputer — np.
+      dół szafy U1–U8). Kolizje i wysokość sprawdzane; na karcie urządzenia „Szafa · U6”. Migracje bazy 0010–0011.
 - [x] **Mapa** — rysowana sama z dokumentacji (sieć → serwery → maszyny → aplikacje; klienci sieci na żądanie),
       stan na żywo, zależność „dane” czerwona, gdy źródło nie działa.
 - [ ] **Do sprawdzenia u Ciebie:** wygląd na prawdziwych danych (mapa przy wielu urządzeniach, tablet), czy liczby

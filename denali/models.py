@@ -153,6 +153,8 @@ rack_item = Table(
     Column("u", Integer, nullable=False),                       # najniższe zajęte U (1 = dół szafy)
     Column("height", Integer, nullable=False, default=1),       # ile U zajmuje
     Column("back", Boolean, nullable=False, default=False),     # montaż z tyłu (np. listwa, switch od tyłu)
+    Column("shelf", Boolean, nullable=False, default=False),    # półka: zajmuje U, stoją na niej inne pozycje
+    Column("shelf_id", Integer, ForeignKey("rack_item.id", ondelete="CASCADE"), index=True),  # stoi na tej półce
 )
 
 device_override = Table(

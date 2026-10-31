@@ -100,10 +100,13 @@ def rack_delete(request: Request, rack_id: int, sess: dict = Depends(require_adm
 
 @router.post("/infrastruktura/szafa/{rack_id:int}/umiesc")
 def rack_place(request: Request, rack_id: int, device_id: str = Form(""), label: str = Form(""), u: str = Form(""),
-               height: str = Form("1"), back: str = Form(""), sess: dict = Depends(require_admin)):
+               height: str = Form("1"), back: str = Form(""), shelf: str = Form(""), shelf_id: str = Form(""),
+               sess: dict = Depends(require_admin)):
     did = int(device_id) if device_id.strip().isdigit() else None
+    sid = int(shelf_id) if shelf_id.strip().isdigit() else None
     return _rack_change(request, sess, lambda c: racks.place(c, rack_id, u, height, device_id=did, label=label,
-                                                             back=bool(back)), "rack_place", did or label)
+                                                             back=bool(back), shelf=bool(shelf), shelf_id=sid),
+                        "rack_place", did or label or "półka")
 
 
 @router.post("/infrastruktura/szafa/pozycja/{item_id:int}/usun")

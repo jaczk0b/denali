@@ -120,6 +120,29 @@ def test_szafa_pozycje_i_kolizje(conn):
     assert racks.for_device(conn, sw)["rack_name"] == "Szafa 12U"
 
 
+def test_polka_z_komputerem_i_routerem(conn):
+    pc = inv.create_device(conn, "komputer", "komputer")
+    router = inv.create_device(conn, "router", "router")
+    term = inv.create_device(conn, "terminal HP", "komputer")
+    rid = racks.save_rack(conn, "Szafa", 12)
+    shelf = racks.place(conn, rid, 3, 8, label="dół szafy", shelf=True)
+    racks.place(conn, rid, shelf_id=shelf, device_id=pc)
+    racks.place(conn, rid, shelf_id=shelf, device_id=router)
+    racks.place(conn, rid, shelf_id=shelf, device_id=term, label="na lewo")
+    with pytest.raises(racks.RackError, match="postaw na niej"):
+        racks.place(conn, rid, 5, 1, label="patch panel")         # w szynach na wysokości półki — nie
+    with pytest.raises(racks.RackError, match="na półce"):
+        racks.place(conn, rid, shelf_id=shelf, shelf=True, label="półka w półce")
+    racks.place(conn, rid, 11, 1, label="patch panel 24")
+    [x] = racks.overview(conn)
+    [s] = x["shelves"]
+    assert [i["name"] for i in s["on_shelf"]] == ["komputer", "router", "terminal HP"]
+    assert x["used"] == 9                                          # półka 8 U + patch panel; to na półce nie liczy się
+    assert racks.for_device(conn, pc)["u"] == 3
+    racks.remove_item(conn, shelf)                                 # wyjęcie półki zdejmuje to, co na niej stoi
+    assert racks.for_device(conn, pc) is None
+
+
 def test_szafa_przez_strone(app):
     make_user(app)
     with app.state.engine.begin() as c:
@@ -138,7 +161,7 @@ def test_szafa_przez_strone(app):
                     data={"csrf_token": csrf, "device_id": str(sw), "u": "6", "height": "1"})
         assert r.status_code == 303
         page = cl.get("/infrastruktura/szafa").text
-        assert f'href="/urzadzenia/{sw}"' in page and "rack-dev" in page
+        assert f'href="/urzadzenia/{sw}"' in page and "rk-dev" in page
         assert "Szafa · U6" in cl.get(f"/urzadzenia/{sw}").text
 
 
