@@ -1,14 +1,14 @@
 # Do zrobienia
 
-Stan na 31.10.2026. Etap 2 (rdzeń) gotowy. Etap 3 (status): integracje i test kryterium (wyłączona VM → incydent
-→ Discord → „Rozwiązane”) działają na serwerach; czeka na wdrożenie ostatnich zmian i akceptację. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
+Stan na 31.10.2026. Etapy 2 (rdzeń) i 3 (status) odebrane. Etap 4 (aktualizacje): kod gotowy, czeka na wdrożenie
+i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
 
 ---
 
 ## 1. Po Twojej stronie — teraz
 
 - [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
-      od routera/AP, sprawdzenia z internetu).
+      od routera/AP, sprawdzenia z internetu, **Etap 4** — migracja bazy 0009 wykona się sama przy starcie).
 - [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).
       Instrukcja: README → Instalacja → krok 4.
@@ -25,13 +25,28 @@ Stan na 31.10.2026. Etap 2 (rdzeń) gotowy. Etap 3 (status): integracje i test k
 - [ ] `HLC_FERNET_KEY` trafił do rozmowy — po wyłączeniu HLC usuń jego stare kopie (`/var/lib/hlc/backups`).
 - [ ] **Usuń zasób `hlc.serwispowers.com` z Pangolina** (audyt, problem B0), gdy Denali zastąpi HLC.
 - [ ] Wyłącz HLC (kontener `hlc-dom`), gdy upewnisz się, że w Denali niczego nie brakuje.
-- [ ] Razem z HLC **usuń stare agenty HLC** z maszyn (usługa systemd jako root, konfiguracja z tokenem
-      w `/etc/hlc-agent/`): `systemctl list-units | grep -i hlc` → `sudo systemctl disable --now <nazwa>` →
-      `systemctl cat <nazwa>` (gdzie leży program) → usuń program i `/etc/hlc-agent`. Denali ich nie używa;
-      nowy, odchudzony agent przyjdzie w Etapie 4.
+- [ ] Razem z HLC **usuń stare agenty HLC** z maszyn (usługa `hlc-agent` jako root, token w `/etc/hlc-agent/`):
+      `sudo python3 /opt/hlc-agent/agent.py --uninstall` (usuwa usługę, program, konfigurację i bufor). Instalator
+      nowego agenta Denali sam ostrzega, gdy znajdzie stary.
 - [ ] Wyjaśnij, czym było „627379008” (jeśli to hasło routera — wpisz je tylko w formularzu Denali).
 
-## 3. Etap 3 — sprawdzenie na prawdziwych serwerach
+## 3. Etap 4 — sprawdzenie na prawdziwych serwerach
+
+Kod sprawdzony testami i przez prawdziwe HTTP (rejestracja i raport), ale **sam agent nie był uruchomiony na Linuksie**
+(brak maszyny przy pisaniu) — pierwsza instalacja może wymagać poprawki (wtedy wklej wynik polecenia albo
+`journalctl -u denali-agent -n 30`).
+
+- [ ] *Aktualizacje*: pakiety węzła pve zgadzają się z Proxmoxem (*pve → Updates*), PBS z PBS (*Administration → Updates*).
+- [ ] *Aktualizacje*: stacki z nowszym obrazem zgadzają się z Komodo (kropka „update available” przy stacku).
+- [ ] Agent na jednej VM z Dockerem: *Integracje → Dodaj: Agent na maszynie*, wklej polecenie. Po minucie: VM
+      przypięta (bez kolejki), pakiety na liście = `apt list --upgradable` na tej VM.
+- [ ] Na tej VM: montaż NFS z TrueNAS widoczny na stronie agenta, na karcie VM zależność „dane · wykryta, aktualna”
+      od TrueNAS. Po kilkunastu minutach (timer) „dane pod montażem sprawdzone …”.
+- [ ] Agent w kontenerze LXC: jeśli usługa nie startuje (ograniczenia LXC przy zabezpieczeniach systemd), wklej
+      `journalctl -u denali-agent -n 30`.
+- [ ] Akceptacja Etapu 4.
+
+### Etap 3 — zostało do sprawdzenia po wdrożeniu
 
 - [x] Integracje: Proxmox, Komodo, PBS, TrueNAS, router TP-Link; powiadomienia na Discord; strażnik (potwierdzone 31.10).
 - [x] **Test kryterium Etapu 3:** wyłączona testowa VM → incydent → Discord → „Rozwiązane” (potwierdzone 31.10).
@@ -41,7 +56,7 @@ Stan na 31.10.2026. Etap 2 (rdzeń) gotowy. Etap 3 (status): integracje i test k
 - [ ] Po wdrożeniu: na karcie aplikacji wystawionej przez Pangolina blok **„Z internetu (przez publiczny DNS)”**
       z „HTTP 200/302”. Działa tylko, gdy *adres aplikacji* na karcie to publiczna nazwa (np. `https://immich.serwispowers.com`);
       przy adresie z IP w LAN sprawdzenia z internetu nie ma.
-- [ ] Akceptacja Etapu 3.
+- [x] Akceptacja Etapu 3 (31.10.2026).
 
 ## 4. Braki względem projektu (Etap 3)
 
@@ -63,9 +78,15 @@ Stan na 31.10.2026. Etap 2 (rdzeń) gotowy. Etap 3 (status): integracje i test k
 - [x] **Końce linii w gicie** — `.gitattributes` (`* text=auto eol=lf`).
 - [ ] Testy lokalnie działają na Pythonie 3.15, obraz na 3.12 — dotąd bez problemów, ale warto kiedyś puścić testy w obrazie.
 
-## 6. Następne etapy
+## 6. Etap 4 — czego nie ma (świadomie)
+
+- [ ] **Router TP-Link**: brak aktualizacji firmware'u na liście — nieoficjalne API tego nie podaje (wróci z OpenWrt).
+- [ ] **TrueNAS**: aktualizacje systemu jeszcze nie na liście (do dopisania w adapterze).
+- [ ] **Powiadomienia o aktualizacjach** (np. raz dziennie o nowych poprawkach bezpieczeństwa) — ustawienie profilu
+      „powiadom” na razie tylko liczy urządzenie w liczniku.
+
+## 7. Następne etapy
 
 | Etap | Zakres | Kryterium odbioru |
 |---|---|---|
-| **4. Aktualizacje** | odchudzony agent (apt, „wymagany restart”, montaże NFS z wykrywaniem danych pod montażem), instalacja jednym poleceniem bez `curl \| sudo sh`, jedna lista aktualizacji ze wszystkich źródeł (Proxmox, Komodo, agent, router) | lista zgadza się z tym, co pokazują Proxmox / Komodo / router |
 | **5. Akcje** | lista dozwolonych akcji (przez profil), potwierdzenia, audyt; Proxmox (restart, snapshot), Komodo (aktualizacja stacka), agent (`apt upgrade` z lokalnej białej listy), router tylko kopia konfiguracji | każda akcja ma wpis w audycie; akcja spoza listy jest niemożliwa nawet przez API |

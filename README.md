@@ -6,15 +6,17 @@ a gdy coś padnie albo się zmieni, w minutę wiem **co, dlaczego i gdzie szuka�
 Dokumenty: [PROJEKT.md](PROJEKT.md) (projekt i decyzje), [AUDYT.md](AUDYT.md) (audyt poprzedniego panelu HLC),
 [POMYSLY.md](POMYSLY.md) (odłożone pomysły).
 
-**Stan: Etap 3 (status) — kod gotowy, czeka na sprawdzenie na serwerach.** Jest: logowanie z 2FA, urządzenia,
+**Stan: Etap 4 (aktualizacje) — kod gotowy, czeka na sprawdzenie na serwerach.** Jest: logowanie z 2FA, urządzenia,
 zależności i kable, profile, kolejka „do zatwierdzenia”, analiza przyczyny, incydenty, procedury, runbooki, pliki,
 skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo i router TP-Link,
 sprawdzenia z LAN i z internetu, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS,
-odświeżanie pulpitu i list na żywo (SSE). Nie ma jeszcze: OpenWrt (odłożone); aktualizacji — Etap 4; akcji — Etap 5.
+odświeżanie na żywo (SSE); jedna lista aktualizacji (Proxmox, PBS, Komodo, agent) i agent na maszynach (apt,
+wymagany restart, NFS). Nie ma jeszcze: OpenWrt (odłożone); akcji — Etap 5.
 
 Spis treści:
 [Instalacja](#instalacja) ·
 [Pierwsze kroki](#pierwsze-kroki) ·
+[Agent i aktualizacje](#agent-i-aktualizacje) ·
 [Migracja z HLC](#migracja-z-hlc) ·
 [Kopia zapasowa](#kopia-zapasowa) ·
 [Odtworzenie](#odtworzenie) ·
@@ -147,7 +149,44 @@ Konto tylko do podglądu (np. dla domownika): `create-user LOGIN --role podglad`
    urządzenia będą przychodzić same z integracji i wystarczy je zatwierdzić.
 3. **Kopia awaryjna na VPS** — według [deploy/vps/README.md](deploy/vps/README.md).
 4. **Tablet** — *Tablet → Utwórz kod*, na tablecie otwórz `https://denali.serwispowers.com/tablet` i wpisz kod.
-5. **Strażnik z VPS-a** i powiadomienia na Discord dochodzą w Etapie 3.
+5. **Strażnik z VPS-a** i powiadomienia na Discord — *Powiadomienia*.
+6. **Agent** na VM-kach z Dockerem i usługami — niżej.
+
+---
+
+## Agent i aktualizacje
+
+*Aktualizacje* to jedna lista ze wszystkich źródeł. Panel tylko pokazuje — aktualizujesz tam, gdzie zawsze
+(akcje dopiero w Etapie 5).
+
+| Źródło | Co podaje | Co trzeba zrobić |
+|---|---|---|
+| Proxmox VE | pakiety węzła (jak *Węzeł → Updates*) | nic — token PVEAuditor już to widzi |
+| PBS | pakiety serwera (jak *Administration → Updates*) | nic — rola Audit |
+| Komodo | usługi stacków z nowszym obrazem | w stacku włączone *Poll for updates* |
+| Agent | pakiety apt (z poprawkami bezpieczeństwa), wymagany restart, montaże NFS | instalacja na maszynie (niżej) |
+
+TrueNAS i router TP-Link na razie nie podają aktualizacji (TrueNAS — później; TP-Link nie ma tego w API).
+
+**Agent** instaluj tylko tam, gdzie API nie wystarcza — zwykle VM-ki z Dockerem i usługami. Na Proxmoxie, PBS i TrueNAS
+nie. *Integracje → Dodaj: Agent na maszynie → Wygeneruj polecenie* i wklej je na maszynie (Debian/Ubuntu z systemd,
+Python 3.9+). Polecenie pobiera plik, sprawdza jego SHA-256 i dopiero wtedy go uruchamia; kod jest jednorazowy i ważny
+godzinę. Maszyna sama przypnie się do swojej VM z Proxmoxa (po IP albo MAC).
+
+Wymaga działającego HTTPS (Nginx Proxy Manager, krok 4 instalacji): agent łączy się z `DENALI_BASE_URL` i sprawdza
+certyfikat — token nie idzie zwykłym HTTP.
+
+- `denali-agent.service` — raport co minutę, jako zwykły użytkownik `denali-agent`, system tylko do odczytu.
+- `denali-agent-ukryte.timer` — raz dziennie, jako root, **bez sieci**: czy pod montażami NFS nie leżą dane zapisane,
+  gdy udział nie był podłączony (to jedyne, co wymaga roota).
+- Agent nie słucha na żadnym porcie i niczego nie wykonuje na polecenie panelu.
+- Stan: `systemctl status denali-agent`, `journalctl -u denali-agent -n 30`; raport bez wysyłania:
+  `python3 /opt/denali-agent/denali-agent.py print`.
+- Usunięcie: `sudo python3 /opt/denali-agent/denali-agent.py uninstall`, a w Denali usuń agenta (unieważnia token).
+- Brak raportu dłużej niż 5 minut: stan maszyny „nieznany” i błąd przy agencie na liście integracji.
+
+Montaż NFS z `/etc/fstab` staje się zależnością „dane” od serwera (np. TrueNAS) — gdy TrueNAS padnie, incydent wskaże
+TrueNAS, a nie VM. Profil *Dostępne aktualizacje: ignoruj* chowa urządzenie z licznika (np. maszyna testowa).
 
 ---
 
@@ -313,6 +352,8 @@ Kto co zmienił: *Audyt* w panelu.
 - Role: administrator i podgląd. Tablet: tylko podgląd, tylko ze swojego adresu.
 - Skarbiec zaszyfrowany; pokazanie hasła wymaga ponownego potwierdzenia hasłem i 2FA i trafia do audytu.
 - Każda zmiana ma wpis w audycie. Panel nie ma i nie będzie miał dostępu do powłoki serwerów.
+- Agent: token tylko w `/etc/denali-agent/config.json` (root i grupa agenta), w Denali tylko jego skrót; raport
+  wysyła zwykły użytkownik bez prawa zapisu do systemu; agent nie przyjmuje poleceń.
 
 ---
 
