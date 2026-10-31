@@ -1,45 +1,64 @@
 {% extends "base.html" %}
 {% from "_makra.html" import infra_nav %}
 {% block title %}Mapa · Infrastruktura{% endblock %}
+{# Kolory wpisane w SVG (fill/stroke), żeby mapa była czytelna nawet bez arkusza stylów; CSS tylko je nadpisuje. #}
+{% set FILL = {"down": "#2a1517", "effect": "#151a1f", "off": "#151a1f"} %}
+{% set STROKE = {"down": "#ff6b6b", "warn": "#f2a93b", "effect": "#4a535e"} %}
+{% macro dot(state, cx, cy) -%}
+  {%- if state == "ok" %}<circle cx="{{ cx }}" cy="{{ cy }}" r="6" fill="#45c486"/>
+  {%- elif state == "down" %}<path transform="translate({{ cx - 7 }} {{ cy - 7 }}) scale(0.875)" d="M5 1h6l4 4v6l-4 4H5l-4-4V5z" fill="#ff6b6b"/>
+  {%- elif state == "warn" %}<path transform="translate({{ cx - 7 }} {{ cy - 7 }}) scale(0.875)" d="M8 1.5l7 12.5H1z" fill="#f2a93b"/>
+  {%- elif state == "effect" %}<circle cx="{{ cx }}" cy="{{ cy }}" r="5.5" fill="none" stroke="#b3bcc6" stroke-width="1.6" stroke-dasharray="2.5 2"/>
+  {%- else %}<circle cx="{{ cx }}" cy="{{ cy }}" r="5" fill="none" stroke="#6b7580" stroke-width="1.6"/>{% endif -%}
+{%- endmacro %}
 {% block content %}
 <div class="row-between">
   <h1>Infrastruktura</h1>
   <div class="actions">
-    {% if m.hidden_clients or clients %}
+    {% if m.hidden_clients %}
     <a class="btn small" href="/infrastruktura/mapa{% if not clients %}?klienci=1{% endif %}">{{ "Schowaj klientów sieci" if clients else "Pokaż klientów sieci (" ~ m.hidden_clients ~ ")" }}</a>
     {% endif %}
   </div>
 </div>
 {{ infra_nav(tabs, "mapa") }}
-{% if not m.nodes %}
+{% if not m.nodes and not m.boxes %}
 <div class="card"><p class="muted">Mapa rysuje się sama z dokumentacji — dodaj urządzenia (albo podłącz integracje),
   a pojawią się tutaj.</p></div>
 {% else %}
 <section class="map-wrap" aria-label="Mapa infrastruktury">
   <svg width="{{ m.width }}" height="{{ m.height }}" viewBox="0 0 {{ m.width }} {{ m.height }}" role="img"
-       aria-label="Mapa: {{ m.nodes | length }} urządzeń">
-    {% for c in m.columns %}<text class="map-col" x="{{ c.x }}" y="22">{{ c.label }}</text>{% endfor %}
-    {% for e in m.lines %}<path class="map-edge {{ e.cls }}" d="{{ e.d }}"/>{% endfor %}
+       aria-label="Mapa: {{ m.nodes | length }} urządzeń" font-family="IBM Plex Sans, system-ui, sans-serif">
+    {% for c in m.columns %}<text class="map-col" x="{{ c.x }}" y="20" fill="#9ba5b0" font-size="12">{{ c.label | upper }}</text>{% endfor %}
+    {% for b in m.boxes %}
+    <a href="/urzadzenia/{{ b.id }}" class="map-box-link">
+      <title>{{ b.name }} — {{ b.label }} · {{ b.count }} maszyn</title>
+      <rect class="map-box {{ b.state }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="14"
+            fill="#151c24" stroke="{{ STROKE.get(b.state, '#33404f') }}"/>
+      {{ dot(b.state, b.x + 20, b.y + 17) }}
+      <text class="map-box-label" x="{{ b.x + 34 }}" y="{{ b.y + 22 }}" fill="#c9d0d7" font-size="14" font-weight="600">{{ b.name }}{% if b.ip %} <tspan fill="#9ba5b0" font-weight="400" font-family="IBM Plex Mono, monospace" font-size="12">· {{ b.ip }}</tspan>{% endif %}</text>
+    </a>
+    {% endfor %}
+    {% for e in m.lines %}<path class="map-edge {{ e.cls }}" d="{{ e.d }}" fill="none"
+      stroke="{{ '#ff6b6b' if 'broken' in e.cls else ('#6aa8ff' if e.dane else '#6b7682') }}" stroke-width="{{ 1.2 if e.cls == 'app' else 1.8 }}"
+      {% if e.dane or 'soft' in e.cls %}stroke-dasharray="6 5"{% endif %}/>{% endfor %}
     {% for n in m.nodes %}
     <a href="/urzadzenia/{{ n.id }}" class="map-node {{ n.state }}">
-      <title>{{ n.name }} — {{ KINDS.get(n.kind, n.kind) }} · {{ {"ok": "działa", "down": "nie działa", "warn": "uwaga", "off": "wyłączone", "effect": "skutek awarii", "unknown": "brak danych"}.get(n.state, n.state) }}</title>
-      <rect x="{{ n.x }}" y="{{ n.y }}" width="{{ m.w }}" height="{{ m.h }}" rx="9"/>
-      {% if n.state == "ok" %}<circle cx="{{ n.x + 16 }}" cy="{{ n.y + 23 }}" r="6" fill="#45c486"/>
-      {% elif n.state == "down" %}<path transform="translate({{ n.x + 9 }} {{ n.y + 16 }}) scale(0.875)" d="M5 1h6l4 4v6l-4 4H5l-4-4V5z" fill="#ff6b6b"/>
-      {% elif n.state == "warn" %}<path transform="translate({{ n.x + 9 }} {{ n.y + 16 }}) scale(0.875)" d="M8 1.5l7 12.5H1z" fill="#f2a93b"/>
-      {% elif n.state == "effect" %}<circle cx="{{ n.x + 16 }}" cy="{{ n.y + 23 }}" r="5.5" fill="none" stroke="#b3bcc6" stroke-width="1.6" stroke-dasharray="2.5 2"/>
-      {% else %}<circle cx="{{ n.x + 16 }}" cy="{{ n.y + 23 }}" r="5" fill="none" stroke="#6b7580" stroke-width="1.6"/>{% endif %}
-      <text x="{{ n.x + 30 }}" y="{{ n.y + 20 }}">{{ n.short }}</text>
-      <text class="sub" x="{{ n.x + 30 }}" y="{{ n.y + 36 }}">{{ n.sub if "." in n.sub or ":" in n.sub else KINDS.get(n.kind, n.kind) }}</text>
+      <title>{{ n.name }} — {{ KINDS.get(n.kind, n.kind) }} · {{ n.label }}</title>
+      <rect x="{{ n.x }}" y="{{ n.y }}" width="{{ m.w }}" height="{{ m.h }}" rx="9"
+            fill="{{ FILL.get(n.state, '#1b2128') }}" stroke="{{ STROKE.get(n.state, '#2c343e') }}"
+            {% if n.state == "effect" %}stroke-dasharray="5 4"{% endif %} stroke-width="{{ 2 if n.state == 'down' else 1 }}"/>
+      {{ dot(n.state, n.x + 17, n.y + 24) }}
+      <text x="{{ n.x + 32 }}" y="{{ n.y + 21 }}" fill="#e7eaee" font-size="13" font-weight="500">{{ n.short }}</text>
+      <text class="sub" x="{{ n.x + 32 }}" y="{{ n.y + 37 }}" fill="#9ba5b0" font-size="11">{{ n.sub or KINDS.get(n.kind, n.kind) }}</text>
     </a>
     {% endfor %}
   </svg>
   <div class="legend">
-    <span><svg width="28" height="8" aria-hidden="true"><path d="M0 4h28" stroke="#6b7682" stroke-width="2"/></svg> działa na · sieć · kabel</span>
+    <span><svg width="28" height="8" aria-hidden="true"><path d="M0 4h28" stroke="#6b7682" stroke-width="2"/></svg> sieć · kabel</span>
     <span><svg width="28" height="8" aria-hidden="true"><path d="M0 4h28" stroke="#6aa8ff" stroke-width="2" stroke-dasharray="6 5"/></svg> zależność danych</span>
-    <span><svg width="28" height="8" aria-hidden="true"><path d="M0 4h28" stroke="#ff6b6b" stroke-width="2" stroke-dasharray="6 5"/></svg> dane przerwane (źródło nie działa)</span>
+    <span><svg width="28" height="8" aria-hidden="true"><path d="M0 4h28" stroke="#ff6b6b" stroke-width="2" stroke-dasharray="6 5"/></svg> dane przerwane</span>
     <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#b3bcc6" stroke-width="1.6" stroke-dasharray="2.5 2"/></svg> skutek awarii</span>
-    <span>Układ liczy się sam z dokumentacji: co na czym działa, zależności i kable.</span>
+    <span>Ramka = serwer, w środku maszyny, które na nim działają. Układ liczy się sam z dokumentacji.</span>
   </div>
 </section>
 {% endif %}

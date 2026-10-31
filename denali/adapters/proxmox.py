@@ -100,6 +100,9 @@ class Proxmox(Adapter):
         if not nodes:
             raise AdapterError("Połączono, ale token nie widzi żadnego węzła — nadaj mu rolę PVEAuditor na „/” "
                                "(przy tokenie z oddzielonymi uprawnieniami: także samemu tokenowi).")
+        if not any(r.get("maxmem") for r in res if r.get("type") == "node"):
+            raise AdapterError(f"Połączono, ale token widzi tylko nazwy węzłów (bez CPU, RAM i maszyn: {guests}) — "
+                               "dodaj tokenowi rolę PVEAuditor na „/” (Datacenter → Permissions → API Token Permission).")
         return f"Połączono: Proxmox VE {ver.get('version', '?')} · węzły: {nodes} · maszyny i kontenery: {guests}"
 
     async def _guest_ips(self, cli, g):

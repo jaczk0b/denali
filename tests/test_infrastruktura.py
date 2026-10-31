@@ -151,7 +151,21 @@ def test_mapa_kolumny_i_zaleznosci(conn):
     inv.add_dependency(conn, immich, nas, "dane")
     inv.add_cable(conn, router, pve)
     m = mapview.build(conn, {nas: {"state": "down"}}, {})
-    assert [c["label"] for c in m["columns"]] == ["Sieć", "Serwery", "Maszyny i dane"]
+    assert [c["label"] for c in m["columns"]] == ["Sieć", "Serwery i maszyny"]
+    [box] = m["boxes"]                                           # serwer = ramka z maszynami w środku
+    assert box["id"] == pve and box["count"] == 2 and pve not in {n["id"] for n in m["nodes"]}
     assert phone not in {n["id"] for n in m["nodes"]} and m["hidden_clients"] == 1
-    assert {e["cls"] for e in m["lines"]} >= {"dane broken"}     # źródło danych nie działa → linia czerwona
+    assert sorted(e["cls"] for e in m["lines"]) == ["", "dane broken"]   # kabel do ramki + dane (źródło padło)
     assert phone in {n["id"] for n in mapview.build(conn, {}, {}, with_clients=True)["nodes"]}
+
+
+def test_stary_adres_po_dhcp_to_nie_konflikt(full):
+    """Telefon dostał z DHCP adres, który w dokumentacji ma jeszcze inne urządzenie — router mówi, kto ma go teraz."""
+    with full.state.engine.begin() as c:
+        old = inv.create_device(c, "newt", "lxc")
+        inv.add_address(c, old, "ip", "192.168.1.50")            # iPhone-Jakub ma teraz .50 (z routera)
+        [net] = [n for n in infra_views.addresses(c) if n["net"] == "192.168.1.0/24"]
+        cell = next(x for x in net["cells"] if x["ip"] == "192.168.1.50")
+        assert cell["state"] == "zajety" and cell["stale"]
+        assert cell["owners"][0]["name"] == "iPhone-Jakub" and cell["owners"][1]["stale"]
+        assert "192.168.1.50" not in {x["ip"] for x in net["conflicts"]}

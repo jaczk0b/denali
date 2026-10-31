@@ -109,5 +109,5 @@ def test_ktore_strony_sluchaja(app, admin):
     # karta urządzenia ma skarbiec i formularze — podmiana schowałaby odsłonięte hasło
     assert "data-live=" not in admin.get(f"/urzadzenia/{d}").text
     assert "data-live=" not in admin.get("/procedury").text
-    assert '<script src="/static/denali.js" defer></script>' in admin.get("/procedury").text
+    assert '<script src="/static/denali.js?v=' in admin.get("/procedury").text
     assert admin.get("/static/denali.js").status_code == 200

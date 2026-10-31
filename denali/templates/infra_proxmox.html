@@ -11,6 +11,12 @@
     {%- if c.row.last_error %} · <span class="pill down">{{ st("down", 12) }} ostatni odczyt nieudany — dane mogą być nieaktualne</span>{% endif %}</p>
   {% if c.row.config.url %}<div class="actions"><a class="btn" href="{{ c.row.config.url }}" target="_blank" rel="noopener">Otwórz Proxmox ↗</a></div>{% endif %}
 </div>
+{% if c.limited %}
+<div class="alert warn">{{ st("warn", 16) }} <strong>Proxmox podaje węzły bez CPU i RAM{% if not c.guests %} i żadnej maszyny{% endif %}</strong> —
+  token ma za mało uprawnień. W Proxmoxie: <em>Datacenter → Permissions → Add → API Token Permission</em>:
+  ścieżka <code>/</code>, token <code>{{ c.row.config.token_id }}</code>, rola <code>PVEAuditor</code>, „Propagate” zaznaczone.
+  (Przy tokenie z „Privilege Separation” rola samego użytkownika nie wystarcza.) Dane pojawią się po następnym odczycie.</div>
+{% endif %}
 <section class="tiles" aria-label="Węzły">
   {% for n in c.nodes %}
   <div class="tile{% if n.state == 'down' %} down{% endif %}">

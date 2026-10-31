@@ -94,7 +94,9 @@ def proxmox(conn):
                 n["guests"] += 1
                 n["running"] += g["status"] == "running"
         guests.sort(key=lambda g: (WORST.index(g["state"]) if g["state"] in WORST else 9, str(g["vmid"])))
-        out.append({"row": src["row"], "nodes": nodes, "guests": guests})
+        # Węzeł bez CPU i RAM i zero maszyn = token widzi tylko listę węzłów (brak roli PVEAuditor na „/”).
+        limited = bool(nodes) and all(n["maxmem"] is None for n in nodes if n["state"] == "ok")
+        out.append({"row": src["row"], "nodes": nodes, "guests": guests, "limited": limited})
     return out
 
 
@@ -226,19 +228,39 @@ def _ip_key(ip):
 
 
 # ───────────────────────── Adresy IP ─────────────────────────
+def _current_ips(conn):
+    """{ip: {device_id}} — adresy, które integracje (router, Proxmox, Komodo) zgłaszają TERAZ dla przypiętych obiektów.
+    Adres w dokumentacji zostaje po zmianie (nic nie jest usuwane), więc to rozstrzyga, kto ma adres dziś."""
+    out = {}
+    q = (select(external_ref.c.device_id, external_ref.c.proposed, observed_state.c.state)
+         .outerjoin(observed_state, (observed_state.c.integration_id == external_ref.c.integration_id)
+                    & (observed_state.c.external_id == external_ref.c.external_id))
+         .where(external_ref.c.status == "zatwierdzony", external_ref.c.device_id.isnot(None)))
+    for r in conn.execute(q):
+        if r.state == "unknown":
+            continue        # źródło już tego nie zgłasza — adres może być nieaktualny
+        for a in (r.proposed or {}).get("addresses") or []:
+            if a.get("kind") == "ip" and a.get("value"):
+                out.setdefault(a["value"], set()).add(r.device_id)
+    return out
+
+
 def addresses(conn):
     """Sieci /24 wyliczone same z adresów: każda pozycja .1–.254 zajęta (przez co) albo wolna.
 
     Źródła: adresy urządzeń w dokumentacji (ręczne i z integracji) oraz to, co widzą integracje, a nie jest jeszcze
-    przypięte (kolejka „do zatwierdzenia”). Ten sam adres na dwóch urządzeniach = konflikt.
+    przypięte (kolejka „do zatwierdzenia”). Dwa urządzenia pod jednym adresem: jeśli integracja wie, kto ma go teraz
+    (np. telefon dostał z DHCP adres po kimś), drugi wpis to „stary adres”; jeśli nie wie — konflikt.
     """
-    owners = {}     # ip → [{"device_id"|"ref_id", "name", "kind"}]
-    for r in conn.execute(select(device_address.c.value, device.c.id, device.c.name, device.c.kind)
-                          .join(device, device.c.id == device_address.c.device_id)
-                          .where(device_address.c.kind == "ip")):
+    current = _current_ips(conn)
+    owners = {}     # ip → [{"device_id"|"ref_id", "name", "kind", "type", "source"}]
+    for r in conn.execute(select(device_address.c.value, device_address.c.source, device.c.id, device.c.name,
+                                 device.c.kind).join(device, device.c.id == device_address.c.device_id)
+                          .where(device_address.c.kind == "ip").order_by(device.c.name)):
         lst = owners.setdefault(r.value, [])
         if not any(o.get("device_id") == r.id for o in lst):
-            lst.append({"device_id": r.id, "name": r.name, "kind": "urzadzenie"})
+            lst.append({"device_id": r.id, "name": r.name, "kind": "urzadzenie", "type": r.kind,
+                        "source": r.source, "stale": False})
     for r in conn.execute(select(external_ref.c.id, external_ref.c.proposed)
                           .where(external_ref.c.status == "nowy")):
         prop = r.proposed or {}
@@ -246,7 +268,8 @@ def addresses(conn):
             if a.get("kind") == "ip" and a.get("value"):
                 lst = owners.setdefault(a["value"], [])
                 if not lst:     # nieprzypisany klient pod adresem, który już ma urządzenie — to samo, nie konflikt
-                    lst.append({"ref_id": r.id, "name": prop.get("name") or a["value"], "kind": "nowy"})
+                    lst.append({"ref_id": r.id, "name": prop.get("name") or a["value"], "kind": "nowy",
+                                "type": prop.get("kind", ""), "source": "integracja", "stale": False})
     nets = {}
     for ip, own in owners.items():
         try:
@@ -262,15 +285,26 @@ def addresses(conn):
     for net, used in sorted(nets.items(), key=lambda kv: int(kv[0].network_address)):
         cells, free = [], []
         for host in range(1, 255):
+            ip = str(net.network_address + host)
             own = used.get(host, [])
             devs = [o for o in own if o["kind"] == "urzadzenie"]
-            state = "konflikt" if len(devs) > 1 else ("zajety" if devs else ("nowy" if own else "wolny"))
-            cells.append({"host": host, "ip": str(net.network_address + host), "state": state, "owners": own})
+            state = "zajety" if devs else ("nowy" if own else "wolny")
+            if len(devs) > 1:
+                now = [o for o in devs if o["device_id"] in current.get(ip, ())]
+                if len(now) == 1:
+                    for o in devs:
+                        o["stale"] = o is not now[0]
+                    own = now + [o for o in own if o is not now[0]]
+                else:
+                    state = "konflikt"
+            cells.append({"host": host, "ip": ip, "state": state, "owners": own,
+                          "stale": any(o["stale"] for o in own)})
             if state == "wolny":
                 free.append(host)
         out.append({"net": str(net), "prefix": str(net.network_address).rsplit(".", 1)[0], "cells": cells,
                     "used": sum(1 for c in cells if c["state"] != "wolny"), "free": len(free),
-                    "free_ranges": _ranges(free), "conflicts": [c for c in cells if c["state"] == "konflikt"]})
+                    "free_ranges": _ranges(free), "conflicts": [c for c in cells if c["state"] == "konflikt"],
+                    "stale": [c for c in cells if c["stale"]]})
     return out
 
 

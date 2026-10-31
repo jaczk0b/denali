@@ -5,8 +5,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Denali{% endblock %} · Denali</title>
-<link rel="stylesheet" href="/static/denali.css">
-<script src="/static/denali.js" defer></script>
+<link rel="stylesheet" href="/static/denali.css?v={{ STATIC_V }}">
+<script src="/static/denali.js?v={{ STATIC_V }}" defer></script>
 </head>
 <body class="{% block body_class %}{% endblock %}{% if sess and sess.kind == 'kiosk' %} kiosk{% endif %}"{% if live_version %} data-live="{{ live_version }}"{% endif %}>
 {% set signed_in = sess and sess.kind != "pending" %}

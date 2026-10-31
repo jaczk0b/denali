@@ -169,24 +169,12 @@ a.ipcell:hover { color: var(--text); border-color: var(--link); }
 .rack-dev small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .rack-dev.back { background: transparent; border-style: dashed; color: var(--muted); }
 
-/* mapa */
+/* mapa — kolory są też w samym SVG; tu tylko podświetlenie */
 .map-wrap { overflow-x: auto; background: #12161b; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .map-wrap svg { display: block; }
-.map-node rect { fill: var(--surface-2); stroke: var(--border-strong); }
-.map-node.down rect { fill: var(--down-bg); stroke: var(--down); stroke-width: 2; }
-.map-node.warn rect { stroke: var(--warn); }
-.map-node.effect rect { fill: var(--surface); stroke: #4a535e; stroke-dasharray: 5 4; }
-.map-node.off rect { fill: var(--surface); stroke: var(--border); }
-.map-node text { fill: var(--text); font-size: 13px; font-family: var(--font); }
-.map-node text.sub { fill: var(--muted); font-size: 11px; }
-.map-node:hover rect { stroke: var(--link); }
-.map-box { fill: #151c24; stroke: #33404f; }
-.map-box-label { fill: var(--text-2); font-size: 13px; font-weight: 600; font-family: var(--font); }
-.map-col { fill: var(--muted); font-size: 12px; font-family: var(--font); text-transform: uppercase; letter-spacing: .04em; }
-.map-edge { fill: none; stroke: #6b7682; stroke-width: 1.6; }
-.map-edge.dane { stroke: var(--accent); stroke-dasharray: 6 5; }
-.map-edge.dane.broken { stroke: var(--down); }
-.map-edge.soft { stroke-dasharray: 2 4; }
+.map-node:hover rect, .map-box-link:hover rect { stroke: var(--link); }
+.map-node:focus-visible rect, .map-box-link:focus-visible rect { stroke: var(--link); stroke-width: 2; }
+.ipcell.stale { border-color: var(--warn-border); }
 
 /* ───────── karty, listy, tabele ───────── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }

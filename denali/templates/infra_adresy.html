@@ -4,56 +4,72 @@
 {% block content %}
 <h1>Infrastruktura</h1>
 {{ infra_nav(tabs, "adresy") }}
-<p class="lead">Sieci wyliczone same z adresów w dokumentacji i z tego, co widzą integracje (router, Proxmox, Komodo).
-  Niczego tu nie wpisujesz — adres urządzenia zmieniasz na jego karcie.</p>
 {% if not nets %}
 <div class="card"><p class="muted">Żadne urządzenie nie ma jeszcze adresu IP w sieci lokalnej.</p></div>
 {% endif %}
 {% for n in nets %}
-<section class="card" aria-labelledby="net-{{ loop.index }}">
+<section class="stats" aria-label="Podsumowanie {{ n.net }}">
+  <div class="stat"><span class="muted small">Sieć</span><b class="mono">{{ n.net }}</b></div>
+  <div class="stat"><span class="muted small">Zajęte</span><b>{{ n.used }}</b></div>
+  <div class="stat"><span class="muted small">Wolne</span><b>{{ n.free }}</b></div>
+  <div class="stat"><span class="muted small">Do sprawdzenia</span><b>{{ n.conflicts | length + n.stale | length }}</b></div>
+</section>
+
+{% if n.conflicts %}
+<div class="alert error">{{ st("down", 14) }} <strong>Ten sam adres na dwóch urządzeniach:</strong>
+  {% for c in n.conflicts %}<span class="mono">{{ c.ip }}</span> —
+    {% for o in c.owners if o.device_id %}<a href="/urzadzenia/{{ o.device_id }}">{{ o.name }}</a>{% if not loop.last %} i {% endif %}{% endfor %}{% if not loop.last %}; {% endif %}{% endfor %}.
+  Popraw adres na karcie jednego z nich.</div>
+{% endif %}
+
+<section class="card" aria-labelledby="mapa-{{ loop.index }}">
   <div class="row-between">
-    <h2 id="net-{{ loop.index }}"><span class="mono">{{ n.net }}</span></h2>
-    <span class="muted small">zajęte: {{ n.used }} · wolne: {{ n.free }} z 254</span>
+    <h2 id="mapa-{{ loop.index }}">Mapa adresów</h2>
+    <span class="muted small">najedź albo kliknij, żeby zobaczyć urządzenie</span>
   </div>
-  {% if n.conflicts %}
-  <div class="alert error">{{ st("down", 14) }} <strong>Konflikt adresów:</strong>
-    {% for c in n.conflicts %}<span class="mono">{{ c.ip }}</span> — {% for o in c.owners if o.device_id %}<a href="/urzadzenia/{{ o.device_id }}">{{ o.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if not loop.last %}; {% endif %}{% endfor %}.
-    Jeden adres może mieć tylko jedno urządzenie — popraw na karcie (albo to ta sama maszyna wpisana dwa razy).</div>
-  {% endif %}
   <div class="ipgrid" role="list">
     {% for c in n.cells %}
     {%- set who = c.owners | map(attribute="name") | join(", ") %}
-    {%- set title = c.ip ~ (" — " ~ who if who else " — wolny") ~ (" (nieprzypisane, w kolejce)" if c.state == "nowy" else "") %}
+    {%- set title = c.ip ~ (" — " ~ who if who else " — wolny") %}
     {%- set first = c.owners[0] if c.owners else none %}
-    {% if first and first.device_id %}<a role="listitem" class="ipcell {{ c.state }}" href="/urzadzenia/{{ first.device_id }}" title="{{ title }}">{{ c.host }}</a>
-    {%- elif first %}<a role="listitem" class="ipcell nowy" href="/zatwierdz" title="{{ title }}">{{ c.host }}</a>
+    {% if first and first.device_id %}<a role="listitem" class="ipcell {{ c.state }}{% if c.stale %} stale{% endif %}" href="/urzadzenia/{{ first.device_id }}" title="{{ title }}">{{ c.host }}</a>
+    {%- elif first %}<a role="listitem" class="ipcell nowy" href="/zatwierdz" title="{{ title }} (nieprzypisane)">{{ c.host }}</a>
     {%- else %}<span role="listitem" class="ipcell" title="{{ title }}">{{ c.host }}</span>{% endif %}
     {% endfor %}
   </div>
   <div class="legend">
-    <span><span class="ipcell zajety"></span> urządzenie z dokumentacji</span>
-    <span><span class="ipcell nowy"></span> widziane w sieci, nieprzypisane</span>
-    <span><span class="ipcell konflikt"></span> konflikt</span>
+    <span><span class="ipcell zajety"></span> zajęty</span>
+    <span><span class="ipcell nowy"></span> w sieci, nieprzypisany</span>
+    <span><span class="ipcell konflikt"></span> dwa urządzenia</span>
     <span><span class="ipcell"></span> wolny</span>
   </div>
-  <details class="mt">
-    <summary>Wolne zakresy i lista zajętych</summary>
-    <p class="small"><strong>Wolne:</strong>
-      {% for a, b in n.free_ranges %}<span class="mono">{{ n.prefix }}.{{ a }}{% if b != a %}–{{ b }}{% endif %}</span>{% if not loop.last %}, {% endif %}{% endfor %}</p>
-    <p class="muted small">Sprawdź, które z nich router rozdaje przez DHCP — stały adres najlepiej wybrać spoza tej puli
-      (albo ustawić rezerwację w routerze).</p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Adres</th><th>Urządzenie</th></tr></thead>
-        <tbody>
-        {% for c in n.cells if c.state != "wolny" %}
-        <tr><td class="mono">{{ c.ip }}</td>
-          <td>{% for o in c.owners %}{% if o.device_id %}<a href="/urzadzenia/{{ o.device_id }}">{{ o.name }}</a>{% else %}{{ o.name }} <span class="pill warn">nieprzypisane</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </details>
+  <p class="small mt"><strong>Wolne zakresy:</strong>
+    {% for a, b in n.free_ranges %}<span class="mono">.{{ a }}{% if b != a %}–.{{ b }}{% endif %}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  <p class="muted small">„Wolny” = nie ma go w dokumentacji i router go teraz nie widzi. Stały adres wybierz spoza puli
+    DHCP routera (albo ustaw rezerwację w routerze).</p>
+</section>
+
+<section class="card mt" aria-labelledby="lista-{{ loop.index }}">
+  <h2 id="lista-{{ loop.index }}">Zajęte adresy <span class="muted">· {{ n.used }}</span></h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Adres</th><th>Urządzenie</th><th>Typ</th><th>Skąd</th></tr></thead>
+      <tbody>
+      {% for c in n.cells if c.state != "wolny" %}
+      {% for o in c.owners %}
+      <tr{% if c.state == "konflikt" %} class="is-down"{% elif c.state == "nowy" %} class="is-new"{% endif %}>
+        <td class="mono">{% if loop.first %}{{ c.ip }}{% endif %}</td>
+        <td>{% if o.device_id %}<a href="/urzadzenia/{{ o.device_id }}">{{ o.name }}</a>{% else %}{{ o.name }}{% endif %}
+          {% if o.stale %}<span class="pill warn">stary adres — dziś ma go „{{ c.owners[0].name }}”</span>{% endif %}</td>
+        <td>{{ KINDS.get(o.type, o.type) }}</td>
+        <td>{% if o.kind == "nowy" %}<a class="btn small" href="/zatwierdz">do zatwierdzenia</a>
+          {% elif o.source == "manual" %}<span class="muted">wpisany ręcznie</span>{% else %}<span class="muted">z integracji</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endfor %}
 {% endblock %}

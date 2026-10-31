@@ -1,4 +1,5 @@
 """Szablony Jinja. Każda strona dostaje sesję i token CSRF."""
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +14,9 @@ from .models import external_ref, incident
 from .status import initials, tile_color
 
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templates")
+# Wersja plików statycznych w adresie (?v=…): po wdrożeniu przeglądarka bierze nowy CSS/JS, a nie stary z pamięci.
+STATIC_V = hashlib.sha256(b"".join((Path(__file__).resolve().parent / "static" / n).read_bytes()
+                                   for n in ("denali.css", "denali.js"))).hexdigest()[:10]
 # Markdown bez surowego HTML; markdown-it sam odrzuca linki javascript: i data:
 # Strony odświeżane na żywo (SSE). Tylko widoki do patrzenia — nie strona po wysłaniu formularza (błąd albo
 # odsłonięte hasło zniknęłyby przy podmianie) ani karta urządzenia ze skarbcem.
@@ -69,7 +73,7 @@ def _uptime(s) -> str:
 templates.env.filters.update(dt=_dt, hm=_hm, md=_md_filter, initials=initials, tile_color=tile_color, size=_size,
                              bytes=_bytes, pct=_pct, uptime=_uptime)
 templates.env.globals.update(KINDS=inventory.KINDS, DEP_TYPES=inventory.DEP_TYPES, VIA=incidents.VIA,
-                             version_text=updates.version_text,
+                             version_text=updates.version_text, STATIC_V=STATIC_V,
                              PRIORITY={1: "P1", 2: "P2", 3: "P3"})
 
 
