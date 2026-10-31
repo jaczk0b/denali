@@ -1,11 +1,10 @@
 {% extends "base.html" %}
-{% from "_makra.html" import mark_badge, st %}
+{% from "_makra.html" import mark_badge, st, infra_nav %}
 {% block title %}Infrastruktura{% endblock %}
 {% block content %}
 <div class="row-between">
   <div>
     <h1>Infrastruktura</h1>
-    <p class="muted">Od góry to, czego używasz, na dole to, na czym stoi.</p>
   </div>
   {% if sess.role == "admin" %}
   <div class="actions">
@@ -14,6 +13,8 @@
   </div>
   {% endif %}
 </div>
+{{ infra_nav(tabs, "lista") }}
+<p class="muted">Od góry to, czego używasz, na dole to, na czym stoi.</p>
 {% if not groups %}
   <div class="card"><p class="muted">Nie ma jeszcze urządzeń.</p></div>
 {% endif %}

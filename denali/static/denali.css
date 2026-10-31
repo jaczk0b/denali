@@ -111,6 +111,82 @@ details.menu[open] > summary { margin-bottom: 0; }
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); }
 .tabs a { padding: 10px 14px; text-decoration: none; color: var(--text-3); border-bottom: 2px solid transparent; }
 .tabs a:hover { color: var(--text); border-bottom-color: var(--border-strong); }
+.tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }
+.infra-tabs { margin: 4px 0 18px; }
+
+/* ───────── infrastruktura: zakładki ───────── */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+.tile.warn { border-color: var(--warn-border); }
+.tile.down { border-color: var(--down-border); background: var(--down-bg); }
+.tile-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; }
+.tile-head > span { display: flex; gap: 8px; align-items: center; }
+.tile-head small { font-weight: 400; font-size: 13px; color: var(--muted); }
+.meter { margin-top: 10px; font-size: 14px; }
+.meter > div { display: flex; justify-content: space-between; gap: 8px; }
+.meter > div span:first-child { color: var(--muted); }
+.bar { display: block; height: 6px; border-radius: 3px; background: var(--surface-3); margin-top: 4px; overflow: hidden; min-width: 60px; }
+.bar > span { display: block; height: 6px; border-radius: 3px; background: var(--accent); }
+.bar.warn > span { background: var(--warn); }
+td .bar { margin-top: 3px; }
+.stat { flex: 1 1 160px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; }
+.stat b { display: block; font-size: 22px; font-weight: 600; }
+.stats { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+tr.group td { background: #12161b; color: var(--muted); font-size: 13px; padding-top: 8px; padding-bottom: 8px; }
+tr.group td strong { color: var(--text-2); font-weight: 600; }
+tr.is-new td { background: var(--surface-2); }
+tr.is-down td { background: var(--down-bg); }
+dl.facts { display: grid; grid-template-columns: minmax(110px, auto) 1fr; gap: 6px 12px; margin: 12px 0 0; font-size: 14px; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; }
+
+/* adresy IP: 254 pola sieci /24 */
+.ipgrid { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; margin-top: 12px; }
+.ipcell { display: flex; align-items: center; justify-content: center; min-height: 30px; border-radius: 4px; font-family: var(--mono);
+  font-size: 12px; text-decoration: none; color: var(--muted); background: var(--surface-2); border: 1px solid transparent; }
+.ipcell.zajety { background: #1d2b3a; color: var(--text); border-color: #2f4a66; }
+.ipcell.nowy { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); border-style: dashed; }
+.ipcell.konflikt { background: var(--down-bg); color: var(--down-text); border-color: var(--down); }
+a.ipcell:hover { color: var(--text); border-color: var(--link); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend .ipcell { min-height: 14px; width: 18px; }
+@media (max-width: 700px) { .ipgrid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+
+/* szafa: przód, 1U = jeden wiersz */
+.racks { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.rack { flex: 0 1 460px; min-width: 300px; }
+.rack-frame { display: grid; grid-template-columns: 34px 1fr 34px; background: #0b0e12; border: 2px solid var(--border-strong);
+  border-radius: 8px; padding: 8px 0; }
+.rack-u { font-family: var(--mono); font-size: 11px; color: #6b7580; text-align: center; line-height: 26px; }
+.rack-slots { display: grid; grid-auto-rows: 26px; gap: 0; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+.rack-empty { border-bottom: 1px dashed #1b2128; }
+.rack-dev { margin: 1px 4px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border-strong); display: flex;
+  align-items: center; gap: 8px; padding: 0 10px; font-size: 13px; text-decoration: none; color: var(--text); overflow: hidden; white-space: nowrap; }
+.rack-dev:hover { border-color: var(--link); color: var(--text); }
+.rack-dev.down { background: var(--down-bg); border-color: var(--down); }
+.rack-dev.warn { border-color: var(--warn-border); }
+.rack-dev small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.rack-dev.back { background: transparent; border-style: dashed; color: var(--muted); }
+
+/* mapa */
+.map-wrap { overflow-x: auto; background: #12161b; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.map-wrap svg { display: block; }
+.map-node rect { fill: var(--surface-2); stroke: var(--border-strong); }
+.map-node.down rect { fill: var(--down-bg); stroke: var(--down); stroke-width: 2; }
+.map-node.warn rect { stroke: var(--warn); }
+.map-node.effect rect { fill: var(--surface); stroke: #4a535e; stroke-dasharray: 5 4; }
+.map-node.off rect { fill: var(--surface); stroke: var(--border); }
+.map-node text { fill: var(--text); font-size: 13px; font-family: var(--font); }
+.map-node text.sub { fill: var(--muted); font-size: 11px; }
+.map-node:hover rect { stroke: var(--link); }
+.map-box { fill: #151c24; stroke: #33404f; }
+.map-box-label { fill: var(--text-2); font-size: 13px; font-weight: 600; font-family: var(--font); }
+.map-col { fill: var(--muted); font-size: 12px; font-family: var(--font); text-transform: uppercase; letter-spacing: .04em; }
+.map-edge { fill: none; stroke: #6b7682; stroke-width: 1.6; }
+.map-edge.dane { stroke: var(--accent); stroke-dasharray: 6 5; }
+.map-edge.dane.broken { stroke: var(--down); }
+.map-edge.soft { stroke-dasharray: 2 4; }
 
 /* ───────── karty, listy, tabele ───────── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_makra.html" import infra_nav, bar, state_pill, st %}
+{% block title %}TrueNAS · Infrastruktura{% endblock %}
+{% block content %}
+<h1>Infrastruktura</h1>
+{{ infra_nav(tabs, "truenas") }}
+{% for n in nases %}
+<div class="row-between">
+  <p class="muted">{{ n.row.name }}{% if n.data.version %} · TrueNAS {{ n.data.version }}{% endif %} · API tylko do odczytu
+    {%- if n.row.last_ok_at %} · {{ n.row.last_ok_at | hm }}{% endif %}</p>
+  <div class="actions">
+    {% if n.device_id %}<a class="btn" href="/urzadzenia/{{ n.device_id }}">Karta urządzenia</a>{% endif %}
+    {% if n.row.config.url %}<a class="btn" href="{{ n.row.config.url }}" target="_blank" rel="noopener">Otwórz TrueNAS ↗</a>{% endif %}
+  </div>
+</div>
+{% if n.row.last_error %}
+<div class="alert error">{{ st("down", 16) }} <strong>API TrueNAS nie odpowiada:</strong> {{ n.row.last_error }}
+  {% if n.server %}Poniżej ostatni znany stan z {{ n.server.observed_at | dt }} — może być nieaktualny.{% endif %}</div>
+{% endif %}
+
+<section class="tiles" aria-label="Pule">
+  {% for p in n.pools %}
+  <div class="tile{% if p.state == 'down' %} down{% elif p.state == 'warn' %} warn{% endif %}">
+    <div class="tile-head"><span>{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(p.state, "unknown"), 15) }} {{ p.name }}</span>
+      <small>{{ p.status }}</small></div>
+    <div class="meter"><div><span>Zajęte</span><span>{% if p.size %}{{ p.allocated | bytes }} / {{ p.size | bytes }} ({{ p.used | pct }}){% else %}{{ p.used | pct }}{% endif %}</span></div>{{ bar(p.used) }}</div>
+  </div>
+  {% else %}
+  <div class="tile"><p class="muted">TrueNAS nie podał jeszcze pul.</p></div>
+  {% endfor %}
+  {% if n.data.alerts %}
+  <div class="tile warn">
+    <div class="tile-head"><span>{{ st("warn", 15) }} Alerty TrueNAS · {{ n.data.alerts }}</span></div>
+    <ul class="plain small mt">{% for t in n.data.alert_texts or [] %}<li>{{ t }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+</section>
+
+<div class="cols">
+<div class="col">
+  <section class="card" aria-label="Kto korzysta z danych">
+    <h2>Udziały i kto z nich korzysta</h2>
+    {% if n.data.nfs %}
+    <h3>Udziały NFS</h3>
+    <ul class="plain small">{% for path in n.data.nfs %}<li class="mono">{{ path }}</li>{% endfor %}</ul>
+    {% endif %}
+    <h3>Zależą od danych z tego NAS-a</h3>
+    {% if n.consumers %}
+    <ul class="plain">{% for c in n.consumers %}<li><a href="/urzadzenia/{{ c.id }}">{{ c.name }}</a>
+      {% if c.note %}<span class="muted small">· {{ c.note }}</span>{% endif %}
+      {% if ":" in c.source %}<span class="muted small">· wykryta przez agenta</span>{% endif %}</li>{% endfor %}</ul>
+    {% else %}
+    <p class="muted small">Brak zależności „dane”. Agent na maszynie dopisuje je sam z montaży NFS;
+      ręcznie — na karcie urządzenia, które korzysta z NAS-a.</p>
+    {% endif %}
+  </section>
+</div>
+<div class="col">
+  <section class="card" aria-label="Snapshoty i replikacja">
+    <h2>Snapshoty i replikacja</h2>
+    {% if n.tasks %}
+    <ul class="plain">{% for t in n.tasks %}<li>{{ state_pill(t.state, t.kind) }} <span class="mono small">{{ t.key }}</span>
+      <div class="muted small">{{ t.summary }}</div></li>{% endfor %}</ul>
+    {% else %}
+    <p class="muted small">Brak włączonych zadań snapshotów i replikacji — dane mają tylko to, co na dyskach.</p>
+    {% endif %}
+    <p class="muted small mt">Dyski i SMART — w kolejnej wersji adaptera.</p>
+  </section>
+</div>
+</div>
+{% endfor %}
+{% endblock %}

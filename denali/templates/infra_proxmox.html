@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_makra.html" import infra_nav, bar, state_pill, st %}
+{% block title %}Proxmox · Infrastruktura{% endblock %}
+{% block content %}
+<h1>Infrastruktura</h1>
+{{ infra_nav(tabs, "proxmox") }}
+{% for c in clusters %}
+<div class="row-between">
+  <p class="muted">{{ c.row.name }} · dane z API Proxmoxa
+    {%- if c.row.last_ok_at %} · {{ c.row.last_ok_at | hm }}{% endif %}
+    {%- if c.row.last_error %} · <span class="pill down">{{ st("down", 12) }} ostatni odczyt nieudany — dane mogą być nieaktualne</span>{% endif %}</p>
+  {% if c.row.config.url %}<div class="actions"><a class="btn" href="{{ c.row.config.url }}" target="_blank" rel="noopener">Otwórz Proxmox ↗</a></div>{% endif %}
+</div>
+<section class="tiles" aria-label="Węzły">
+  {% for n in c.nodes %}
+  <div class="tile{% if n.state == 'down' %} down{% endif %}">
+    <div class="tile-head"><span>{{ st({"ok": "ok", "down": "down"}.get(n.state, "unknown"), 15) }}
+      {% if n.device_id %}<a href="/urzadzenia/{{ n.device_id }}">{{ n.name }}</a>{% else %}{{ n.name }}{% endif %}</span>
+      <small>{{ n.running }} z {{ n.guests }} maszyn działa</small></div>
+    {% if n.state == "down" %}<p class="muted">{{ n.summary }}</p>{% else %}
+    <div class="meter"><div><span>CPU</span><span>{{ n.cpu | pct }}</span></div>{{ bar(n.cpu) }}</div>
+    <div class="meter"><div><span>RAM</span><span>{{ n.mem | bytes }} / {{ n.maxmem | bytes }}</span></div>{{ bar(n.ram) }}</div>
+    <p class="muted small">działa {{ n.uptime | uptime }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+<section class="card" aria-label="Maszyny i kontenery">
+  <div class="row-between"><h2>Maszyny i kontenery <span class="muted">· {{ c.guests | length }}</span></h2>
+    <span class="muted small">przyciski (restart, snapshot) dojdą w Etapie 5</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Maszyna</th><th>Stan</th><th>CPU</th><th>RAM</th><th>Dysk</th><th>Ostatnia kopia (PBS)</th></tr></thead>
+      <tbody>
+      {% for g in c.guests %}
+      <tr{% if g.state == "down" %} class="is-down"{% endif %}>
+        <td>{% if g.device_id %}<a href="/urzadzenia/{{ g.device_id }}">{{ g.name }}</a>{% else %}{{ g.name }} <span class="pill">do zatwierdzenia</span>{% endif %}
+          <div class="muted small">{{ "VM" if g.type == "qemu" else "LXC" }} {{ g.vmid }} · {{ g.node }}{% if g.onboot %} · startuje z hostem{% endif %}</div></td>
+        <td>{{ state_pill(g.state) }}{% if g.status == "running" %}<div class="muted small">{{ g.uptime | uptime }}</div>{% endif %}</td>
+        <td>{% if g.status == "running" %}{{ g.cpu | pct }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if g.status == "running" and g.maxmem %}{{ g.mem | bytes }} / {{ g.maxmem | bytes }}{{ bar(g.ram) }}{% else %}<span class="muted">{{ g.maxmem | bytes }}</span>{% endif %}</td>
+        <td class="muted">{{ g.maxdisk | bytes if g.maxdisk else "—" }}</td>
+        <td>{% if g.backup %}{% set b = g.backup %}<span class="{{ 'muted' if b.state == 'ok' else '' }}">{% if b.state != "ok" %}{{ st("warn", 12) }} {% endif %}{{ (b.data.last_backup | dt) if b.data.last_backup else "brak kopii" }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

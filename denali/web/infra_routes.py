@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from .. import (auth, checks, discovery, docs, files, incidents, integrations, inventory as inv, live, profiles, status,
-               updates, vault)
+from .. import (auth, checks, discovery, docs, files, incidents, infra_views, integrations, inventory as inv, live,
+               profiles, racks, status, updates, vault)
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook)
 from ..templating import render
@@ -78,13 +78,14 @@ def device_list(request: Request, sess: dict = Depends(require_user)):
             select(device_address.c.device_id, device_address.c.value)
             .where(device_address.c.kind == "ip").order_by(device_address.c.is_primary))}
         names = {r["id"]: r["name"] for r in rows}
+        tabs = infra_views.tabs(conn)
     groups = []
     for key, label, _k in status.LAYERS + [("inne", "Inne", set())]:
         devs = [d for d in rows if status.layer_of(d["kind"]) == key]
         if devs:
             groups.append((label, devs))
     return render(request, "urzadzenia.html", {"groups": groups, "marks": marks, "ips": ips, "names": names,
-                                               "states": states})
+                                               "states": states, "tabs": tabs})
 
 
 def _card(request, conn, device_id, *, error=None, message=None, revealed=None, status_code=200):
@@ -122,7 +123,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "sources": integrations.states_for_device(conn, device_id),
         "checks": checks.for_device(conn, device_id), "now": time.time(),
         "live": live.saved(conn).get(device_id),
-        "updates": updates.for_device(conn, device_id),
+        "updates": updates.for_device(conn, device_id), "rack_pos": racks.for_device(conn, device_id),
         "refs": conn.execute(select(external_ref).where(external_ref.c.device_id == device_id)).mappings().all(),
     }
     return render(request, "urzadzenie.html", ctx, status_code)

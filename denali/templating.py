@@ -16,7 +16,8 @@ templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templat
 # Markdown bez surowego HTML; markdown-it sam odrzuca linki javascript: i data:
 # Strony odświeżane na żywo (SSE). Tylko widoki do patrzenia — nie strona po wysłaniu formularza (błąd albo
 # odsłonięte hasło zniknęłyby przy podmianie) ani karta urządzenia ze skarbcem.
-LIVE_TEMPLATES = {"pulpit.html", "urzadzenia.html", "incydenty.html", "incydent.html"}
+LIVE_TEMPLATES = {"pulpit.html", "urzadzenia.html", "incydenty.html", "incydent.html", "infra_proxmox.html",
+                  "infra_truenas.html", "infra_docker.html", "infra_siec.html", "infra_adresy.html", "infra_mapa.html"}
 _md = MarkdownIt("commonmark", {"html": False}).enable("table").enable("strikethrough")
 
 
@@ -39,7 +40,34 @@ def _size(n: int) -> str:
         n /= 1024
 
 
-templates.env.filters.update(dt=_dt, hm=_hm, md=_md_filter, initials=initials, tile_color=tile_color, size=_size)
+def _bytes(n) -> str:
+    """Pojemność po polsku: 5,6 GB · 13,4 TB (przecinek, jak w makiecie)."""
+    if not isinstance(n, (int, float)) or n < 0:
+        return "—"
+    for unit in ("B", "KB", "MB", "GB", "TB", "PB"):
+        if n < 1024 or unit == "PB":
+            text = f"{n:.0f}" if unit == "B" or n >= 100 else f"{n:.1f}"
+            return f"{text.replace('.', ',')} {unit}"
+        n /= 1024
+
+
+def _pct(v) -> str:
+    return f"{v * 100:.0f}%" if isinstance(v, (int, float)) else "—"
+
+
+def _uptime(s) -> str:
+    if not isinstance(s, (int, float)) or s <= 0:
+        return "—"
+    if s >= 86400:
+        d = int(s // 86400)
+        return f"{d} {'dzień' if d == 1 else 'dni'}"
+    if s >= 3600:
+        return f"{int(s // 3600)} h"
+    return f"{max(1, int(s // 60))} min"
+
+
+templates.env.filters.update(dt=_dt, hm=_hm, md=_md_filter, initials=initials, tile_color=tile_color, size=_size,
+                             bytes=_bytes, pct=_pct, uptime=_uptime)
 templates.env.globals.update(KINDS=inventory.KINDS, DEP_TYPES=inventory.DEP_TYPES, VIA=incidents.VIA,
                              version_text=updates.version_text,
                              PRIORITY={1: "P1", 2: "P2", 3: "P3"})

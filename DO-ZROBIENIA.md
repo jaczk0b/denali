@@ -8,7 +8,8 @@ i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), 
 ## 1. Po Twojej stronie — teraz
 
 - [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
-      od routera/AP, sprawdzenia z internetu, **Etap 4** — migracja bazy 0009 wykona się sama przy starcie).
+      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury — migracje bazy 0009 i 0010 wykonają się same przy
+      starcie).
 - [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).
       Instrukcja: README → Instalacja → krok 4.
@@ -85,7 +86,30 @@ Kod sprawdzony testami i przez prawdziwe HTTP (rejestracja i raport), ale **sam 
 - [ ] **Powiadomienia o aktualizacjach** (np. raz dziennie o nowych poprawkach bezpieczeństwa) — ustawienie profilu
       „powiadom” na razie tylko liczy urządzenie w liczniku.
 
-## 7. Następne etapy
+## 7. Infrastruktura — zakładki z makiety (przed Etapem 5)
+
+W makiecie dział *Infrastruktura* miał zakładki Mapa · Proxmox · TrueNAS · Docker · Sieć; w Denali była tylko lista.
+Kod gotowy (31.10.2026), tylko do odczytu — przyciski (restart, snapshot, aktualizuj) dochodzą w Etapie 5.
+Zakładka źródła (Proxmox, TrueNAS, Docker, Sieć) pokazuje się dopiero, gdy jest podłączona integracja tego typu.
+
+- [x] **Zakładki**: Mapa · Lista · Proxmox · TrueNAS · Docker · Sieć · Adresy IP · Szafa; „Infrastruktura” w menu
+      otwiera Mapę.
+- [x] **Proxmox** — węzły (CPU, RAM, czas działania), maszyny i kontenery (stan, CPU, RAM, dysk, ostatnia kopia z PBS).
+- [x] **TrueNAS** — pule (zajętość), snapshoty i replikacja, udziały NFS, kto korzysta (zależności „dane”), alerty.
+- [x] **Docker** — serwery i stacki z Komodo, pogrupowane po serwerze, z nowszymi obrazami.
+- [x] **Sieć** — router i AP, kto jest w sieci (kabel / Wi-Fi, sygnał, przez który AP), nieprzypisani klienci.
+- [x] **Adresy IP** — sieci /24 wyliczone same z adresów urządzeń i klientów routera: zajęte (przez co), wolne
+      zakresy, konflikty. Bez ręcznego wpisywania sieci; Tailscale i adresy publiczne pominięte.
+- [x] **Szafa** — przód i tył szafy, co na której wysokości (U); pozycja to urządzenie albo sam opis (patch panel,
+      półka). Kolizje i wysokość szafy sprawdzane; na karcie urządzenia widać „Szafa · U6”. Migracja bazy 0010.
+- [x] **Mapa** — rysowana sama z dokumentacji (sieć → serwery → maszyny → aplikacje; klienci sieci na żądanie),
+      stan na żywo, zależność „dane” czerwona, gdy źródło nie działa.
+- [ ] **Do sprawdzenia u Ciebie:** wygląd na prawdziwych danych (mapa przy wielu urządzeniach, tablet), czy liczby
+      zgadzają się z Proxmoxem / Komodo / routerem.
+- [ ] Później: dyski i SMART w TrueNAS (adapter jeszcze nie czyta `/disk`), wersje obrazów w Docker (Komodo podaje
+      tylko „jest nowszy”), porty i prędkość łącza w Sieci (dopiero z OpenWrt), DHCP: która pula jest rozdawana.
+
+## 8. Następne etapy
 
 | Etap | Zakres | Kryterium odbioru |
 |---|---|---|

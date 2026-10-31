@@ -79,3 +79,20 @@
   </div>
 </details>
 {% endmacro %}
+
+{# Zakładki działu Infrastruktura; tabs = infra_views.tabs(conn) #}
+{% macro infra_nav(tabs, active) %}
+<nav class="tabs infra-tabs" aria-label="Infrastruktura">
+  {% for key, label, url in tabs %}<a href="{{ url }}"{% if key == active %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+{% endmacro %}
+
+{# Pasek zajętości: v = 0…1 #}
+{% macro bar(v) -%}
+<span class="bar{% if v is number and v >= 0.9 %} warn{% endif %}" aria-hidden="true"><span style="width: {{ ((v or 0) * 100) | round(1) }}%"></span></span>
+{%- endmacro %}
+
+{# Stan z integracji (ok | warn | down | off | unknown) jako znaczek z podpisem #}
+{% macro state_pill(s, text="") -%}
+<span class="pill {{ {'down': 'down', 'warn': 'warn', 'ok': 'ok'}.get(s, '') }}">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(s, "unknown"), 12) }} {{ text or {"ok": "działa", "down": "nie działa", "warn": "uwaga", "off": "wyłączone", "unknown": "brak danych"}.get(s, s) }}</span>
+{%- endmacro %}

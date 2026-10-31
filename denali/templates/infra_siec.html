@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_makra.html" import infra_nav, state_pill, st %}
+{% block title %}Sieć · Infrastruktura{% endblock %}
+{% block content %}
+<h1>Infrastruktura</h1>
+{{ infra_nav(tabs, "siec") }}
+<section class="tiles" aria-label="Urządzenia sieciowe">
+  {% for n in nets %}
+  <div class="tile{% if n.row.last_error %} down{% endif %}">
+    <div class="tile-head"><span>{{ st("down" if n.row.last_error else {"ok": "ok", "warn": "warn"}.get(n.router.state if n.router else "", "unknown"), 15) }}
+      {% if n.device_id %}<a href="/urzadzenia/{{ n.device_id }}">{{ n.row.name }}</a>{% else %}{{ n.row.name }}{% endif %}</span>
+      <span class="pill">{{ "AP" if n.as_ap else "router" }} · tylko odczyt</span></div>
+    {% if n.row.last_error %}<p class="small">{{ n.row.last_error }}</p>{% endif %}
+    <dl class="facts">
+      {% if n.data.model %}<dt>Model</dt><dd>{{ n.data.model }}</dd>{% endif %}
+      {% if n.data.firmware %}<dt>Firmware</dt><dd>{{ n.data.firmware }} <span class="muted small">· nowszą sprawdzasz w panelu TP-Link</span></dd>{% endif %}
+      <dt>Klienci</dt><dd>{{ n.count.all }}{% if n.count.all %} <span class="muted">(Wi-Fi {{ n.count.wifi }}, kabel {{ n.count.wired }})</span>{% endif %}</dd>
+      {% if n.router %}<dt>Stan</dt><dd class="small">{{ n.router.summary }}</dd>{% endif %}
+    </dl>
+    {% if n.row.config.url %}<div class="actions mt"><a class="btn small" href="{{ n.row.config.url }}" target="_blank" rel="noopener">Otwórz panel ↗</a></div>{% endif %}
+  </div>
+  {% endfor %}
+  {% set weak = nets | sum(attribute="count.weak") %}{% set new = nets | sum(attribute="count.new") %}
+  {% if weak or new %}
+  <div class="tile warn">
+    <div class="tile-head"><span>{{ st("warn", 15) }} Do sprawdzenia</span></div>
+    <ul class="small mt">
+      {% if new %}<li>Nowe w sieci, jeszcze nieprzypisane: {{ new }} — <a href="/zatwierdz">do zatwierdzenia</a>.</li>{% endif %}
+      {% if weak %}<li>Słaby sygnał (poniżej {{ weak_signal }} dBm): {{ weak }} urządz.</li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card" aria-label="Kto jest w sieci">
+  <div class="row-between"><h2>Kto jest w sieci <span class="muted">· {{ clients | length }}</span></h2>
+    <span class="muted small">z routera i AP przy każdym odczycie</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Urządzenie</th><th>IP · MAC</th><th>Połączenie</th><th>Sygnał</th><th>W dokumentacji</th></tr></thead>
+      <tbody>
+      {% for c in clients %}
+      <tr{% if c.status == "nowy" %} class="is-new"{% endif %}>
+        <td>{% if c.device_id %}<a href="/urzadzenia/{{ c.device_id }}">{{ c.device }}</a>{% else %}<strong>{{ c.name }}</strong>{% endif %}</td>
+        <td class="mono small">{{ c.ip or "—" }} · {{ c.mac }}</td>
+        <td>{{ c.connection }} <span class="muted small">· {{ c.via }}</span></td>
+        <td>{% if c.signal is number %}<span{% if c.signal < weak_signal %} class="pill warn"{% endif %}>{{ c.signal }} dBm</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if c.status == "nowy" %}<a class="btn small" href="/zatwierdz">Dodaj albo pomiń</a>
+          {% elif c.status == "ignorowany" %}<span class="muted small">pominięte</span>
+          {% else %}<span class="muted small">przypisane</span>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">Router nie podał jeszcze klientów.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

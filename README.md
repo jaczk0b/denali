@@ -11,7 +11,9 @@ zależności i kable, profile, kolejka „do zatwierdzenia”, analiza przyczyny
 skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo i router TP-Link,
 sprawdzenia z LAN i z internetu, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS,
 odświeżanie na żywo (SSE); jedna lista aktualizacji (Proxmox, PBS, Komodo, agent) i agent na maszynach (apt,
-wymagany restart, NFS). Nie ma jeszcze: OpenWrt (odłożone); akcji — Etap 5.
+wymagany restart, NFS); dział Infrastruktura z zakładkami Mapa (rysowana sama), Proxmox, TrueNAS, Docker, Sieć,
+Adresy IP (zajęte i wolne, konflikty) i Szafa (co na której wysokości). Nie ma jeszcze: OpenWrt (odłożone);
+akcji — Etap 5.
 
 Spis treści:
 [Instalacja](#instalacja) ·

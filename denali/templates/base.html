@@ -19,7 +19,7 @@
   </a>
   <nav class="nav" aria-label="Główne menu">
     <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>Pulpit</a>
-    <a href="/urzadzenia" {% if path.startswith("/urzadzenia") or path.startswith("/runbooki") %}aria-current="page"{% endif %}>Infrastruktura</a>
+    <a href="/infrastruktura/mapa" {% if path.startswith(("/urzadzenia", "/runbooki", "/infrastruktura")) %}aria-current="page"{% endif %}>Infrastruktura</a>
     <a href="/incydenty" {% if path.startswith("/incydenty") %}aria-current="page"{% endif %}>Incydenty{% if counts.incidents %} <span class="badge down">{{ counts.incidents }}</span>{% endif %}</a>
     <a href="/aktualizacje" {% if path.startswith("/aktualizacje") %}aria-current="page"{% endif %}>Aktualizacje{% if counts.updates %} <span class="badge">{{ counts.updates }}</span>{% endif %}</a>
     <a href="/procedury" {% if path.startswith("/procedury") %}aria-current="page"{% endif %}>Procedury</a>

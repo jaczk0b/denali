@@ -134,6 +134,27 @@ cable = Table(
     Column("label", String(200), nullable=False, default=""),
 )
 
+# Szafa (rack) i co w niej stoi. Pozycja może być urządzeniem albo samym opisem (patch panel, półka, zaślepka).
+rack = Table(
+    "rack", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String(100), nullable=False, unique=True),
+    Column("units", Integer, nullable=False, default=42),       # wysokość w U
+    Column("place", String(200), nullable=False, default=""),
+    Column("notes", String(500), nullable=False, default=""),
+)
+
+rack_item = Table(
+    "rack_item", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("rack_id", Integer, ForeignKey("rack.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), unique=True),  # NULL = sam opis
+    Column("label", String(200), nullable=False, default=""),  # opis pozycji bez urządzenia albo dopisek
+    Column("u", Integer, nullable=False),                       # najniższe zajęte U (1 = dół szafy)
+    Column("height", Integer, nullable=False, default=1),       # ile U zajmuje
+    Column("back", Boolean, nullable=False, default=False),     # montaż z tyłu (np. listwa, switch od tyłu)
+)
+
 device_override = Table(
     "device_override", metadata,
     Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), primary_key=True),

@@ -21,6 +21,7 @@
       <span class="chip">{{ {1: "P1 — krytyczne", 2: "P2 — ważne", 3: "P3 — może poczekać"}[d.criticality] }}</span>
       {% if parent %}<span class="chip">działa na {{ parent.name }}</span>{% endif %}
       {% if d.place %}<span class="chip">{{ d.place }}</span>{% endif %}
+      {% if rack_pos %}<a class="chip" href="/infrastruktura/szafa">{{ rack_pos.rack_name }} · U{{ rack_pos.u }}{% if rack_pos.height > 1 %}–U{{ rack_pos.u + rack_pos.height - 1 }}{% endif %}{% if rack_pos.back %} · tył{% endif %}</a>{% endif %}
     </div>
     <h1>{{ d.name }}</h1>
     <p class="lead">{{ d.role or "Nie opisano, do czego służy." }}</p>

@@ -150,13 +150,15 @@ class Truenas(Adapter):
         out.found.append(Found("server", {"name": info.get("hostname") or host, "kind": "nas", "addresses": addrs}))
         alerts = [a for a in data.get("alert.list") or []
                   if not a.get("dismissed") and str(a.get("level", "")).upper() in ALERT_LEVELS]
+        texts = [str(a.get("formatted") or a.get("text") or "alert")[:300] for a in alerts]
+        server = {"version": info.get("version"), "alerts": len(alerts), "alert_texts": texts[:20],
+                  "nfs": [x.get("path") or (x.get("paths") or [""])[0] for x in data.get("sharing.nfs.query") or []
+                          if x.get("enabled", True)]}
         if alerts:
-            text = (alerts[0].get("formatted") or alerts[0].get("text") or "alert")[:150]
-            out.states.append(State("server", "warn", f"alerty TrueNAS: {len(alerts)} — {text}", {"alerts": len(alerts)}))
+            out.states.append(State("server", "warn", f"alerty TrueNAS: {len(alerts)} — {texts[0][:150]}", server))
         else:
             out.states.append(State("server", "ok", f"TrueNAS {info.get('version', '')} działa".replace("  ", " "),
-                                    {"nfs": [x.get("path") or (x.get("paths") or [""])[0]
-                                             for x in data.get("sharing.nfs.query") or []]}))
+                                    server))
         for p in data.get("pool.query") or []:
             name, status = p.get("name"), str(p.get("status") or "UNKNOWN").upper()
             if not name:
@@ -170,7 +172,7 @@ class Truenas(Adapter):
             else:
                 state = "ok"
             summary = f"pula {name}: {status}" + (f" · zajęte {pct:.0%}" if pct is not None else "")
-            out.states.append(State(f"pool/{name}", state, summary, {"status": status, "used": pct},
+            out.states.append(State(f"pool/{name}", state, summary, {"status": status, "used": pct, "size": size, "allocated": alloc},
                                     attach={"ref": "server"}, label=f"pula {name}"))
         for kind, method, label in (("snapshot", "pool.snapshottask.query", "snapshoty"),
                                     ("replication", "replication.query", "replikacja")):

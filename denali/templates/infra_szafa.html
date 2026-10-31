@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "_makra.html" import infra_nav, alerts, st %}
+{% block title %}Szafa · Infrastruktura{% endblock %}
+{% macro rack_view(r, rows, side) %}
+<div class="rack-frame" aria-label="{{ r.name }} — {{ side }}">
+  <div class="rack-u">{% for x in rows %}{% for k in range(x.span) %}<div>{{ x.top - k }}</div>{% endfor %}{% endfor %}</div>
+  <div class="rack-slots" style="grid-template-rows: repeat({{ r.units }}, 26px)">
+    {% for x in rows %}
+    {% if x.item %}{% set i = x.item %}{% set m = marks.get(i.device_id) %}{% set s = states.get(i.device_id, {}).get("state") %}
+    {% set cls = "down" if m == "przyczyna" or s == "down" else ("warn" if s == "warn" else "") %}
+    {% if i.device_id %}<a class="rack-dev {{ cls }}" href="/urzadzenia/{{ i.device_id }}" style="grid-row: {{ x.row }} / span {{ x.span }}"
+      title="U{{ i.u }}{% if i.height > 1 %}–U{{ i.u + i.height - 1 }}{% endif %} · {{ i.name }}">
+      {{ st({"down": "down", "warn": "warn", "ok": "ok"}.get(s, "unknown"), 12) }} {{ i.name }}<small>{{ i.label or KINDS.get(i.kind, i.kind) }}</small></a>
+    {% else %}<div class="rack-dev back" style="grid-row: {{ x.row }} / span {{ x.span }}" title="U{{ i.u }}">{{ i.label }}</div>{% endif %}
+    {% else %}<div class="rack-empty" style="grid-row: {{ x.row }}"></div>{% endif %}
+    {% endfor %}
+  </div>
+  <div class="rack-u">{% for x in rows %}{% for k in range(x.span) %}<div>{{ x.top - k }}</div>{% endfor %}{% endfor %}</div>
+</div>
+{% endmacro %}
+{% block content %}
+<h1>Infrastruktura</h1>
+{{ infra_nav(tabs, "szafa") }}
+{{ alerts(error, message) }}
+{% if not racks %}
+<div class="card">
+  <h2>Nie ma jeszcze szafy</h2>
+  <p class="muted">Gdy będzie szafa, dodaj ją tutaj i poukładaj w niej urządzenia (switch, patch panel, serwery, UPS)
+    — w awarii od razu widać, co gdzie stoi. Same urządzenia muszą najpierw być w dokumentacji.</p>
+</div>
+{% endif %}
+<div class="racks">
+{% for x in racks %}{% set r = x.rack %}
+<section class="card rack" aria-labelledby="rack-{{ r.id }}">
+  <div class="row-between">
+    <h2 id="rack-{{ r.id }}">{{ r.name }} <span class="muted">· {{ r.units }} U · zajęte {{ x.used }} U</span></h2>
+  </div>
+  {% if r.place or r.notes %}<p class="muted small">{{ r.place }}{% if r.place and r.notes %} · {% endif %}{{ r.notes }}</p>{% endif %}
+  <h3>Przód</h3>
+  {{ rack_view(r, x.front, "przód") }}
+  {% if x.back | selectattr("item") | list %}
+  <h3>Tył</h3>
+  {{ rack_view(r, x.back, "tył") }}
+  {% endif %}
+  {% if sess.role == "admin" %}
+  <details class="mt">
+    <summary>Umieść w szafie</summary>
+    <form method="post" action="/infrastruktura/szafa/{{ r.id }}/umiesc" class="narrow-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label class="field">Urządzenie
+        <select name="device_id"><option value="">— bez urządzenia (sam opis) —</option>
+          {% for d in devices %}<option value="{{ d.id }}">{{ d.name }}{% if d.id in placed %} (przeniesie z „{{ placed[d.id] }}”){% endif %}</option>{% endfor %}</select></label>
+      <label class="field">Opis <span class="muted small">— np. „patch panel 24 porty”, „półka”; przy urządzeniu dopisek</span>
+        <input name="label" maxlength="200"></label>
+      <div class="form-row">
+        <label class="field">Od U (dół) <input name="u" type="number" min="1" max="{{ r.units }}" required class="small-input"></label>
+        <label class="field">Wysokość (U) <input name="height" type="number" min="1" max="{{ r.units }}" value="1" class="small-input"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="back" value="1"> z tyłu szafy</label>
+      <button class="btn primary" type="submit">Umieść</button>
+    </form>
+  </details>
+  {% if x.entries %}
+  <details>
+    <summary>Pozycje ({{ x.entries | length }})</summary>
+    <ul class="plain small">
+      {% for i in x.entries %}
+      <li class="row-between">U{{ i.u }}{% if i.height > 1 %}–U{{ i.u + i.height - 1 }}{% endif %}{% if i.back %} · tył{% endif %} · {{ i.name or i.label }}
+        <form method="post" action="/infrastruktura/szafa/pozycja/{{ i.id }}/usun" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">wyjmij</button></form></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  <details>
+    <summary>Zmień szafę</summary>
+    <form method="post" action="/infrastruktura/szafa/{{ r.id }}" class="narrow-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label class="field">Nazwa <input name="name" value="{{ r.name }}" required maxlength="100"></label>
+      <label class="field">Wysokość (U) <input name="units" type="number" min="1" max="60" value="{{ r.units }}" class="small-input"></label>
+      <label class="field">Gdzie stoi <input name="place" value="{{ r.place }}" maxlength="200"></label>
+      <label class="field">Notatka <input name="notes" value="{{ r.notes }}" maxlength="500"></label>
+      <button class="btn" type="submit">Zapisz</button>
+    </form>
+    <form method="post" action="/infrastruktura/szafa/{{ r.id }}/usun" class="mt">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn danger" type="submit">Usuń szafę „{{ r.name }}”</button>
+      <span class="muted small">urządzenia zostają w dokumentacji, znika tylko ich pozycja</span>
+    </form>
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+</div>
+{% if sess.role == "admin" %}
+<details class="card mt"{% if not racks %} open{% endif %}>
+  <summary>Dodaj szafę</summary>
+  <form method="post" action="/infrastruktura/szafa" class="narrow-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="field">Nazwa <input name="name" required maxlength="100" placeholder="np. Szafa 12U"></label>
+    <label class="field">Wysokość (U) <input name="units" type="number" min="1" max="60" value="12" class="small-input"></label>
+    <label class="field">Gdzie stoi <input name="place" maxlength="200" placeholder="np. piwnica"></label>
+    <button class="btn primary" type="submit">Dodaj szafę</button>
+  </form>
+</details>
+{% endif %}
+{% endblock %}
