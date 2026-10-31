@@ -1,15 +1,15 @@
 # Do zrobienia
 
-Stan na 31.10.2026. Etapy 2 (rdzeń) i 3 (status) odebrane. Etap 4 (aktualizacje): kod gotowy, czeka na wdrożenie
-i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
+Stan na 31.10.2026. Etapy 2 (rdzeń) i 3 (status) odebrane. Etapy 4 (aktualizacje) i 5 (akcje): kod gotowy, czekają
+na wdrożenie i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
 
 ---
 
 ## 1. Po Twojej stronie — teraz
 
 - [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
-      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury — migracje bazy 0009–0011 wykonają się same przy
-      starcie).
+      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury, **Etap 5** — migracje bazy 0009–0012
+      wykonają się same przy starcie).
 - [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).
       Instrukcja: README → Instalacja → krok 4.
@@ -46,6 +46,32 @@ Kod sprawdzony testami i przez prawdziwe HTTP (rejestracja i raport), ale **sam 
 - [ ] Agent w kontenerze LXC: jeśli usługa nie startuje (ograniczenia LXC przy zabezpieczeniach systemd), wklej
       `journalctl -u denali-agent -n 30`.
 - [ ] Akceptacja Etapu 4.
+
+## 3a. Etap 5 — sprawdzenie na prawdziwych serwerach
+
+Kod sprawdzony testami na nagranych odpowiedziach API (Proxmox, Komodo) i na plikach zleceń agenta. **Żadna akcja nie
+była wykonana na prawdziwym Proxmoxie, Komodo ani maszynie** — przy pierwszej próbie wklej wynik z *Akcje → przebieg*.
+Zacznij od maszyny testowej (VM 120 albo inna, której restart niczego nie psuje).
+
+- [ ] Proxmox: rola `PanelActions` (`VM.PowerMgmt`, `VM.Snapshot`) i token `denali@pve!akcje` na `/vms` (instrukcja na
+      stronie integracji Proxmox) → *Akcje — osobny token* → zapisz (wymaga hasła i kodu).
+- [ ] *Profile*: w profilu maszyn wirtualnych zaznacz „Proxmox VE: Zrób snapshot” i „Uruchom ponownie”.
+- [ ] Testowa VM: *Akcje → Zrób snapshot* → przebieg „wykonana”, snapshot widać w Proxmoxie (*VM → Snapshots*).
+      Potem „Wyłącz” i „Uruchom” — stan VM na karcie zmienia się po następnym odczycie (do minuty).
+- [ ] Jeśli Proxmox odpowie 403: tę samą rolę na `/vms` nadaj też użytkownikowi `denali@pve` (token z oddzielonymi
+      uprawnieniami ma najwyżej to, co jego użytkownik).
+- [ ] Komodo: użytkownik `denali-akcje` z **Execute** na jednym stacku testowym, klucz w *Akcje — osobny token*,
+      w profilu „Komodo: Uruchom ponownie” → restart stacka → przebieg „wykonana” (Komodo: *Updates* pokazuje ten sam restart).
+- [ ] Agent 1.1 na testowej VM: nowe polecenie z *Dodaj: Agent na maszynie* (stary agent 1.0 nie zna akcji), potem
+      `sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade`. Na stronie agenta: „Lokalna lista: apt_upgrade”.
+- [ ] Profil: „Agent na maszynie: Zainstaluj aktualizacje” → karta VM → *Zainstaluj aktualizacje* z „Najpierw snapshot”
+      → snapshot, potem apt upgrade (do 2 minut na odebranie zlecenia), wynik apt w przebiegu, lista pakietów pusta po kolejnym raporcie.
+      Gdyby utknęło na „zlecona”: `systemctl status denali-agent-akcje.path` i `journalctl -u denali-agent-akcje -n 50`.
+- [ ] Agent w LXC: czy `denali-agent-akcje.path` startuje (ograniczenia LXC).
+- [ ] Bezpośredni POST na adres akcji niedozwolonej → odmowa i wpis `action_blocked` w *Audycie* (sprawdzone testami,
+      warto raz zobaczyć w prawdziwym panelu).
+- [ ] *Akcje → Wyłącz wszystkie akcje* → przyciski znikają z kart; włączenie wymaga hasła.
+- [ ] Akceptacja Etapu 5.
 
 ### Etap 3 — zostało do sprawdzenia po wdrożeniu
 
@@ -86,10 +112,20 @@ Kod sprawdzony testami i przez prawdziwe HTTP (rejestracja i raport), ale **sam 
 - [ ] **Powiadomienia o aktualizacjach** (np. raz dziennie o nowych poprawkach bezpieczeństwa) — ustawienie profilu
       „powiadom” na razie tylko liczy urządzenie w liczniku.
 
+## 6a. Etap 5 — czego nie ma (świadomie)
+
+- [ ] **Router**: brak akcji. Jedyna planowana (kopia konfiguracji, `sysupgrade -b`) wymaga OpenWrt — biblioteka
+      TP-Linka jej nie ma.
+- [ ] **TrueNAS, PBS**: bez akcji (nie było ich w projekcie).
+- [ ] **Restart maszyny przez agenta** po aktualizacji („wymagany restart”) — zrób „Uruchom ponownie” z Proxmoxa;
+      agent ma tylko `apt_upgrade`.
+- [ ] **Cofnięcie snapshotu** (rollback) — świadomie tylko w Proxmoxie (nieodwracalne, łatwo stracić dane).
+- [ ] Przyciski akcji na zakładkach *Proxmox* i *Docker* — na razie tylko na karcie urządzenia.
+
 ## 7. Infrastruktura — zakładki z makiety (przed Etapem 5)
 
 W makiecie dział *Infrastruktura* miał zakładki Mapa · Proxmox · TrueNAS · Docker · Sieć; w Denali była tylko lista.
-Kod gotowy (31.10.2026), tylko do odczytu — przyciski (restart, snapshot, aktualizuj) dochodzą w Etapie 5.
+Kod gotowy (31.10.2026), tylko do odczytu — akcje (restart, snapshot, aktualizuj) są na karcie urządzenia.
 Zakładka źródła (Proxmox, TrueNAS, Docker, Sieć) pokazuje się dopiero, gdy jest podłączona integracja tego typu.
 
 - [x] **Zakładki**: Mapa · Lista · Proxmox · TrueNAS · Docker · Sieć · Adresy IP · Szafa; „Infrastruktura” w menu
@@ -115,4 +151,4 @@ Zakładka źródła (Proxmox, TrueNAS, Docker, Sieć) pokazuje się dopiero, gdy
 
 | Etap | Zakres | Kryterium odbioru |
 |---|---|---|
-| **5. Akcje** | lista dozwolonych akcji (przez profil), potwierdzenia, audyt; Proxmox (restart, snapshot), Komodo (aktualizacja stacka), agent (`apt upgrade` z lokalnej białej listy), router tylko kopia konfiguracji | każda akcja ma wpis w audycie; akcja spoza listy jest niemożliwa nawet przez API |
+| **5. Akcje** — kod gotowy 31.10.2026, do sprawdzenia (punkt 3a) | lista dozwolonych akcji (przez profil), potwierdzenia, audyt; Proxmox (start, wyłącz, restart, zatrzymaj, snapshot), Komodo (start, restart, stop, Deploy), agent (`apt upgrade` z lokalnej białej listy, snapshot przed); router — bez akcji do czasu OpenWrt | każda akcja ma wpis w audycie; akcja spoza listy jest niemożliwa nawet przez API |

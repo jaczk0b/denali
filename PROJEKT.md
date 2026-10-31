@@ -279,6 +279,17 @@ Własne logowanie:
   aktualizacja przez Komodo, `apt upgrade` przez agenta (snapshot VM przed).
 - Panel nie ma akcji na samym sobie ani na routerze (poza kopią konfiguracji).
 
+Doprecyzowane przy kodzie (31.10.2026):
+- „Dozwolone akcje” to ustawienie profilu (`actions`, lista kluczy `<integracja>.<akcja>`), na urządzeniu tylko wyjątek.
+  Domyślnie puste. Zmiana listy i tokenu do akcji wymaga ponownego hasła i kodu.
+- Dodatkowy zamek: **wyłącznik wszystkich akcji** (wyłączenie od razu, włączenie z potwierdzeniem) — z „trzech zamków” HLC.
+- Token do akcji: osobna, zaszyfrowana kolumna `integration.action_ct` (usunięcie = wyłączenie akcji integracji).
+- Niebezpieczne: wyłączenie, restart, zatrzymanie, Deploy, apt upgrade. Start i snapshot — samo okno potwierdzenia.
+- Agent: zlecenie przychodzi w odpowiedzi na raport; usługa raportu (bez uprawnień) zapisuje je do pliku, wykonuje
+  osobna usługa root uruchamiana przez `systemd.path` — po sprawdzeniu lokalnej listy w pliku roota.
+- Snapshot przed `apt upgrade` to osobna akcja Proxmoxa w łańcuchu (też musi być dozwolona); nieudany wstrzymuje aktualizację.
+- Router TP-Link: bez akcji — biblioteka nie ma kopii konfiguracji (wróci z OpenWrt).
+
 ---
 
 ## 7. Odporność: panel nie może paść razem z tym, co pilnuje

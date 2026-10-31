@@ -6,19 +6,21 @@ a gdy coś padnie albo się zmieni, w minutę wiem **co, dlaczego i gdzie szuka�
 Dokumenty: [PROJEKT.md](PROJEKT.md) (projekt i decyzje), [AUDYT.md](AUDYT.md) (audyt poprzedniego panelu HLC),
 [POMYSLY.md](POMYSLY.md) (odłożone pomysły).
 
-**Stan: Etap 4 (aktualizacje) — kod gotowy, czeka na sprawdzenie na serwerach.** Jest: logowanie z 2FA, urządzenia,
+**Stan: Etap 5 (akcje) — kod gotowy, czeka na sprawdzenie na serwerach** (Etap 4 też jeszcze nie odebrany). Jest: logowanie z 2FA, urządzenia,
 zależności i kable, profile, kolejka „do zatwierdzenia”, analiza przyczyny, incydenty, procedury, runbooki, pliki,
 skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo i router TP-Link,
 sprawdzenia z LAN i z internetu, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS,
 odświeżanie na żywo (SSE); jedna lista aktualizacji (Proxmox, PBS, Komodo, agent) i agent na maszynach (apt,
 wymagany restart, NFS); dział Infrastruktura z zakładkami Mapa (rysowana sama), Proxmox, TrueNAS, Docker, Sieć,
-Adresy IP (zajęte i wolne, konflikty) i Szafa (co na której wysokości). Nie ma jeszcze: OpenWrt (odłożone);
-akcji — Etap 5.
+Adresy IP (zajęte i wolne, konflikty) i Szafa (co na której wysokości); akcje z listy dozwolonych (Proxmox: start,
+wyłączenie, restart, snapshot; Komodo: start, restart, stop, Deploy; agent: apt upgrade po snapshocie) z potwierdzeniem
+i audytem. Nie ma: OpenWrt (odłożone), więc też akcji na routerze (kopia konfiguracji).
 
 Spis treści:
 [Instalacja](#instalacja) ·
 [Pierwsze kroki](#pierwsze-kroki) ·
 [Agent i aktualizacje](#agent-i-aktualizacje) ·
+[Akcje](#akcje) ·
 [Migracja z HLC](#migracja-z-hlc) ·
 [Kopia zapasowa](#kopia-zapasowa) ·
 [Odtworzenie](#odtworzenie) ·
@@ -159,8 +161,8 @@ Konto tylko do podglądu (np. dla domownika): `create-user LOGIN --role podglad`
 
 ## Agent i aktualizacje
 
-*Aktualizacje* to jedna lista ze wszystkich źródeł. Panel tylko pokazuje — aktualizujesz tam, gdzie zawsze
-(akcje dopiero w Etapie 5).
+*Aktualizacje* to jedna lista ze wszystkich źródeł. Aktualizujesz tam, gdzie zawsze, albo akcją z karty urządzenia
+(apt upgrade przez agenta, Deploy stacka w Komodo) — patrz [Akcje](#akcje).
 
 | Źródło | Co podaje | Co trzeba zrobić |
 |---|---|---|
@@ -181,8 +183,15 @@ certyfikat — token nie idzie zwykłym HTTP.
 
 - `denali-agent.service` — raport co minutę, jako zwykły użytkownik `denali-agent`, system tylko do odczytu.
 - `denali-agent-ukryte.timer` — raz dziennie, jako root, **bez sieci**: czy pod montażami NFS nie leżą dane zapisane,
-  gdy udział nie był podłączony (to jedyne, co wymaga roota).
-- Agent nie słucha na żadnym porcie i niczego nie wykonuje na polecenie panelu.
+  gdy udział nie był podłączony.
+- `denali-agent-akcje.path` → `denali-agent-akcje.service` (root) — wykonuje akcję zleconą z panelu, **tylko jeśli
+  jest na lokalnej liście** w `/etc/denali-agent/config.json`. Domyślnie lista jest pusta: agent niczego nie wykona.
+  Pozwolenie: `sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade` (cofnięcie: `zabron`), albo od razu
+  przy instalacji: `… install … --akcje apt_upgrade`. Panel tej listy nie zmieni.
+- Agent nie słucha na żadnym porcie. Zlecenie przychodzi w odpowiedzi na jego raport; usługa raportu tylko zapisuje
+  je do pliku, a wykonuje osobna usługa po sprawdzeniu lokalnej listy.
+- Agent zainstalowany przed wersją 1.1 nie zna akcji — wygeneruj nowe polecenie i wklej je jeszcze raz (ta sama
+  maszyna zostaje tą samą integracją, z historią).
 - Stan: `systemctl status denali-agent`, `journalctl -u denali-agent -n 30`; raport bez wysyłania:
   `python3 /opt/denali-agent/denali-agent.py print`.
 - Usunięcie: `sudo python3 /opt/denali-agent/denali-agent.py uninstall`, a w Denali usuń agenta (unieważnia token).
@@ -190,6 +199,35 @@ certyfikat — token nie idzie zwykłym HTTP.
 
 Montaż NFS z `/etc/fstab` staje się zależnością „dane” od serwera (np. TrueNAS) — gdy TrueNAS padnie, incydent wskaże
 TrueNAS, a nie VM. Profil *Dostępne aktualizacje: ignoruj* chowa urządzenie z licznika (np. maszyna testowa).
+
+---
+
+## Akcje
+
+Restart VM, aktualizacja stacka, `apt upgrade` — z karty urządzenia (*Akcje*). Akcja wykona się tylko, gdy przejdzie
+wszystkie zamki, sprawdzane po stronie serwera przy każdym zleceniu (także przy bezpośrednim wywołaniu adresu):
+
+1. **akcje włączone** — *menu konta → Akcje*; „Wyłącz wszystkie akcje” działa od razu, włączenie wymaga hasła i kodu;
+2. akcja jest na liście **„Dozwolone akcje”** urządzenia — ustawiasz ją raz w *Profilach* (np. profil maszyn
+   wirtualnych: snapshot, restart), na karcie urządzenia tylko wyjątki; domyślnie lista jest pusta;
+3. integracja ma **osobny token do akcji** (*Integracje → … → Akcje — osobny token*), zapisany oddzielnie od tokenu
+   do odczytu; usunięcie go wyłącza akcje tej integracji. Agent zamiast tokenu ma lokalną listę na maszynie;
+4. akcja pasuje do stanu obiektu (np. „Uruchom” tylko wyłączonej VM) i nie trwa na nim inna;
+5. **niebezpieczne** (wyłączenie, restart, zatrzymanie, Deploy, apt upgrade) — po potwierdzeniu hasłem i kodem 2FA
+   (ważne 5 minut).
+
+Zmiana list dozwolonych i tokenu do akcji też wymaga hasła i kodu. Każde zlecenie, odmowa i wynik są w *Audycie*,
+historia w *Akcjach*, a przy trwającym incydencie urządzenia — w jego przebiegu.
+
+| Źródło | Akcje | Token do akcji |
+|---|---|---|
+| Proxmox VE | Uruchom, Wyłącz, Uruchom ponownie, Zatrzymaj natychmiast, Zrób snapshot (VM i LXC) | token `denali@pve!akcje` z rolą `PanelActions` (`VM.PowerMgmt`, `VM.Snapshot`) na `/vms` — instrukcja na stronie integracji |
+| Komodo | Uruchom, Uruchom ponownie, Zatrzymaj, Aktualizuj (Deploy) — na stackach | klucz osobnego użytkownika z prawem **Execute** tylko na wybranych stackach |
+| Agent | Zainstaluj aktualizacje (`apt-get update` + `apt-get upgrade`, bez usuwania pakietów) | lokalna lista na maszynie (`pozwol apt_upgrade`) |
+
+`apt upgrade` na VM z Proxmoxa: w oknie potwierdzenia „Najpierw snapshot w Proxmoxie” (gdy snapshot tej VM jest
+dozwolony i Proxmox ma token do akcji) — aktualizacja ruszy dopiero po udanym snapshocie, a nieudany snapshot ją
+wstrzymuje. Panel nie ma akcji na samym sobie ani na routerze.
 
 ---
 
@@ -355,8 +393,10 @@ Kto co zmienił: *Audyt* w panelu.
 - Role: administrator i podgląd. Tablet: tylko podgląd, tylko ze swojego adresu.
 - Skarbiec zaszyfrowany; pokazanie hasła wymaga ponownego potwierdzenia hasłem i 2FA i trafia do audytu.
 - Każda zmiana ma wpis w audycie. Panel nie ma i nie będzie miał dostępu do powłoki serwerów.
+- Akcje tylko z jawnej listy w kodzie i z listy dozwolonych urządzenia, osobnym tokenem o minimalnych uprawnieniach;
+  niebezpieczne po ponownym potwierdzeniu; wyłącznik wszystkich akcji jednym kliknięciem.
 - Agent: token tylko w `/etc/denali-agent/config.json` (root i grupa agenta), w Denali tylko jego skrót; raport
-  wysyła zwykły użytkownik bez prawa zapisu do systemu; agent nie przyjmuje poleceń.
+  wysyła zwykły użytkownik bez prawa zapisu do systemu; akcję wykonuje tylko z lokalnej listy, której panel nie zmieni.
 
 ---
 
@@ -376,5 +416,5 @@ echo DENALI_DEV=1 >> .env                    # lokalnie bez HTTPS: ciasteczka be
 ```
 
 Układ kodu: `denali/` — logika (`inventory`, `rca`, `profiles`, `discovery`, `incidents`, `docs`, `vault`, `files`,
-`export`, `backup`), `denali/web/` — trasy, `denali/templates/` — widoki, `denali/migrations/` — schemat bazy (Alembic).
+`export`, `backup`, `actions`), `denali/web/` — trasy, `denali/templates/` — widoki, `denali/migrations/` — schemat bazy (Alembic).
 PDF eksportu wymaga WeasyPrint (`pip install -e ".[pdf]"` + biblioteki pango; w obrazie Dockera jest).
