@@ -50,8 +50,8 @@ przeglądarka / tablet ──HTTPS──▶ Nginx Proxy Manager ──HTTP w LAN
 Zamiast kroków 1–3 poniżej:
 
 1. Wybierz stały katalog danych na serwerze, poza katalogiem repozytorium (ten Komodo może wyczyścić przy
-   aktualizacji), np. `/opt/denali/data`. Nie musisz go tworzyć ani zmieniać właściciela — robi to krok
-   `data-owner` w compose przy każdym wdrożeniu.
+   aktualizacji), np. `/opt/denali/data`, i raz nadaj go użytkownikowi panelu:
+   `sudo mkdir -p /opt/denali/data && sudo chown 1000:1000 /opt/denali/data`.
 2. Klucz szyfrowania wygeneruj na dowolnym komputerze z Pythonem i biblioteką `cryptography`:
    `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
    i **zapisz go w menedżerze haseł**.
@@ -73,7 +73,8 @@ Compose korzysta z `env_file` z `required: false`, co wymaga Docker Compose 2.24
 ### 1. Pliki na serwer
 
 Skopiuj katalog repozytorium do `/opt/denali` (np. `scp -r new/ root@VM:/opt/denali`). Katalog danych
-(`DENALI_DATA_PATH`, domyślnie `/opt/denali/data`) compose utworzy sam i przekaże użytkownikowi panelu (UID 1000).
+(`DENALI_DATA_PATH`, domyślnie `/opt/denali/data`) musi należeć do użytkownika panelu (UID 1000):
+`sudo mkdir -p /opt/denali/data && sudo chown 1000:1000 /opt/denali/data`.
 
 ```sh
 cd /opt/denali
@@ -99,7 +100,7 @@ Gdy NPM działa w Dockerze na **tej samej** VM — wpisz adres, z którego przyc
 
 ```sh
 docker compose up -d
-docker compose ps -a                    # data-owner: exited (0), app: healthy, worker: running
+docker compose ps                       # app: healthy, worker: running
 curl -s http://127.0.0.1:8000/health
 # {"status":"ok","version":"…","db":"ok","worker":"ok"}  — worker zgłasza się po ok. 30 s
 ```
