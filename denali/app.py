@@ -13,7 +13,7 @@ from .config import Settings, get_settings
 from .crypto import Box
 from .db import kv_get, make_engine
 from .templating import render
-from .web import (admin_routes, agent_routes, auth_routes, docs_routes, infra_routes, infra_tab_routes,
+from .web import (action_routes, admin_routes, agent_routes, auth_routes, docs_routes, infra_routes, infra_tab_routes,
                   integration_routes, live_routes, notify_routes)
 from .web.deps import CsrfError, Forbidden, NotFound, Redirect
 
@@ -64,7 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     for r in (auth_routes, infra_routes, infra_tab_routes, docs_routes, admin_routes, integration_routes, notify_routes, live_routes,
-              agent_routes):
+              agent_routes, action_routes):
         app.include_router(r.router)
 
     @app.get("/health")

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, select
 
-from .. import auth, profiles
+from .. import actions, auth, profiles
 from ..db import kv_get, kv_set
 from ..models import app_user, device, profile, session
 from ..templating import render
@@ -147,8 +147,10 @@ def _profiles_page(request, conn, error=None, status_code=200):
         p = profiles.profile_for(conn, d)
         if p:
             usage[p["id"]] += 1
-    return render(request, "admin_profile.html", {"rows": rows, "usage": usage, "defs": profiles.SETTINGS,
-                                                  "edit_settings": EDIT_SETTINGS, "error": error}, status_code)
+    return render(request, "admin_profile.html", {
+        "rows": rows, "usage": usage, "defs": profiles.SETTINGS, "edit_settings": EDIT_SETTINGS, "error": error,
+        "action_catalog": [(k, c, a) for k, (c, a) in actions.catalog().items()],
+        "fresh": auth.reauth_fresh(request.state.sess)}, status_code)
 
 
 @router.get("/admin/profile")

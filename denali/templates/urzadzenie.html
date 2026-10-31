@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import st, mark_state, mark_badge, alerts, inc_status %}
+{% from "_makra.html" import st, mark_state, mark_badge, alerts, inc_status, run_status %}
 {% block title %}{{ d.name }}{% endblock %}
 {% macro dev_icon(id) %}{{ st(mark_state(marks.get(id)) or "unknown", 13) }}{% endmacro %}
 {% macro rm(url) %}<form class="inline" method="post" action="{{ url }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endmacro %}
@@ -41,6 +41,7 @@
   <a href="#adresy">Adresy</a>
   <a href="#pliki">Pliki</a>
   {% if admin %}<a href="#skarbiec">Hasła</a>{% endif %}
+  {% if admin and (dev_actions or action_runs) %}<a href="#akcje">Akcje</a>{% endif %}
   <a href="#ustawienia">Ustawienia</a>
 </nav>
 
@@ -267,6 +268,47 @@
   </section>
   {% endif %}
 
+  {% if admin and (dev_actions or action_runs) %}
+  {% set allowed = settings.actions.value %}
+  <section class="card" aria-labelledby="akcje">
+    <h2 id="akcje">Akcje</h2>
+    {% if not actions_on %}<p class="muted small">Akcje są wyłączone w <a href="/akcje">Akcjach</a>.</p>{% endif %}
+    {% if dev_actions %}
+    <ul class="list-rows">
+      {% for o in dev_actions %}
+      <li><span class="grow">{{ o.spec.label }}{% if o.spec.dangerous %} <span class="pill warn">wymaga hasła</span>{% endif %}<br>
+          <span class="muted small">{{ o.integration.name }} · <span class="mono">{{ o.external_id }}</span>{% if o.reason %} · {{ o.reason }}{% endif %}</span></span>
+        {% if not o.reason %}<a class="btn small" href="/urzadzenia/{{ d.id }}/akcje/{{ o.ref_id }}/{{ o.key }}">{{ o.spec.label }}…</a>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <details class="mt">
+      <summary>Dozwolone akcje: {{ allowed | select("in", action_keys | map(attribute=0) | list) | list | length }} z {{ action_keys | length }}{% if settings.actions.source == "urzadzenie" %} · <span class="pill warn">inne niż profil</span>{% endif %}</summary>
+      {% if fresh %}
+      <form method="post" action="/urzadzenia/{{ d.id }}/akcje-dozwolone" class="mt">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        {% for key, spec, cls in action_keys %}
+        <label class="check"><input type="checkbox" name="allow" value="{{ key }}" {% if key in allowed %}checked{% endif %}> {{ cls.label }}: {{ spec.label }}</label>
+        {% endfor %}
+        <div class="actions mt"><button class="btn small" type="submit">Zapisz jako wyjątek na tym urządzeniu</button></div>
+      </form>
+      {% if settings.actions.source == "urzadzenie" %}
+      <form method="post" action="/urzadzenia/{{ d.id }}/akcje-dozwolone"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="clear" value="1"><button class="link" type="submit">jak w profilu „{{ profile_name }}”</button></form>
+      {% endif %}
+      <p class="muted small">Najlepiej raz w <a href="/admin/profile">Profilach</a> — dla wszystkich urządzeń tego typu.</p>
+      {% else %}
+      <p class="small mt">Zmiana tego, co wolno, wymaga potwierdzenia. <a href="/potwierdz?next={{ ('/urzadzenia/%d#akcje' % d.id) | urlencode }}">Potwierdź hasłem i kodem</a></p>
+      {% endif %}
+    </details>
+    {% endif %}
+    {% if action_runs %}
+    <h3 class="mt">Ostatnie</h3>
+    <ul class="list-rows">
+      {% for r in action_runs %}<li><a class="grow" href="/akcje/{{ r.id }}">{{ r.label }}</a><span class="muted small">{{ r.created_at | dt }} · {{ r.requested_by }}</span> {{ run_status(r.status) }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="card" aria-labelledby="ustawienia">
     <h2 id="ustawienia">Ustawienia</h2>
     <p class="muted small">Z profilu <strong>{{ profile_name }}</strong> — zmieniasz je raz dla wszystkich{% if admin %} w <a href="/admin/profile">Profilach</a>{% endif %}. Tutaj tylko świadome wyjątki.</p>
@@ -287,7 +329,8 @@
         {% endif %}</td>
       </tr>
       {% endfor %}
-      <tr><td>Dozwolone akcje</td><td colspan="2" class="muted">brak — akcje dojdą w Etapie 5</td></tr>
+      <tr><td>Dozwolone akcje</td><td colspan="2">{% for k in settings.actions.value %}{{ action_labels.get(k, k) }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">żadne</span>{% endfor %}
+        {% if settings.actions.source == "urzadzenie" %}<span class="pill warn">inne niż profil</span>{% endif %}</td></tr>
     </table>
   </section>
 

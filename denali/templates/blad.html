@@ -4,6 +4,6 @@
 <div class="card">
   <h1>{{ title }}</h1>
   <p>{{ text }}</p>
-  <a class="btn" href="/">Wróć na pulpit</a>
+  {% if back %}<a class="btn" href="{{ back }}">Wróć</a>{% else %}<a class="btn" href="/">Wróć na pulpit</a>{% endif %}
 </div>
 {% endblock %}

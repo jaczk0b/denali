@@ -51,6 +51,35 @@
     </div>
   </form>
 
+  {% if row and cls.action_fields %}
+  <section class="card" aria-labelledby="akcje">
+    <h2 id="akcje">Akcje — osobny token</h2>
+    <p class="muted small">{% for a in cls.actions %}{{ a.label }}{% if not loop.last %} · {% endif %}{% endfor %}.
+      Token do akcji jest zapisany osobno od tokenu do odczytu — usunięcie go wyłącza akcje tej integracji.
+      Która akcja jest dozwolona, ustawiasz w <a href="/admin/profile">Profilach</a>.</p>
+    {% if row.action_ct %}
+      <p>{{ st("ok") }} Zapisany: <span class="mono">{{ action_hint }}</span></p>
+      <form method="post" action="/admin/integracje/{{ row.id }}/akcje/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button class="btn danger small" type="submit">Usuń token do akcji</button></form>
+    {% else %}
+      <p class="muted">Brak — panel nie wykona żadnej akcji przez tę integrację.</p>
+    {% endif %}
+    {% if fresh %}
+    <form method="post" action="/admin/integracje/{{ row.id }}/akcje" class="mt" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      {% for f in cls.action_fields %}
+        <label class="field">{{ f.label }}
+          <input name="{{ f.key }}" {% if f.kind == "secret" %}type="password" autocomplete="new-password" placeholder="{{ 'zapisany — zostaw puste, żeby nie zmieniać' if row.action_ct else '' }}"{% else %}spellcheck="false"{% endif %}></label>
+        {% if f.help %}<p class="muted small">{{ f.help }}</p>{% endif %}
+      {% endfor %}
+      <button class="btn" type="submit">{{ "Zmień token do akcji" if row.action_ct else "Zapisz token do akcji" }}</button>
+    </form>
+    {% else %}
+    <p class="small mt">Zapis tokenu do akcji wymaga potwierdzenia. <a href="/potwierdz?next={{ ('/admin/integracje/%d#akcje' % row.id) | urlencode }}">Potwierdź hasłem i kodem</a></p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   {% if row %}
   <details class="card">
     <summary>Usuń integrację</summary>
@@ -74,6 +103,16 @@
     </ol>
     <p class="muted small">PVEAuditor pozwala tylko czytać. Adresy IP maszyn wirtualnych wymagają agenta QEMU w VM (qemu-guest-agent); bez niego VM pojawi się bez IP.</p>
   </section>
+  <section class="card md">
+    <h2>Token do akcji (opcjonalnie)</h2>
+    <ol>
+      <li><strong>Datacenter → Permissions → Roles → Create</strong>: nazwa <code>PanelActions</code>, uprawnienia <code>VM.PowerMgmt</code> i <code>VM.Snapshot</code>.</li>
+      <li><strong>API Tokens → Add</strong>: użytkownik <code>denali@pve</code>, Token ID <code>akcje</code>, <em>Privilege Separation</em> zaznaczone. Skopiuj <strong>Secret</strong>.</li>
+      <li><strong>Permissions → Add → API Token Permission</strong>: ścieżka <code>/vms</code> (wszystkie maszyny) albo <code>/vms/107</code> (tylko wybrane), token <code>denali@pve!akcje</code>, rola <code>PanelActions</code>.</li>
+      <li>Jeśli akcja dostanie odmowę (403): tę samą rolę na tej samej ścieżce nadaj też użytkownikowi <code>denali@pve</code> — token z oddzielonymi uprawnieniami ma najwyżej to, co jego użytkownik.</li>
+    </ol>
+    <p class="muted small">Bez <code>Sys.*</code>, <code>VM.Config.*</code> i dostępu do węzła: token może tylko włączać, wyłączać i robić snapshoty maszyn.</p>
+  </section>
   {% elif cls.type == "komodo" %}
   <section class="card md">
     <h2>Jak założyć klucz (tylko odczyt)</h2>
@@ -81,6 +120,12 @@
       <li>W Komodo: <strong>Settings → Users</strong> — dodaj użytkownika usługowego, np. <code>denali</code>, <strong>bez</strong> uprawnień administratora.</li>
       <li>Daj mu prawo <strong>Read</strong> do serwerów i stacków (bez Execute i Write).</li>
       <li>Na tym użytkowniku: <strong>API Keys → New</strong>. Skopiuj <strong>Key</strong> i <strong>Secret</strong> — Secret widać tylko raz.</li>
+    </ol>
+    <h2 class="mt">Klucz do akcji (opcjonalnie)</h2>
+    <ol>
+      <li>Drugi użytkownik usługowy, np. <code>denali-akcje</code>, bez uprawnień administratora.</li>
+      <li>Na stackach, którymi panel ma sterować: <strong>Permissions</strong> → <strong>Execute</strong> dla tego użytkownika (nie Write).</li>
+      <li>Na nim <strong>API Keys → New</strong> — Key i Secret wpisz w sekcji „Akcje” na tej stronie.</li>
     </ol>
     <p class="muted small">Adres to adres panelu Komodo (Core), nie periphery na serwerach. Serwery Komodo pojawią się w kolejce
       z adresem IP — „Przypnij dopasowane” połączy je z VM-kami z Proxmoxa, a stacki trafią pod swoje VM-ki.</p>

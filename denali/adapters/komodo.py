@@ -1,4 +1,7 @@
-"""Komodo: serwery (periphery) i stacki Dockera. Tylko odczyt (API `POST /read`, klucz użytkownika bez prawa zapisu).
+"""Komodo: serwery (periphery) i stacki Dockera. Odczyt: API `POST /read`, klucz użytkownika bez prawa zapisu.
+
+Akcje na stackach (start, restart, stop, aktualizacja = Deploy) — `POST /execute` osobnym kluczem użytkownika
+z prawem Execute tylko na wybranych stackach. Komodo zwraca „update”, którego koniec sprawdzamy osobno.
 
 Serwer Komodo to zwykle VM z Proxmoxa — zgłaszamy go z adresem IP, a kolejka „do zatwierdzenia” podpowie
 przypięcie do istniejącej VM. Stack „działa na” swoim serwerze.
@@ -12,7 +15,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from . import Adapter, AdapterError, Field, Found, PollResult, State, Update
+from . import Adapter, ActionResult, ActionSpec, AdapterError, Field, Found, PollResult, State, Update
 
 STACK_STATE = {
     "running": "ok", "deploying": "ok",
@@ -25,6 +28,25 @@ STACK_LABEL = {
     "restarting": "kontener się restartuje", "down": "nie działa", "dead": "kontener martwy",
     "removing": "usuwanie", "stopped": "zatrzymany", "paused": "wstrzymany", "created": "utworzony, nie uruchomiony",
 }
+
+
+EXECUTE = {"start": "StartStack", "restart": "RestartStack", "stop": "StopStack", "deploy": "DeployStack"}
+
+
+def _update_id(u):
+    oid = u.get("_id") if isinstance(u, dict) else None
+    if isinstance(oid, dict):
+        oid = oid.get("$oid")
+    return str(oid or (u.get("id") if isinstance(u, dict) else "") or "")
+
+
+def _failed_log(u):
+    """Ostatni nieudany krok update'u Komodo (stderr albo stdout) — do wyniku akcji."""
+    for step in reversed(u.get("logs") or []):
+        if isinstance(step, dict) and step.get("success") is False:
+            text = (step.get("stderr") or step.get("stdout") or "").strip()
+            return f"{step.get('stage', 'krok')}: {text[-250:]}" if text else str(step.get("stage") or "")
+    return ""
 
 
 def _host_ip(address):
@@ -53,6 +75,22 @@ class Komodo(Adapter):
         Field("verify_tls", "Sprawdzaj certyfikat", "bool", required=False, default=True),
     ]
 
+    actions = [
+        ActionSpec("start", "Uruchom stack", "Komodo uruchomi kontenery stacka.", ("stack/",),
+                   when=("off", "down", "unknown")),
+        ActionSpec("restart", "Uruchom ponownie", "Komodo zrestartuje kontenery stacka. Aplikacja przez chwilę "
+                   "nie będzie działać.", ("stack/",), True),
+        ActionSpec("stop", "Zatrzymaj stack", "Komodo zatrzyma kontenery stacka. Aplikacja przestanie działać, "
+                   "dopóki ktoś jej nie uruchomi.", ("stack/",), True, ("ok", "warn", "unknown")),
+        ActionSpec("deploy", "Aktualizuj (Deploy)", "Komodo wdroży stack od nowa — z nowszymi obrazami, jeśli stack "
+                   "ma włączone „Auto Pull” (domyślnie tak). Aplikacja przez chwilę nie będzie działać; "
+                   "poprzednie obrazy zostają na serwerze.", ("stack/",), True),
+    ]
+    action_fields = [
+        Field("action_api_key", "Klucz API do akcji (Key)"),
+        Field("action_api_secret", "Sekret klucza do akcji (Secret)", "secret"),
+    ]
+
     @classmethod
     def validate(cls, config, secrets):
         super().validate(config, secrets)
@@ -60,16 +98,16 @@ class Komodo(Adapter):
         if p.scheme not in ("http", "https") or not p.hostname or p.query:
             raise AdapterError("Adres: http(s)://adres-komodo[:port].")
 
-    def _client(self):
+    def _client(self, action=False):
         base = str(self.config["url"]).strip().rstrip("/")
-        headers = {"X-Api-Key": self.config["api_key"].strip(), "X-Api-Secret": self.secrets["api_secret"].strip(),
-                   "Content-Type": "application/json"}
+        key, secret = (self.action_secrets["action_api_key"], self.action_secrets["action_api_secret"]) if action             else (self.config["api_key"], self.secrets["api_secret"])
+        headers = {"X-Api-Key": key.strip(), "X-Api-Secret": secret.strip(), "Content-Type": "application/json"}
         kw = {"transport": self.transport} if self.transport else {"verify": bool(self.config.get("verify_tls", True))}
         return httpx.AsyncClient(base_url=base, headers=headers, timeout=15, follow_redirects=False, **kw)
 
-    async def _read(self, cli, typ, params=None):
+    async def _read(self, cli, typ, params=None, path="/read"):
         try:
-            r = await cli.post("/read", json={"type": typ, "params": params or {}})
+            r = await cli.post(path, json={"type": typ, "params": params or {}})
         except httpx.ConnectError:
             raise AdapterError(f"Brak połączenia z {self.config['url']} — sprawdź adres i czy Komodo działa.") from None
         except httpx.TimeoutException:
@@ -79,7 +117,13 @@ class Komodo(Adapter):
         if r.status_code in (401, 403):
             raise AdapterError("Komodo odrzuciło klucz API — sprawdź Key i Secret.")
         if r.status_code >= 400:
-            raise AdapterError(f"Komodo zwróciło błąd {r.status_code} dla {typ}.")
+            try:
+                why = str((r.json() or {}).get("error") or "")[:200]
+            except ValueError:
+                why = ""
+            if path == "/execute" and ("permission" in why.lower() or "not allowed" in why.lower()):
+                raise AdapterError("Klucz do akcji nie ma prawa Execute na tym stacku (Komodo → stack → Permissions).")
+            raise AdapterError(f"Komodo zwróciło błąd {r.status_code} dla {typ}" + (f": {why}" if why else "."))
         try:
             return r.json()
         except ValueError:
@@ -135,3 +179,24 @@ class Komodo(Adapter):
             out.states.append(State(eid, STACK_STATE.get(st, "unknown"), summary,
                                     {"komodo_state": st, "services": len(services), "updates": updates}))
         return out
+
+    # ───────────────────────── akcje ─────────────────────────
+    async def run_action(self, key, external_id, data, params):
+        kind, _, sid = external_id.partition("/")
+        if kind != "stack" or not sid or key not in EXECUTE:
+            raise AdapterError("Nieznana akcja.")
+        async with self._client(action=True) as cli:
+            u = await self._read(cli, EXECUTE[key], {"stack": sid}, path="/execute") or {}
+        uid = _update_id(u)
+        if not uid:
+            return ActionResult(True, "zlecone w Komodo")
+        return ActionResult(True, "zlecone w Komodo", task={"update": uid})
+
+    async def check_task(self, task):
+        async with self._client(action=True) as cli:
+            u = await self._read(cli, "GetUpdate", {"id": task["update"]}) or {}
+        if str(u.get("status") or "") != "Complete":
+            return None
+        if u.get("success"):
+            return ActionResult(True, "wykonane w Komodo")
+        return ActionResult(False, f"Komodo: {_failed_log(u) or 'nie powiodło się'}"[:300])

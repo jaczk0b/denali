@@ -172,6 +172,7 @@ integration = Table(
     Column("name", String(100), nullable=False, unique=True),
     Column("config", JSON, nullable=False, default=dict),        # bez sekretów
     Column("secret_ct", Text),                                   # sekrety, zaszyfrowane
+    Column("action_ct", Text),                                   # token do akcji, osobno; NULL = akcje wyłączone
     Column("enabled", Boolean, nullable=False, default=True),
     Column("poll_seconds", Integer, nullable=False, default=60),
     Column("last_ok_at", Float),
@@ -364,4 +365,27 @@ update_item = Table(
     Column("available", String(100), nullable=False, default=""),
     Column("security", Boolean, nullable=False, default=False),
     Column("detected_at", Float, nullable=False),
+)
+
+# Akcja (restart VM, aktualizacja stacka, apt upgrade…): każda zlecona zostaje tu na zawsze, z wynikiem.
+# zlecona → (czeka na poprzednią, np. snapshot przed aktualizacją) → trwa → ok | blad
+action_run = Table(
+    "action_run", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("created_at", Float, nullable=False, index=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="SET NULL"), index=True),
+    Column("integration_id", Integer, ForeignKey("integration.id", ondelete="SET NULL")),
+    Column("external_id", String(200), nullable=False),
+    Column("action", String(64), nullable=False),               # pełny klucz, np. proxmox.reboot
+    Column("label", String(200), nullable=False),
+    Column("target", String(200), nullable=False, default=""),  # nazwa urządzenia w chwili zlecenia
+    Column("params", JSON, nullable=False, default=dict),
+    Column("status", String(16), nullable=False, index=True),   # czeka | zlecona | trwa | ok | blad
+    Column("after_id", Integer, ForeignKey("action_run.id", ondelete="SET NULL")),  # najpierw ta (snapshot)
+    Column("task", JSON),                                       # zadanie w źródle (UPID Proxmoxa, update Komodo)
+    Column("requested_by", String(64), nullable=False),
+    Column("ip", String(64), nullable=False, default=""),
+    Column("started_at", Float),
+    Column("finished_at", Float),
+    Column("result", Text, nullable=False, default=""),
 )

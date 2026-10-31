@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_makra.html" import run_status %}
+{% block title %}Akcja: {{ run.label }}{% endblock %}
+{% block head %}{% if active %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/akcje">Akcje</a> / {{ run.label }}</p>
+<section class="card narrow-form">
+  <h1>{{ run.label }}: {{ run.target }}</h1>
+  <p>{{ run_status(run.status) }}{% if active %} <span class="muted small">· strona odświeża się sama</span>{% endif %}</p>
+  <table>
+    <tr><td>Zlecił</td><td>{{ run.requested_by }} <span class="muted small mono">{{ run.ip }}</span></td></tr>
+    <tr><td>Zlecona</td><td>{{ run.created_at | dt }}</td></tr>
+    {% if run.started_at %}<tr><td>Ruszyła</td><td>{{ run.started_at | dt }}</td></tr>{% endif %}
+    {% if run.finished_at %}<tr><td>Koniec</td><td>{{ run.finished_at | dt }}</td></tr>{% endif %}
+    <tr><td>Obiekt</td><td class="mono">{{ run.action }} · {{ run.external_id }}</td></tr>
+  </table>
+  {% if run.result %}<h2 class="mt">Wynik</h2><pre class="wrap mono small">{{ run.result }}</pre>{% endif %}
+  {% if chain %}
+  <h2 class="mt">Powiązane</h2>
+  <ul class="list-rows">{% for c in chain %}<li><a class="grow" href="/akcje/{{ c.id }}">{{ c.label }}</a> {{ run_status(c.status) }}</li>{% endfor %}</ul>
+  {% endif %}
+  <div class="actions mt">
+    {% if run.device_id %}<a class="btn" href="/urzadzenia/{{ run.device_id }}#akcje">Karta urządzenia</a>{% endif %}
+    <a class="btn" href="/akcje">Wszystkie akcje</a>
+  </div>
+</section>
+{% endblock %}

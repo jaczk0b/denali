@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy import select
 
-from .. import agents, auth, integrations
+from .. import actions, agents, auth, integrations
 from ..models import external_ref, observed_state
 from ..templating import render
 from .deps import NotFound, client_ip, require_admin
@@ -102,7 +102,8 @@ async def agent_report(request: Request):
         except agents.AgentError as e:
             integrations.record_error(conn, row["id"], f"Raport odrzucony: {e}")
             return _error(400, str(e))
-    return {"interval": agents.REPORT_EVERY}
+        jobs, ack = actions.agent_exchange(conn, row, data.get("jobs"))
+    return {"interval": agents.REPORT_EVERY, "jobs": jobs, "ack": ack}
 
 
 # ───────────────────────── strony administratora ─────────────────────────

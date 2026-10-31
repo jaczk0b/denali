@@ -1,7 +1,8 @@
 """Adaptery integracji. Każdy system (Proxmox, Komodo, TrueNAS…) to jedna klasa z tym samym interfejsem.
 
-Adapter tylko czyta: zgłasza obiekty (trafiają do kolejki „do zatwierdzenia”), ich bieżący stan
-i dostępne aktualizacje.
+Adapter czyta: zgłasza obiekty (trafiają do kolejki „do zatwierdzenia”), ich bieżący stan i dostępne aktualizacje.
+Akcje (Etap 5) to jawna lista `actions` w klasie; wykonuje je osobnym tokenem (`action_fields`, zapisany osobno
+od tokenu do odczytu). Czy akcja jest dozwolona, rozstrzyga rdzeń (denali/actions.py), nie adapter.
 Nowy typ urządzenia = nowa klasa tutaj, bez zmian w rdzeniu.
 """
 from dataclasses import dataclass, field
@@ -68,6 +69,24 @@ def apt_updates(external_id, packages):
 
 
 @dataclass
+class ActionSpec:
+    """Akcja, którą adapter umie wykonać. Pełny klucz w profilu i audycie: „<typ integracji>.<key>”."""
+    key: str
+    label: str                  # „Uruchom ponownie”
+    effect: str                 # skutek w oknie potwierdzenia
+    targets: tuple              # przedrostki external_id, np. ("qemu/", "lxc/")
+    dangerous: bool = False     # wymaga ponownego hasła i kodu 2FA
+    when: tuple = ()            # stany obiektu, w których ma sens (puste = zawsze)
+
+
+@dataclass
+class ActionResult:
+    ok: bool
+    text: str = ""
+    task: dict | None = None    # zadanie jeszcze trwa w źródle — dokończy je check_task
+
+
+@dataclass
 class PollResult:
     found: list = field(default_factory=list)
     states: list = field(default_factory=list)
@@ -81,11 +100,15 @@ class Adapter:
     fields: list = []
     default_poll = 60
     push = False                # True: źródło samo wysyła dane (agent) — worker go nie odpytuje
+    actions: list = []          # ActionSpec
+    action_fields: list = []    # osobny token do akcji (Field); pusta lista = akcje bez tokenu (agent)
+    action_help = ""            # jak założyć token do akcji (markdown-free, krótko)
 
-    def __init__(self, config: dict, secrets: dict, transport=None):
+    def __init__(self, config: dict, secrets: dict, transport=None, action_secrets: dict | None = None):
         self.config = config or {}
         self.secrets = secrets or {}
         self.transport = transport          # w testach: httpx.MockTransport z nagranymi odpowiedziami
+        self.action_secrets = action_secrets or {}
 
     @classmethod
     def validate(cls, config: dict, secrets: dict) -> None:
@@ -101,6 +124,24 @@ class Adapter:
 
     async def poll(self) -> PollResult:
         raise NotImplementedError
+
+    @classmethod
+    def action(cls, key):
+        return next((a for a in cls.actions if a.key == key), None)
+
+    @classmethod
+    def validate_action_secrets(cls, values: dict) -> None:
+        for f in cls.action_fields:
+            if f.required and not str(values.get(f.key) or "").strip():
+                raise AdapterError(f"Uzupełnij pole „{f.label}”.")
+
+    async def run_action(self, key: str, external_id: str, data: dict, params: dict) -> ActionResult:
+        """Wykonuje akcję na obiekcie (data = ostatni stan z observed_state). Rzuca AdapterError z opisem."""
+        raise AdapterError("Ta integracja nie ma akcji.")
+
+    async def check_task(self, task: dict) -> ActionResult | None:
+        """Wynik zadania, które trwało dłużej; None = jeszcze trwa."""
+        return ActionResult(True, "zakończone")
 
 
 def registry() -> dict:

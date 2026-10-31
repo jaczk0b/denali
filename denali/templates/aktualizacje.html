@@ -6,7 +6,8 @@
   <div>
     <h1>Aktualizacje</h1>
     <p class="lead">Jedna lista ze wszystkich źródeł: Proxmox i PBS (pakiety węzła), Komodo (nowsze obrazy stacków),
-      agent na maszynach (pakiety apt i „wymagany restart”). Panel tylko pokazuje — aktualizujesz tam, gdzie zawsze.</p>
+      agent na maszynach (pakiety apt i „wymagany restart”). Aktualizować można tam, gdzie zawsze, albo akcją z karty
+      urządzenia (apt upgrade przez agenta, Deploy stacka w Komodo) — jeśli jest dozwolona.</p>
   </div>
 </div>
 {% if not rows %}
@@ -24,6 +25,7 @@
       {% for r in rows %}
       <tr{% if r.ignored %} class="muted"{% endif %}>
         <td><a href="/urzadzenia/{{ r.device.id }}#aktualizacje">{{ r.device.name }}</a>
+          {% if sess.role == "admin" %}<a class="small" href="/urzadzenia/{{ r.device.id }}#akcje">akcje →</a>{% endif %}
           {% if r.ignored %}<span class="pill">profil: ignoruj</span>{% endif %}</td>
         <td>
           {% if r.rows %}

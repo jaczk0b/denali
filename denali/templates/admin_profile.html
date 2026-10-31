@@ -28,6 +28,26 @@
         </td>
       </tr>
     {% endfor %}
+    {% set allowed = p.settings.get("actions", []) %}
+    <tr>
+      <td>Dozwolone akcje</td>
+      <td colspan="2">
+        <details>
+          <summary>{% for k, c, a in action_catalog if k in allowed %}{{ c.label }}: {{ a.label }}{% if not loop.last %}, {% endif %}{% else %}żadne{% endfor %}</summary>
+          {% if fresh %}
+          <form method="post" action="/admin/profile/{{ p.id }}/akcje" class="mt">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            {% for k, c, a in action_catalog %}
+            <label class="check"><input type="checkbox" name="allow" value="{{ k }}" {% if k in allowed %}checked{% endif %}> {{ c.label }}: {{ a.label }}{% if a.dangerous %} <span class="muted small">(wymaga hasła przy zlecaniu)</span>{% endif %}</label>
+            {% endfor %}
+            <div class="actions mt"><button class="btn small" type="submit">Zapisz dla profilu „{{ p.name }}”</button></div>
+          </form>
+          {% else %}
+          <p class="small mt">Zmiana tego, co wolno, wymaga potwierdzenia. <a href="/potwierdz?next={{ '/admin/profile' | urlencode }}">Potwierdź hasłem i kodem</a></p>
+          {% endif %}
+        </details>
+      </td>
+    </tr>
   </table>
 </section>
 {% endfor %}

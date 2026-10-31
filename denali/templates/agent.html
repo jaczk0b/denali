@@ -50,6 +50,18 @@
   {% endif %}
 </div>
 <div class="col">
+  <section class="card" aria-labelledby="akcje">
+    <h2 id="akcje">Akcje na tej maszynie</h2>
+    {% if data.actions %}
+    <p>Lokalna lista dozwolonych: <strong>{{ data.actions | join(", ") }}</strong>.</p>
+    {% else %}
+    <p class="muted">Lokalna lista dozwolonych jest pusta — agent nie wykona żadnej akcji z panelu{% if state and data.version and data.version < "1.1" %} (agent {{ data.version }} nie zna akcji — zainstaluj go ponownie poleceniem z „Dodaj: Agent na maszynie”){% endif %}.</p>
+    {% endif %}
+    <p class="muted small">Listę zmienia się tylko na maszynie (plik roota, panel go nie zmieni):<br>
+      <code>sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade</code><br>
+      <code>sudo python3 /opt/denali-agent/denali-agent.py zabron apt_upgrade</code><br>
+      Poza tym akcja musi być na liście „Dozwolone akcje” urządzenia w Denali.</p>
+  </section>
   <details class="card">
     <summary>Usuń agenta</summary>
     <p class="muted small">Token przestanie działać od razu. Urządzenie zostaje w Denali (z dokumentacją i historią).

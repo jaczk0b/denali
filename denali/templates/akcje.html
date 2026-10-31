@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st, run_status %}
+{% block title %}Akcje{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Akcje</h1>
+    <p class="muted">Akcja wykona się tylko, gdy: akcje są włączone, jest na liście „Dozwolone akcje” urządzenia (profil albo wyjątek),
+      integracja ma osobny token do akcji, a niebezpieczna — po potwierdzeniu hasłem i kodem. Każde zlecenie i wynik są w <a href="/admin/audyt">audycie</a>.</p>
+  </div>
+  <div class="actions">
+    {% if on %}
+      <form method="post" action="/akcje/wylacz"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn danger" type="submit">Wyłącz wszystkie akcje</button></form>
+    {% else %}
+      <form method="post" action="/akcje/wlacz"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn primary" type="submit">Włącz akcje{% if not fresh %} (potwierdzenie hasłem){% endif %}</button></form>
+    {% endif %}
+  </div>
+</div>
+{% if not on %}<div class="alert error" role="alert">{{ st("down") }}<span>Akcje są wyłączone — panel nie zleci żadnej, nawet dozwolonej.</span></div>{% endif %}
+
+<section class="card">
+  <h2>Integracje z akcjami</h2>
+  <ul class="list-rows">
+    {% for t in tokens %}
+    <li>{{ st("ok" if t.ready else "unknown", 14) }}
+      <span class="grow"><a href="/admin/integracje/{{ t.row.id }}{{ '' if t.cls.push else '#akcje' }}">{{ t.row.name }}</a><br>
+        <span class="muted small">{% for a in t.cls.actions %}{{ a.label }}{% if not loop.last %} · {% endif %}{% endfor %}</span></span>
+      <span class="small">{% if t.cls.push %}lokalna lista na maszynie{% elif t.ready %}token do akcji zapisany{% else %}<span class="muted">bez tokenu do akcji</span>{% endif %}</span>
+    </li>
+    {% else %}<li class="muted">Brak integracji, które mają akcje (Proxmox, Komodo, agent).</li>{% endfor %}
+  </ul>
+</section>
+
+<section class="card table-wrap">
+  <h2>Historia</h2>
+  <table>
+    <thead><tr><th>Kiedy</th><th>Co</th><th>Na czym</th><th>Kto</th><th>Stan</th><th>Wynik</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td><a href="/akcje/{{ r.id }}">{{ r.created_at | dt }}</a></td><td>{{ r.label }}</td>
+        <td>{% if r.device_id %}<a href="/urzadzenia/{{ r.device_id }}">{{ r.target }}</a>{% else %}{{ r.target }}{% endif %}</td>
+        <td>{{ r.requested_by }}</td><td>{{ run_status(r.status) }}</td><td class="small">{{ r.result | truncate(120) }}</td></tr>
+    {% else %}
+      <tr><td colspan="6" class="muted">Jeszcze żadnej akcji.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

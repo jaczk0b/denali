@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st, alerts %}
+{% block title %}{{ o.spec.label }} — {{ d.name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a> / Akcja</p>
+<form class="card narrow-form" method="post" action="{{ here }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <h1>{{ o.spec.label }}: {{ d.name }}?</h1>
+  <p class="muted small">{{ o.integration.name }} · <span class="mono">{{ o.external_id }}</span>
+    {% if o.state %} · teraz: {{ o.state.summary }}{% endif %}</p>
+  {{ alerts(error) }}
+  <p><strong>Skutek:</strong> {{ o.spec.effect }}</p>
+  {% if o.cls.push %}
+    {% if snap %}
+    <label class="check"><input type="checkbox" name="snapshot" value="1" checked> Najpierw snapshot w Proxmoxie ({{ snap.integration.name }}, <span class="mono">{{ snap.external_id }}</span>) — aktualizacja ruszy dopiero po udanym snapshocie</label>
+    {% else %}
+    <p class="muted small">Bez snapshotu przed aktualizacją: ta maszyna nie ma w Denali gotowej akcji „Zrób snapshot” z Proxmoxa (token do akcji w integracji Proxmox i snapshot na liście dozwolonych).</p>
+    {% endif %}
+    <p class="muted small">Agent odbierze zlecenie przy najbliższym raporcie (do minuty) i wykona je tylko, jeśli akcja jest na jego lokalnej liście.</p>
+  {% endif %}
+  {% if o.reason %}
+    <div class="alert error" role="alert">{{ st("down") }}<span>{{ o.reason }}</span></div>
+    <a class="btn" href="/urzadzenia/{{ d.id }}#akcje">Wróć</a>
+  {% elif o.spec.dangerous and not fresh %}
+    <p>To akcja niebezpieczna — najpierw potwierdź, że to Ty (hasło i kod 2FA, ważne 5 minut).</p>
+    <div class="actions mt">
+      <a class="btn primary" href="/potwierdz?next={{ here | urlencode }}">Potwierdź hasłem i kodem</a>
+      <a class="btn" href="/urzadzenia/{{ d.id }}#akcje">Anuluj</a>
+    </div>
+  {% else %}
+    <div class="actions mt">
+      <button class="btn {{ 'danger' if o.spec.dangerous else 'primary' }}" type="submit">{{ o.spec.label }}</button>
+      <a class="btn" href="/urzadzenia/{{ d.id }}#akcje">Anuluj</a>
+    </div>
+    <p class="muted small mt">Zlecenie i wynik trafią do audytu{% if o.spec.dangerous %}; potwierdzenie jest jeszcze ważne{% endif %}.</p>
+  {% endif %}
+</form>
+{% endblock %}

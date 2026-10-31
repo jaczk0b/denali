@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from . import agents, backup, checks, export, integrations, live, notify, watchdog
+from . import actions, agents, backup, checks, export, integrations, live, notify, watchdog
 from .config import Settings
 from .crypto import Box
 from .db import kv_get, kv_set, make_engine
@@ -55,6 +55,10 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                     await integrations.poll_due(engine, box)
                 except Exception:   # błąd odczytu integracji nie może zatrzymać workera
                     log.exception("Odczyt integracji nie powiódł się")
+                try:
+                    await actions.follow(engine, box)
+                except Exception:   # błąd przy dokańczaniu akcji nie może zatrzymać workera
+                    log.exception("Dokończenie akcji nie powiodło się")
             if time.time() - state.get("checks_at", 0) >= CHECKS_EVERY:
                 state["checks_at"] = time.time()
                 try:

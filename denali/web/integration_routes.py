@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 
-from .. import agents, auth, integrations
+from .. import actions, agents, auth, integrations
 from ..adapters import AdapterError, registry
 from ..models import external_ref, integration, observed_state
 from ..templating import render
@@ -41,8 +41,10 @@ def integration_list(request: Request, sess: dict = Depends(require_admin)):
 
 
 def _form(request, cls, row=None, values=None, error=None, message=None, objects=(), status_code=200):
-    return render(request, "integracja.html", {"cls": cls, "row": row, "values": values or {}, "error": error,
-                                               "message": message, "objects": objects}, status_code)
+    return render(request, "integracja.html", {
+        "cls": cls, "row": row, "values": values or {}, "error": error, "message": message, "objects": objects,
+        "action_hint": actions.credentials_hint(row, request.app.state.box) if row else "",
+        "fresh": auth.reauth_fresh(request.state.sess)}, status_code)
 
 
 def _objects(conn, integration_id):

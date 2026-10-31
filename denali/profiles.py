@@ -37,6 +37,11 @@ def validate(key, value):
         ok = isinstance(value, typ)
     if not ok:
         raise ProfileError(f"Zła wartość dla „{label}”.")
+    if key == "actions":
+        from .actions import catalog
+        unknown = [x for x in value if x not in catalog()]
+        if unknown:
+            raise ProfileError(f"Nieznana akcja: {unknown[0]}")
     return sorted(set(value)) if typ is list else value
 
 

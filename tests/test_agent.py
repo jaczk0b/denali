@@ -65,7 +65,7 @@ def test_nfs(monkeypatch):
 
 
 def test_uslugi_systemd():
-    units = {n: t.format(user=agent.USER, program=agent.PROGRAM) for n, t in agent.UNITS.items()}
+    units = {n: agent.unit_text(n) for n in agent.UNITS}
     main = units["denali-agent.service"]
     assert "User=denali-agent" in main and "NoNewPrivileges=yes" in main and "ProtectSystem=strict" in main
     hidden = units["denali-agent-ukryte.service"]

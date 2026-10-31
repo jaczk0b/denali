@@ -67,6 +67,7 @@
     <a href="/admin/integracje">Integracje</a>
     <a href="/admin/powiadomienia">Powiadomienia</a>
     <a href="/admin/profile">Profile urządzeń</a>
+    <a href="/akcje">Akcje</a>
     <a href="/admin/tablet">Tablet na ścianie</a>
     <a href="/admin/audyt">Audyt</a>
     <hr>
@@ -96,3 +97,11 @@
 {% macro state_pill(s, text="") -%}
 <span class="pill {{ {'down': 'down', 'warn': 'warn', 'ok': 'ok'}.get(s, '') }}">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(s, "unknown"), 12) }} {{ text or {"ok": "działa", "down": "nie działa", "warn": "uwaga", "off": "wyłączone", "unknown": "brak danych"}.get(s, s) }}</span>
 {%- endmacro %}
+
+{% macro run_status(s) -%}
+  {%- if s == "ok" %}<span class="pill">{{ st("ok", 12) }} wykonana</span>
+  {%- elif s == "blad" %}<span class="pill down">{{ st("down", 12) }} błąd</span>
+  {%- elif s == "trwa" %}<span class="pill warn">{{ st("warn", 12) }} trwa</span>
+  {%- elif s == "czeka" %}<span class="pill">{{ st("unknown", 12) }} czeka na snapshot</span>
+  {%- else %}<span class="pill">{{ st("unknown", 12) }} zlecona</span>{% endif -%}
+{% endmacro %}

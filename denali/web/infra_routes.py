@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from .. import (auth, checks, discovery, docs, files, incidents, infra_views, integrations, inventory as inv, live,
+from .. import (actions, auth, checks, discovery, docs, files, incidents, infra_views, integrations, inventory as inv, live,
                profiles, racks, status, updates, vault)
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook)
@@ -17,7 +17,7 @@ from ..templating import render
 from .deps import NotFound, Redirect, client_ip, require_admin, require_user
 
 router = APIRouter()
-EDIT_SETTINGS = ("monitor", "down_after_s", "notify", "updates")   # akcje dojdą w Etapie 5
+EDIT_SETTINGS = ("monitor", "down_after_s", "notify", "updates")   # akcje: osobny formularz (action_routes)
 DAYS = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"]
 MONTHS = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września",
           "października", "listopada", "grudnia"]
@@ -125,6 +125,11 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "live": live.saved(conn).get(device_id),
         "updates": updates.for_device(conn, device_id), "rack_pos": racks.for_device(conn, device_id),
         "refs": conn.execute(select(external_ref).where(external_ref.c.device_id == device_id)).mappings().all(),
+        "dev_actions": actions.for_device(conn, device_id) if is_admin else [],
+        "action_keys": actions.known_for_device(conn, device_id) if is_admin else [],
+        "action_runs": actions.recent(conn, device_id, 5) if is_admin else [],
+        "action_labels": {k: f"{c.label}: {a.label}" for k, (c, a) in actions.catalog().items()},
+        "actions_on": actions.enabled(conn), "fresh": auth.reauth_fresh(request.state.sess),
     }
     return render(request, "urzadzenie.html", ctx, status_code)
 

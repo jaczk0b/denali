@@ -1,8 +1,9 @@
 """Agent na maszynie (Etap 4): tylko tam, gdzie API nie wystarcza — pakiety apt, „wymagany restart”, montaże NFS.
 
 Każdy agent to osobna integracja typu „agent” (usunięcie integracji = unieważnienie agenta). Agent sam wysyła raport
-co minutę; serwer niczego mu nie zleca (akcje dopiero w Etapie 5, z białej listy na maszynie). Agent podaje surowe
-fakty, a ocena (co jest „uwagą”, kiedy restart jest wymagany) dzieje się tutaj — agent zostaje mały i głupi.
+co minutę; w odpowiedzi może dostać zlecenie akcji (Etap 5) — wykona je tylko, jeśli akcja jest na jego lokalnej
+białej liście (plik konfiguracji roota na maszynie; panel jej nie zmieni). Agent podaje surowe fakty, a ocena
+(co jest „uwagą”, kiedy restart jest wymagany) dzieje się tutaj — agent zostaje mały i głupi.
 
 Rejestracja: administrator generuje jednorazowy kod (ważny godzinę), polecenie instalacji wymienia go na token.
 W bazie jest tylko skrót tokenu.
@@ -17,7 +18,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from . import discovery, integrations
-from .adapters import Adapter, AdapterError, Found, PollResult, State, Update
+from .adapters import ActionSpec, Adapter, AdapterError, Found, PollResult, State, Update
 from .db import kv_get, kv_set
 from .models import external_ref, integration, observed_state
 
@@ -32,6 +33,9 @@ VIRT_KIND = {"kvm": "vm", "qemu": "vm", "vmware": "vm", "microsoft": "vm", "xen"
              "lxc": "lxc", "lxc-libvirt": "lxc", "none": "host"}
 
 
+AGENT_ACTIONS = ("apt_upgrade",)    # akcje, które agent umie wykonać (jego lokalna lista może zawierać tylko te)
+
+
 class AgentError(ValueError):
     pass
 
@@ -43,6 +47,12 @@ class Agent(Adapter):
     push = True
     fields = []
     default_poll = REPORT_EVERY
+    actions = [
+        ActionSpec("apt_upgrade", "Zainstaluj aktualizacje (apt upgrade)",
+                   "Agent na maszynie wykona apt-get update i apt-get upgrade (bez usuwania pakietów, z zachowaniem "
+                   "zmienionych plików konfiguracji). Usługi z aktualizowanych pakietów mogą się zrestartować. "
+                   "Maszyna sama się nie zrestartuje.", ("host",), True),
+    ]
 
     async def test(self):
         raise AdapterError("Agent sam wysyła raport co minutę — nie ma czego sprawdzać z tej strony.")
@@ -205,7 +215,9 @@ def to_result(report, now=None):
     out.states.append(State("host", "warn" if problems else "ok", summary[:300], {
         "reboot_required": reboot_required, "reboot_why": why_reboot, "version": _s(report.get("version"), 20),
         "os": _s(report.get("os"), 100), "kernel": _s(kernel.get("running"), 60), "nfs": mounts,
-        "apt_lists_age_h": apt.get("lists_age_h"), "problems": problems, "reported_at": now}))
+        "apt_lists_age_h": apt.get("lists_age_h"), "problems": problems, "reported_at": now,
+        "actions": sorted({a for a in (report.get("actions") if isinstance(report.get("actions"), list) else [])
+                            if a in AGENT_ACTIONS})}))
 
     if isinstance(apt.get("packages"), list) and not apt.get("error"):
         out.updates = [Update("host", _s(p.get("name"), 200), "pakiet", _s(p.get("old"), 100), _s(p.get("new"), 100),

@@ -2,14 +2,20 @@
 """Agent Denali — tylko to, czego nie da się odczytać z API: pakiety apt, „wymagany restart”, montaże NFS.
 
 Jeden plik, tylko biblioteka standardowa (Python 3.9+, Debian/Ubuntu z systemd). Co minutę wysyła raport do Denali.
-Nie słucha na żadnym porcie i nie wykonuje niczego na polecenie panelu.
+Nie słucha na żadnym porcie. Akcję zleconą przez panel (np. apt upgrade) wykona tylko wtedy, gdy jest na lokalnej
+liście dozwolonych akcji w /etc/denali-agent/config.json (plik roota — panel go nie zmieni). Domyślnie lista jest pusta.
 
-    sudo python3 denali-agent.py install https://denali.example.com KOD-Z-PANELU
+    sudo python3 denali-agent.py install https://denali.example.com KOD-Z-PANELU [--akcje apt_upgrade]
+    sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade     # dopisz akcję do lokalnej listy
+    sudo python3 /opt/denali-agent/denali-agent.py zabron apt_upgrade     # usuń akcję z listy
     sudo python3 /opt/denali-agent/denali-agent.py uninstall
     python3 /opt/denali-agent/denali-agent.py print        # raport na ekran, bez wysyłania
 
 Usługi po instalacji:
   denali-agent.service        raport co minutę; zwykły użytkownik systemowy denali-agent, system tylko do odczytu
+                              (poza katalogami zleceń i wyników); zlecenia z panelu tylko zapisuje do pliku
+  denali-agent-akcje.path     gdy pojawi się zlecenie, uruchamia denali-agent-akcje.service (root): sprawdza lokalną
+                              listę dozwolonych, wykonuje akcję, zapisuje wynik — raport zaniesie go do Denali
   denali-agent-ukryte.timer   raz dziennie, jako root, BEZ dostępu do sieci: czy pod montażami NFS nie leżą dane
                               zapisane wtedy, gdy udział nie był podłączony (wymaga bind-mountu, stąd root)
 """
@@ -28,13 +34,19 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 USER = "denali-agent"
 CONFIG_PATH = "/etc/denali-agent/config.json"
 INSTALL_DIR = "/opt/denali-agent"
 PROGRAM = INSTALL_DIR + "/denali-agent.py"
 STATE_DIR = "/var/lib/denali-agent"
 HIDDEN_FILE = STATE_DIR + "/ukryte.json"
+JOBS_DIR = STATE_DIR + "/zlecenia"         # zapisuje usługa raportu, czyta i usuwa usługa akcji (root)
+RESULTS_DIR = STATE_DIR + "/wyniki"        # zapisuje usługa akcji, usuwa usługa raportu po potwierdzeniu z Denali
+JOB_NAME = re.compile(r"^(\d{1,12})\.json$")
+OUTPUT_MAX = 3000
+# Akcje, które agent umie wykonać. Wykona tylko te, które są też na lokalnej liście w config.json („actions”).
+ACTIONS = {"apt_upgrade": "apt-get update i apt-get upgrade (bez usuwania pakietów, stare pliki konfiguracji zostają)"}
 UNIT_DIR = "/etc/systemd/system"
 INTERVAL = 60
 APT_EVERY = 3600
@@ -50,13 +62,13 @@ def log(*a):
 
 
 # ───────────────────────── narzędzia ─────────────────────────
-def run(cmd, timeout=30):
+def run(cmd, timeout=30, env=None):
     """(kod, stdout, stderr); brak programu = 127. Zawsze z LC_ALL=C — wyjście w stałym formacie."""
     if shutil.which(cmd[0]) is None:
         return 127, "", cmd[0] + ": nie znaleziono"
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                           env=dict(os.environ, LC_ALL="C", LANG="C"))
+                           env=dict(os.environ, LC_ALL="C", LANG="C", **(env or {})))
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         return 124, "", "przekroczony czas ({} s)".format(timeout)
@@ -322,6 +334,157 @@ def hidden_check():
                                   or "brak montaży NFS"))
 
 
+# ───────────────────────── akcje ─────────────────────────
+def _write_json(directory, name, data, mode=0o640, tmp_dir=None):
+    """Zapis atomowy: plik tymczasowy (O_EXCL) i zmiana nazwy — dowiązanie podłożone pod tą nazwą zostaje zastąpione,
+    a nie zapisane przez nie."""
+    fd, tmp = tempfile.mkstemp(dir=tmp_dir or directory, prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f)
+        os.chmod(tmp, mode)
+        os.replace(tmp, os.path.join(directory, name))
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _read_json(path, limit=64 * 1024):
+    """Plik JSON bez podążania za dowiązaniem i z limitem wielkości."""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(fd, "rb") as f:
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("za duży plik")
+    return json.loads(data)
+
+
+def write_jobs(jobs, jobs_dir=None, tmp_dir=None):
+    """Zlecenia z odpowiedzi Denali → pliki dla usługi akcji. Tu nic się nie wykonuje."""
+    for j in jobs if isinstance(jobs, list) else []:
+        if not isinstance(j, dict) or not isinstance(j.get("id"), int) or j.get("action") not in ACTIONS:
+            continue
+        try:
+            # plik tymczasowy w katalogu wyników, żeby w katalogu zleceń pojawił się od razu cały
+            _write_json(jobs_dir or JOBS_DIR, "{}.json".format(j["id"]), {"id": j["id"], "action": j["action"]},
+                        tmp_dir=tmp_dir or RESULTS_DIR)
+            log("zlecenie {} z Denali: {}".format(j["id"], j["action"]))
+        except OSError as e:
+            log("nie da się zapisać zlecenia {}: {}".format(j["id"], e))
+
+
+def read_results(results_dir=None):
+    d = results_dir or RESULTS_DIR
+    out = []
+    try:
+        names = sorted(os.listdir(d))
+    except OSError:
+        return out
+    for name in names:
+        m = JOB_NAME.match(name)
+        if not m:
+            continue
+        try:
+            r = _read_json(os.path.join(d, name))
+        except (OSError, ValueError):
+            continue
+        if isinstance(r, dict) and r.get("id") == int(m.group(1)):
+            out.append(r)
+    return out[:50]
+
+
+def drop_results(ids, results_dir=None):
+    for i in ids if isinstance(ids, list) else []:
+        if isinstance(i, int):
+            try:
+                os.remove(os.path.join(results_dir or RESULTS_DIR, "{}.json".format(i)))
+            except OSError:
+                pass
+
+
+def _tail(*texts):
+    return "\n".join(t.strip() for t in texts if t and t.strip())[-OUTPUT_MAX:]
+
+
+def apt_upgrade():
+    env = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "none", "NEEDRESTART_MODE": "a"}
+    rc, so, err = run(["apt-get", "update"], timeout=900, env=env)
+    if rc != 0:
+        return False, rc, _tail("apt-get update:", so, err)
+    rc, so2, err2 = run(["apt-get", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold",
+                         "upgrade"], timeout=3600, env=env)
+    return rc == 0, rc, _tail(so2, err2)
+
+
+RUNNERS = {"apt_upgrade": apt_upgrade}
+
+
+def do_jobs(cfg, jobs_dir=None, results_dir=None, runners=None):
+    """Usługa akcji (root): każde zlecenie z katalogu — sprawdź lokalną listę, wykonaj, zapisz wynik."""
+    jobs_dir, results_dir, runners = jobs_dir or JOBS_DIR, results_dir or RESULTS_DIR, runners or RUNNERS
+    allowed = set(a for a in (cfg.get("actions") or []) if a in ACTIONS)
+    try:
+        names = sorted(os.listdir(jobs_dir))
+    except OSError:
+        return
+    for name in names:
+        path = os.path.join(jobs_dir, name)
+        m = JOB_NAME.match(name)
+        job = None
+        if m:
+            try:
+                job = _read_json(path)
+            except (OSError, ValueError):
+                job = None
+        try:
+            os.remove(path)        # zlecenie wykonuje się najwyżej raz, także gdy coś pójdzie nie tak
+        except OSError:
+            pass
+        if not m or not isinstance(job, dict) or job.get("id") != int(m.group(1)):
+            continue
+        jid, action, started = job["id"], job.get("action"), time.time()
+        if action not in allowed:
+            out = "Akcja „{}” nie jest dozwolona na tej maszynie (lokalna lista: {}). Pozwól: sudo python3 {} pozwol {}" \
+                .format(action, ", ".join(sorted(allowed)) or "pusta", PROGRAM, action)
+            _write_json(results_dir, name, {"id": jid, "state": "blad", "rc": None, "output": out,
+                                            "started": started, "finished": time.time()}, 0o644)
+            log("zlecenie {} odrzucone: {} spoza lokalnej listy".format(jid, action))
+            continue
+        _write_json(results_dir, name, {"id": jid, "state": "trwa", "started": started}, 0o644)
+        log("zlecenie {}: {} — start".format(jid, action))
+        try:
+            ok, rc, out = runners[action]()
+        except Exception as e:  # noqa: BLE001
+            ok, rc, out = False, None, "{}: {}".format(type(e).__name__, e)
+        _write_json(results_dir, name, {"id": jid, "state": "ok" if ok else "blad", "rc": rc,
+                                        "output": out[-OUTPUT_MAX:], "started": started, "finished": time.time()}, 0o644)
+        log("zlecenie {}: {} — {}".format(jid, action, "ok" if ok else "błąd (kod {})".format(rc)))
+
+
+def run_jobs():
+    if os.geteuid() != 0:
+        sys.exit("Akcje wykonuje usługa denali-agent-akcje (root).")
+    do_jobs(load_config())
+
+
+def set_allowed(action, allow, path=CONFIG_PATH):
+    """pozwol / zabron: lokalna lista dozwolonych akcji (tylko root może ją zmienić)."""
+    _need_root()
+    cfg = load_config(path)
+    have = set(cfg.get("actions") or [])
+    have = have | {action} if allow else have - {action}
+    cfg["actions"] = sorted(have)
+    _save_config(cfg, path)
+    _systemctl("restart", "denali-agent.service")      # raport poda Denali aktualną listę
+    print("Lokalna lista dozwolonych akcji: {}".format(", ".join(cfg["actions"]) or "pusta"))
+    if allow and not os.path.exists(os.path.join(UNIT_DIR, "denali-agent-akcje.path")):
+        print("UWAGA: brak usługi denali-agent-akcje.path (agent sprzed wersji 1.1) — zainstaluj agenta ponownie "
+              "poleceniem z Denali.")
+
+
 # ───────────────────────── raport ─────────────────────────
 def collect():
     def safe(fn, default):
@@ -368,9 +531,17 @@ def loop(cfg):
         started = time.monotonic()
         wait = INTERVAL
         try:
-            status, body = post(cfg, "/api/agent/v1/raport", collect(), token=cfg["token"])
+            payload = collect()
+            payload["actions"] = [a for a in (cfg.get("actions") or []) if a in ACTIONS]
+            payload["jobs"] = read_results()
+            status, body = post(cfg, "/api/agent/v1/raport", payload, token=cfg["token"])
             if status == 200:
                 wait = int(body.get("interval") or INTERVAL)
+                write_jobs(body.get("jobs"))
+                ack = body.get("ack") or []
+                drop_results(ack)
+                if ack:
+                    _apt_cache["t"] = 0         # po akcji świeża lista pakietów w następnym raporcie
             elif status == 401:
                 log("Denali odrzuciło token: {} — ponowię za 10 min".format(body.get("error", "")))
                 wait = 600
@@ -394,9 +565,11 @@ Group={user}
 ExecStart=/usr/bin/python3 {program} run
 Restart=always
 RestartSec=30
-# tylko czyta: system, /home i urządzenia niedostępne do zapisu; bez nowych uprawnień
+# tylko czyta: system, /home i urządzenia niedostępne do zapisu; bez nowych uprawnień.
+# Zapis tylko do katalogów zleceń i wyników — wykonuje je osobna usługa (root) i tylko z lokalnej listy.
 NoNewPrivileges=yes
 ProtectSystem=strict
+ReadWritePaths=-{jobs} -{results}
 ProtectHome=read-only
 PrivateTmp=yes
 PrivateDevices=yes
@@ -441,8 +614,33 @@ Persistent=true
 WantedBy=timers.target
 """
 
+ACTIONS_PATH = """[Unit]
+Description=Denali: czeka na zlecenie akcji z panelu
+
+[Path]
+DirectoryNotEmpty={jobs}
+
+[Install]
+WantedBy=paths.target
+"""
+
+ACTIONS_SERVICE = """[Unit]
+Description=Denali: akcja zlecona z panelu — tylko z lokalnej listy dozwolonych (root)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 {program} akcje
+TimeoutStartSec=2h
+Nice=5
+"""
+
 UNITS = {"denali-agent.service": SERVICE, "denali-agent-ukryte.service": HIDDEN_SERVICE,
-         "denali-agent-ukryte.timer": HIDDEN_TIMER}
+         "denali-agent-ukryte.timer": HIDDEN_TIMER, "denali-agent-akcje.path": ACTIONS_PATH,
+         "denali-agent-akcje.service": ACTIONS_SERVICE}
+
+
+def unit_text(name):
+    return UNITS[name].format(user=USER, program=PROGRAM, jobs=JOBS_DIR, results=RESULTS_DIR)
 
 
 def _need_root():
@@ -457,7 +655,18 @@ def _systemctl(*args):
     return rc == 0
 
 
-def install(server, code, ca_file=""):
+def _save_config(cfg, path=CONFIG_PATH):
+    import grp
+    gid = grp.getgrnam(USER).gr_gid
+    fd = os.open(path + ".nowy", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640)
+    with os.fdopen(fd, "w") as f:
+        json.dump(cfg, f, indent=2)
+    os.chown(path + ".nowy", 0, gid)
+    os.chmod(path + ".nowy", 0o640)
+    os.replace(path + ".nowy", path)
+
+
+def install(server, code, ca_file="", allow=None):
     import grp
     import pwd
     _need_root()
@@ -470,7 +679,15 @@ def install(server, code, ca_file=""):
     if os.path.exists(UNIT_DIR + "/hlc-agent.service"):
         print("UWAGA: na tej maszynie jest stary agent HLC (usługa hlc-agent, działa jako root).\n"
               "       Denali go nie używa. Usuń go: sudo python3 /opt/hlc-agent/agent.py --uninstall\n")
-    cfg = {"server": server.rstrip("/"), "ca_file": ca_file}
+    if allow is None:       # ponowna instalacja zostawia lokalną listę akcji taką, jaka była
+        try:
+            allow = load_config().get("actions") or []
+        except (OSError, ValueError):
+            allow = []
+    bad = [a for a in allow if a not in ACTIONS]
+    if bad:
+        sys.exit("Nieznana akcja: {}. Dostępne: {}".format(bad[0], ", ".join(sorted(ACTIONS))))
+    cfg = {"server": server.rstrip("/"), "ca_file": ca_file, "actions": sorted(set(allow))}
     try:
         status, body = post(cfg, "/api/agent/v1/rejestracja", {"code": code, "hostname": socket.gethostname()})
     except (OSError, ValueError) as e:
@@ -491,30 +708,33 @@ def install(server, code, ca_file=""):
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     os.makedirs(STATE_DIR, exist_ok=True)
     os.chmod(STATE_DIR, 0o755)
+    uid = pwd.getpwnam(USER).pw_uid
+    for d in (JOBS_DIR, RESULTS_DIR):
+        os.makedirs(d, exist_ok=True)
+        os.chown(d, uid, gid)
+        os.chmod(d, 0o750)
     if os.path.abspath(__file__) != PROGRAM:
         shutil.copyfile(os.path.abspath(__file__), PROGRAM)
     os.chmod(PROGRAM, 0o755)
-    fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640)
-    with os.fdopen(fd, "w") as f:
-        json.dump(cfg, f, indent=2)
-    os.chown(CONFIG_PATH, 0, gid)
-    os.chmod(CONFIG_PATH, 0o640)
-    for name, text in UNITS.items():
+    _save_config(cfg)
+    for name in UNITS:
         with open(os.path.join(UNIT_DIR, name), "w") as f:
-            f.write(text.format(user=USER, program=PROGRAM))
+            f.write(unit_text(name))
     _systemctl("daemon-reload")
-    _systemctl("enable", "denali-agent.service", "denali-agent-ukryte.timer")
+    _systemctl("enable", "denali-agent.service", "denali-agent-ukryte.timer", "denali-agent-akcje.path")
     _systemctl("restart", "denali-agent.service")
-    _systemctl("start", "denali-agent-ukryte.timer")
+    _systemctl("start", "denali-agent-ukryte.timer", "denali-agent-akcje.path")
     _systemctl("start", "--no-block", "denali-agent-ukryte.service")
     print("Gotowe. Agent wysyła raport co minutę — maszyna pojawi się w Denali za chwilę.\n"
-          "Stan: systemctl status denali-agent · dziennik: journalctl -u denali-agent -n 30")
+          "Stan: systemctl status denali-agent · dziennik: journalctl -u denali-agent -n 30\n"
+          "Dozwolone akcje na tej maszynie: {}".format(
+              ", ".join(cfg["actions"]) or "żadne (pozwól: sudo python3 {} pozwol apt_upgrade)".format(PROGRAM)))
 
 
 def uninstall():
     _need_root()
-    _systemctl("disable", "--now", "denali-agent.service", "denali-agent-ukryte.timer")
-    _systemctl("stop", "denali-agent-ukryte.service")
+    _systemctl("disable", "--now", "denali-agent.service", "denali-agent-ukryte.timer", "denali-agent-akcje.path")
+    _systemctl("stop", "denali-agent-ukryte.service", "denali-agent-akcje.service")
     for name in UNITS:
         try:
             os.remove(os.path.join(UNIT_DIR, name))
@@ -534,13 +754,23 @@ def main():
     i.add_argument("server")
     i.add_argument("code")
     i.add_argument("--ca-file", default="", help="własny certyfikat CA (gdy Denali nie ma certyfikatu Let's Encrypt)")
+    i.add_argument("--akcje", default=None, help="lokalna lista dozwolonych akcji, np. apt_upgrade (domyślnie pusta)")
+    for cmd, text in (("pozwol", "dopisz akcję do lokalnej listy dozwolonych"), ("zabron", "usuń akcję z listy")):
+        p = sub.add_parser(cmd, help=text)
+        p.add_argument("akcja", choices=sorted(ACTIONS))
+    sub.add_parser("akcje", help="wykonaj zlecenia z panelu (usługa denali-agent-akcje, root)")
     sub.add_parser("uninstall")
     sub.add_parser("run", help="raport co minutę (usługa denali-agent)")
     sub.add_parser("ukryte", help="dane pod montażami NFS (usługa denali-agent-ukryte, root)")
     sub.add_parser("print", help="raport na ekran, bez wysyłania")
     a = ap.parse_args()
     if a.cmd == "install":
-        install(a.server, a.code, a.ca_file)
+        allow = None if a.akcje is None else [x for x in a.akcje.replace(",", " ").split() if x]
+        install(a.server, a.code, a.ca_file, allow)
+    elif a.cmd in ("pozwol", "zabron"):
+        set_allowed(a.akcja, a.cmd == "pozwol")
+    elif a.cmd == "akcje":
+        run_jobs()
     elif a.cmd == "uninstall":
         uninstall()
     elif a.cmd == "run":

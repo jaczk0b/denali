@@ -35,8 +35,10 @@
         (plik <code>/run/reboot-required</code> albo nowsze jądro niż uruchomione).</li>
       <li><strong>Montaże NFS</strong>: czy są zamontowane i odpowiadają, czy pod montażem nie leżą stare dane
         (zapisane, gdy udział nie był podłączony). Udział łączy się sam z TrueNAS jako zależność „dane”.</li>
-      <li>Co minutę wysyła raport do Denali. Nie słucha na żadnym porcie i <strong>niczego nie wykonuje na polecenie
-        panelu</strong> (akcje dopiero w Etapie 5, z listy zapisanej na maszynie).</li>
+      <li>Co minutę wysyła raport do Denali. Nie słucha na żadnym porcie. Akcję z panelu (apt upgrade) wykona
+        <strong>tylko, jeśli jest na lokalnej liście</strong> na maszynie — domyślnie pustej. Pozwolenie:
+        <code>sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade</code> albo przy instalacji
+        dopisz <code>--akcje apt_upgrade</code>.</li>
     </ul>
     <h2>Uprawnienia</h2>
     <ul>
@@ -44,6 +46,8 @@
         zapisem do systemu.</li>
       <li>Tylko sprawdzenie „danych pod montażem” wymaga roota — to osobna usługa uruchamiana raz dziennie
         (<code>denali-agent-ukryte.timer</code>), <strong>bez dostępu do sieci</strong>.</li>
+      <li>Zlecenie akcji usługa raportu tylko zapisuje do pliku. Wykonuje je osobna usługa root
+        (<code>denali-agent-akcje.path</code>) po sprawdzeniu lokalnej listy w pliku roota, którego panel nie zmieni.</li>
       <li>Usunięcie: <code>sudo python3 /opt/denali-agent/denali-agent.py uninstall</code>, a w Denali usuń agenta
         (to unieważnia jego token).</li>
     </ul>
