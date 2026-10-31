@@ -80,6 +80,7 @@ class Adapter:
     label = ""
     fields: list = []
     default_poll = 60
+    push = False                # True: źródło samo wysyła dane (agent) — worker go nie odpytuje
 
     def __init__(self, config: dict, secrets: dict, transport=None):
         self.config = config or {}
@@ -103,9 +104,10 @@ class Adapter:
 
 
 def registry() -> dict:
+    from ..agents import Agent
     from .komodo import Komodo
     from .pbs import Pbs
     from .proxmox import Proxmox
     from .tplink import Tplink
     from .truenas import Truenas
-    return {a.type: a for a in (Proxmox, Komodo, Pbs, Truenas, Tplink)}
+    return {a.type: a for a in (Proxmox, Komodo, Pbs, Truenas, Tplink, Agent)}

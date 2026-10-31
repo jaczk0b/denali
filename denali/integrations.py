@@ -2,7 +2,7 @@
 
 Wynik odczytu: nowe obiekty → kolejka „do zatwierdzenia”, stan → observed_state (tylko ostatni),
 nowe adresy zatwierdzonych obiektów → adresy urządzenia (źródło: integracja), „przez co jest w sieci” → zależność
-sieciowa odświeżana przy każdym odczycie.
+sieciowa i inne wykryte zależności (montaż NFS → TrueNAS) odświeżane przy każdym odczycie.
 """
 import asyncio
 import json
@@ -97,7 +97,7 @@ def record(conn, integration_id, result, now=None):
     for f in result.found:
         discovery.upsert(conn, integration_id, f.external_id, f.proposed, now)
     _sync_approved(conn, integration_id, result.found)
-    _sync_uplinks(conn, integration_id, result.found)
+    _sync_live_deps(conn, integration_id, result.found)
     seen = set()
     for s in result.states:
         seen.add(s.external_id)
@@ -198,26 +198,32 @@ def _sync_approved(conn, integration_id, found):
                 continue
 
 
-def uplink_source(integration_id):
-    return f"siec:{integration_id}"
+def live_source(dep_type, integration_id):
+    """Źródło wykrytej zależności: rodzaj i integracja, np. „siec:3” (klient → AP), „dane:7” (montaż NFS)."""
+    return f"{dep_type}:{integration_id}"
 
 
-def _sync_uplinks(conn, integration_id, found):
-    """Zależności „w sieci przez” (np. klient Wi-Fi → AP) dokładnie takie, jak w ostatnim odczycie tej integracji.
+def _wanted_deps(f):
+    up = f.proposed.get("uplink")
+    deps = [{**up, "type": "siec"}] if up else []
+    return deps + [d for d in f.proposed.get("live_deps") or [] if isinstance(d, dict)]
 
-    Urządzenie, którego źródło już nie widzi (przeszło do innego AP, wyłączone), traci zależność od tego źródła.
+
+def _sync_live_deps(conn, integration_id, found):
+    """Wykryte zależności (klient Wi-Fi → AP, montaż NFS → TrueNAS) dokładnie takie, jak w ostatnim odczycie.
+
+    Urządzenie, którego źródło już nie widzi (przeszło do innego AP, odmontowany udział), traci tę zależność.
     Odczyt z błędem nie zmienia nic — gdy padnie AP, zależności zostają i analiza wskaże AP jako przyczynę.
     Zależności wpisanej ręcznie (albo z innego źródła) między tymi samymi urządzeniami nie ruszamy.
     """
-    source = uplink_source(integration_id)
     refs = {r.external_id: r.device_id for r in conn.execute(
         select(external_ref.c.external_id, external_ref.c.device_id).where(
             external_ref.c.integration_id == integration_id, external_ref.c.status == "zatwierdzony",
             external_ref.c.device_id.isnot(None)))}
     wanted = {}
     for f in found:
-        up = f.proposed.get("uplink")
-        if not up:
+        deps = _wanted_deps(f)
+        if not deps:
             continue
         # znane urządzenie po MAC, nawet jeśli to źródło widzi je pierwszy raz (telefon przeszedł do innego AP)
         dev = refs.get(f.external_id) or next(
@@ -225,23 +231,27 @@ def _sync_uplinks(conn, integration_id, found):
                          if a.get("kind") == "mac") if d), None)
         if not dev:
             continue
-        target = discovery._target_device(conn, integration_id, up)
-        if target and target != dev:
-            wanted[(dev, target)] = bool(up.get("hard", True))
-    for d in conn.execute(select(dependency).where(dependency.c.source == source)).mappings().all():
-        key = (d["device_id"], d["depends_on_id"])
+        for dep in deps:
+            if dep.get("type") not in inv.DEP_TYPES:
+                continue
+            target = discovery._target_device(conn, integration_id, dep)
+            if target and target != dev:
+                wanted[(dev, target, dep["type"])] = bool(dep.get("hard", True))
+    sources = [live_source(t, integration_id) for t in inv.DEP_TYPES]
+    for d in conn.execute(select(dependency).where(dependency.c.source.in_(sources))).mappings().all():
+        key = (d["device_id"], d["depends_on_id"], d["type"])
         if key not in wanted:
             conn.execute(dependency.delete().where(dependency.c.id == d["id"]))
         elif d["hard"] != wanted[key]:
             conn.execute(dependency.update().where(dependency.c.id == d["id"]).values(hard=wanted[key]))
         wanted.pop(key, None)
-    for (dev, target), hard in wanted.items():
+    for (dev, target, typ), hard in wanted.items():
         exists = conn.execute(select(dependency.c.id).where(
-            dependency.c.device_id == dev, dependency.c.depends_on_id == target, dependency.c.type == "siec")).first()
+            dependency.c.device_id == dev, dependency.c.depends_on_id == target, dependency.c.type == typ)).first()
         if exists:
             continue
         try:
-            inv.add_dependency(conn, dev, target, "siec", hard=hard, source=source)
+            inv.add_dependency(conn, dev, target, typ, hard=hard, source=live_source(typ, integration_id))
         except inv.InventoryError:
             continue    # pętla (np. dwa routery widzą się nawzajem jako klientów) — pomijamy
 
@@ -250,7 +260,9 @@ def _sync_uplinks(conn, integration_id, found):
 def due(conn, now=None):
     now = now or time.time()
     rows = conn.execute(select(integration).where(integration.c.enabled.is_(True))).mappings().all()
-    return [r for r in rows if not r["last_attempt_at"] or now - r["last_attempt_at"] >= r["poll_seconds"]]
+    types = registry()
+    return [r for r in rows if r["type"] in types and not types[r["type"]].push
+            and (not r["last_attempt_at"] or now - r["last_attempt_at"] >= r["poll_seconds"])]
 
 
 async def poll_one(engine, box, row, transport=None, now=None):

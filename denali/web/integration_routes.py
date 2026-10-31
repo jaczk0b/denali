@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 
-from .. import auth, integrations
+from .. import agents, auth, integrations
 from ..adapters import AdapterError, registry
 from ..models import external_ref, integration, observed_state
 from ..templating import render
-from .deps import NotFound, client_ip, require_admin
+from .agent_routes import agent_page
+from .deps import NotFound, Redirect, client_ip, require_admin
 
 router = APIRouter()
 log = logging.getLogger("denali.integrations")
@@ -60,6 +61,8 @@ def integration_new(request: Request, typ: str = "proxmox", sess: dict = Depends
         cls = integrations.adapter_class(typ)
     except integrations.IntegrationError:
         raise NotFound("Nie ma takiego rodzaju integracji.") from None
+    if cls.push:
+        raise Redirect("/admin/agenci/nowy")
     values = {f.key: f.default for f in cls.fields}
     values.update(name=cls.label, poll_seconds=cls.default_poll)
     return _form(request, cls, values=values)
@@ -85,6 +88,8 @@ async def integration_create(request: Request, sess: dict = Depends(require_admi
         cls = integrations.adapter_class(form.get("type", ""))
     except integrations.IntegrationError as e:
         raise NotFound(str(e)) from None
+    if cls.push:
+        raise NotFound("Agenta dodaje się poleceniem instalacji na maszynie.")
     config, secrets = integrations.split_form(cls, form)
     with request.app.state.engine.begin() as conn:
         try:
@@ -105,6 +110,8 @@ async def integration_view(request: Request, integration_id: int, sprawdz: str =
             row = integrations.get(conn, integration_id)
         except integrations.IntegrationError as e:
             raise NotFound(str(e)) from None
+        if row["type"] == agents.TYPE:
+            return agent_page(request, conn, row)
         objects = _objects(conn, integration_id)
     message = error = None
     if sprawdz:
@@ -125,6 +132,8 @@ async def integration_update(request: Request, integration_id: int, sess: dict =
         except integrations.IntegrationError as e:
             raise NotFound(str(e)) from None
         cls = integrations.adapter_class(row["type"])
+        if cls.push:      # agent nie ma ustawień — zapis formularza skasowałby skrót tokenu
+            raise NotFound("Agent nie ma ustawień do zmiany.")
         config, secrets = integrations.split_form(cls, form, integrations.secrets_of(row, box))
         try:
             integrations.save(conn, box, row["type"], form.get("name", ""), config, secrets, form.get("poll_seconds"),
@@ -144,6 +153,8 @@ async def integration_poll(request: Request, integration_id: int, sess: dict = D
             row = integrations.get(conn, integration_id)
         except integrations.IntegrationError as e:
             raise NotFound(str(e)) from None
+    if integrations.adapter_class(row["type"]).push:
+        raise Redirect(f"/admin/integracje/{integration_id}")
     error = await integrations.poll_one(request.app.state.engine, request.app.state.box, row, _transport(request))
     with request.app.state.engine.connect() as conn:
         return _form(request, integrations.adapter_class(row["type"]), row=integrations.get(conn, integration_id),

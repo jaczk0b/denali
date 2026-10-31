@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from . import backup, checks, export, integrations, live, notify, watchdog
+from . import agents, backup, checks, export, integrations, live, notify, watchdog
 from .config import Settings
 from .crypto import Box
 from .db import kv_get, kv_set, make_engine
@@ -63,6 +63,7 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                     log.exception("Sprawdzenia nie powiodły się")
             try:
                 with engine.begin() as conn:
+                    agents.mark_silent(conn)
                     live.evaluate(conn)
             except Exception:
                 log.exception("Ocena stanu i incydentów nie powiodła się")

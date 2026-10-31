@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Agent na maszynie{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/admin/integracje">Integracje</a> / Agent na maszynie</p>
+<h1>Dodaj: Agent na maszynie</h1>
+<p class="lead">Tylko tam, gdzie API nie wystarcza — zwykle VM-ki z Dockerem i usługami. Proxmox, PBS, TrueNAS i Komodo
+  mają swoje integracje; na nich agenta nie instaluj.</p>
+
+<div class="cols">
+<div class="col">
+  <section class="card">
+    {% if command %}
+    <h2>Polecenie instalacji</h2>
+    <p>Wklej na maszynie (Debian/Ubuntu, konto z <code>sudo</code>). Kod <strong class="mono">{{ code }}</strong>
+      działa <strong>raz</strong> i tylko przez godzinę.</p>
+    <pre class="mono small wrap">{{ command }}</pre>
+    <p class="muted small">Polecenie pobiera plik agenta, sprawdza jego skrót SHA-256 i dopiero wtedy go uruchamia —
+      na maszynie wykonuje się dokładnie to, co jest w Denali (bez <code>curl | sudo sh</code>).
+      Plik możesz najpierw przejrzeć: <a href="/agent/denali-agent.py">denali-agent.py</a>.</p>
+    <p class="muted small">Po minucie maszyna pojawi się w Integracjach i przypnie się sama do swojej VM z Proxmoxa
+      (po IP albo MAC). Ta sama maszyna zainstalowana ponownie zachowuje przypięcie i historię.</p>
+    {% else %}
+    <h2>Kod jednorazowy</h2>
+    <p>Denali wygeneruje kod (ważny godzinę) i gotowe polecenie do wklejenia na maszynie.</p>
+    <form method="post" action="/admin/agenci/nowy"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn primary" type="submit">Wygeneruj polecenie</button></form>
+    {% endif %}
+  </section>
+</div>
+<div class="col">
+  <section class="card md">
+    <h2>Co robi agent</h2>
+    <ul>
+      <li><strong>Pakiety apt</strong> do aktualizacji (z poprawkami bezpieczeństwa) i <strong>wymagany restart</strong>
+        (plik <code>/run/reboot-required</code> albo nowsze jądro niż uruchomione).</li>
+      <li><strong>Montaże NFS</strong>: czy są zamontowane i odpowiadają, czy pod montażem nie leżą stare dane
+        (zapisane, gdy udział nie był podłączony). Udział łączy się sam z TrueNAS jako zależność „dane”.</li>
+      <li>Co minutę wysyła raport do Denali. Nie słucha na żadnym porcie i <strong>niczego nie wykonuje na polecenie
+        panelu</strong> (akcje dopiero w Etapie 5, z listy zapisanej na maszynie).</li>
+    </ul>
+    <h2>Uprawnienia</h2>
+    <ul>
+      <li>Usługa <code>denali-agent</code> działa jako zwykły użytkownik systemowy <code>denali-agent</code>, z zablokowanym
+        zapisem do systemu.</li>
+      <li>Tylko sprawdzenie „danych pod montażem” wymaga roota — to osobna usługa uruchamiana raz dziennie
+        (<code>denali-agent-ukryte.timer</code>), <strong>bez dostępu do sieci</strong>.</li>
+      <li>Usunięcie: <code>sudo python3 /opt/denali-agent/denali-agent.py uninstall</code>, a w Denali usuń agenta
+        (to unieważnia jego token).</li>
+    </ul>
+  </section>
+</div>
+</div>
+{% endblock %}

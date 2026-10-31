@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st %}
+{% block title %}{{ row.name }}{% endblock %}
+{% block content %}
+{% set data = state.data if state else {} %}
+<p class="crumbs"><a href="/admin/integracje">Integracje</a> / {{ row.name }}</p>
+<div class="row-between">
+  <div>
+    <h1>{{ row.name }}</h1>
+    <p class="lead">{% if row.last_error %}{{ st("down") }} {{ row.last_error }}
+      {% elif row.last_ok_at %}{{ st("ok") }} Ostatni raport: {{ row.last_ok_at | dt }} · co minutę
+      {% else %}Czeka na pierwszy raport z maszyny.{% endif %}</p>
+  </div>
+  {% if ref and ref.device_id %}<div class="actions"><a class="btn" href="/urzadzenia/{{ ref.device_id }}">Karta urządzenia</a></div>{% endif %}
+</div>
+
+<div class="cols">
+<div class="col">
+  <section class="card">
+    <h2>Maszyna</h2>
+    {% if state %}
+    <ul class="plain">
+      <li>{{ st({"ok": "ok", "warn": "warn", "down": "down"}.get(state.state, "unknown"), 13) }} {{ state.summary }}</li>
+      {% if data.os %}<li class="muted">System: {{ data.os }}{% if data.kernel %} · jądro {{ data.kernel }}{% endif %}</li>{% endif %}
+      {% if data.version %}<li class="muted">Agent {{ data.version }}</li>{% endif %}
+      {% if data.reboot_required %}<li><span class="pill warn">{{ st("warn", 12) }} wymagany restart</span>
+        {% if data.reboot_why %}<span class="muted small">{{ data.reboot_why }}</span>{% endif %}</li>{% endif %}
+      {% if data.apt_lists_age_h is number and data.apt_lists_age_h > 72 %}<li class="muted small">Lista pakietów nieodświeżana
+        od {{ (data.apt_lists_age_h / 24) | round | int }} dni — sprawdź <code>systemctl status apt-daily.timer</code>.</li>{% endif %}
+    </ul>
+    {% else %}
+    <p class="muted">Brak raportu. Na maszynie: <code>systemctl status denali-agent</code> i <code>journalctl -u denali-agent -n 30</code>.</p>
+    {% endif %}
+  </section>
+  {% if data.nfs %}
+  <section class="card">
+    <h2>Montaże NFS</h2>
+    <ul class="plain small">
+      {% for m in data.nfs %}
+      <li><span class="mono">{{ m.mount }}</span> <span class="muted">← {{ m.source }}</span> ·
+        {% if not m.mounted %}<span class="pill warn">niezamontowany</span>
+        {% elif m.responding is sameas false %}<span class="pill down">nie odpowiada</span>
+        {% else %}<span class="pill ok">działa</span>{% if m.readonly %} <span class="pill">tylko odczyt</span>{% endif %}{% endif %}
+        {% if m.hidden and m.hidden.entries %}<span class="pill warn">pod montażem: {{ m.hidden.entries }} pozycji</span>{% endif %}
+        {% if m.hidden and m.hidden.checked %}<span class="muted">· dane pod montażem sprawdzone {{ m.hidden.checked | dt }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+<div class="col">
+  <details class="card">
+    <summary>Usuń agenta</summary>
+    <p class="muted small">Token przestanie działać od razu. Urządzenie zostaje w Denali (z dokumentacją i historią).
+      Na maszynie usuń agenta poleceniem: <code>sudo python3 /opt/denali-agent/denali-agent.py uninstall</code></p>
+    <form method="post" action="/admin/agenci/{{ row.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn danger" type="submit">Usuń „{{ row.name }}”</button></form>
+  </details>
+</div>
+</div>
+{% endblock %}

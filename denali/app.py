@@ -13,7 +13,8 @@ from .config import Settings, get_settings
 from .crypto import Box
 from .db import kv_get, make_engine
 from .templating import render
-from .web import admin_routes, auth_routes, docs_routes, infra_routes, integration_routes, live_routes, notify_routes
+from .web import (admin_routes, agent_routes, auth_routes, docs_routes, infra_routes, integration_routes, live_routes,
+                  notify_routes)
 from .web.deps import CsrfError, Forbidden, NotFound, Redirect
 
 WORKER_LATE_AFTER = 120  # s bez sygnału życia = worker nie działa
@@ -62,7 +63,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return render(request, "blad.html", {"title": "Nie znaleziono", "text": exc.text}, 404)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-    for r in (auth_routes, infra_routes, docs_routes, admin_routes, integration_routes, notify_routes, live_routes):
+    for r in (auth_routes, infra_routes, docs_routes, admin_routes, integration_routes, notify_routes, live_routes,
+              agent_routes):
         app.include_router(r.router)
 
     @app.get("/health")

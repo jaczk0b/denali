@@ -36,7 +36,7 @@ version = { attr = "denali.__version__" }
 include = ["denali*"]
 
 [tool.setuptools.package-data]
-denali = ["migrations/script.py.mako", "templates/**/*", "static/**/*"]
+denali = ["migrations/script.py.mako", "templates/**/*", "static/**/*", "agent/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -7,6 +7,8 @@ Integracja opisuje obiekt słownikiem `proposed`:
   depends_on  [{"ref"|"ip"|"mac"|"hostname": …, "type": dane|siec|zasilanie|usluga, "hard": bool}]
   uplink      przez co jest teraz w sieci: {"ref"|…: …, "hard": bool} — zmienia się (telefon przechodzi między AP),
               więc nie zapisujemy go przy zatwierdzeniu, tylko odświeżamy przy każdym odczycie (integrations.py)
+  live_deps   [{"ref"|"ip"|"mac"|"hostname": …, "type": …, "hard": bool}] — jak uplink, dowolnego rodzaju
+              (np. montaż NFS → udział na TrueNAS, z agenta); też odświeżane przy każdym odczycie
 
 Adres pozwala połączyć obiekty z różnych integracji: stack z Komodo trafia na VM z Proxmoxa o tym samym IP.
 Zatwierdzenie jednego obiektu zatwierdza też czekające obiekty, na których działa, i te, które działają na nim —

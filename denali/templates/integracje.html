@@ -8,7 +8,7 @@
     <p class="lead">Systemy, z których Denali sam czyta stan i nowe urządzenia. Tylko odczyt — panel niczego w nich nie zmienia.</p>
   </div>
   <div class="actions">
-    {% for t, cls in types.items() %}<a class="btn primary" href="/admin/integracje/nowa?typ={{ t }}">Dodaj: {{ cls.label }}</a>{% endfor %}
+    {% for t, cls in types.items() %}<a class="btn primary" href="{{ '/admin/agenci/nowy' if cls.push else '/admin/integracje/nowa?typ=' ~ t }}">Dodaj: {{ cls.label }}</a>{% endfor %}
   </div>
 </div>
 {% if not rows %}

@@ -84,7 +84,7 @@
           {% if parent %}<li>{{ dev_icon(parent.id) }}<a href="/urzadzenia/{{ parent.id }}">{{ parent.name }}</a><span class="muted">· działa na nim</span></li>{% endif %}
           {% for x in deps_up %}
           <li>{{ dev_icon(x.depends_on_id) }}<a href="/urzadzenia/{{ x.depends_on_id }}">{{ x.name }}</a>
-            <span class="muted">· {{ DEP_TYPES.get(x.type, x.type) | lower }} · {{ "twarda" if x.hard else "miękka" }}{% if x.source == "integracja" %} · wykryta{% elif x.source.startswith("siec:") %} · wykryta, aktualna{% endif %}</span>
+            <span class="muted">· {{ DEP_TYPES.get(x.type, x.type) | lower }} · {{ "twarda" if x.hard else "miękka" }}{% if x.source == "integracja" %} · wykryta{% elif ":" in x.source %} · wykryta, aktualna{% endif %}</span>
             {% if x.note %}<span class="muted small">({{ x.note }})</span>{% endif %}
             {% if admin %}{{ rm("/urzadzenia/%d/zaleznosci/%d/usun" % (d.id, x.id)) }}{% endif %}</li>
           {% endfor %}
