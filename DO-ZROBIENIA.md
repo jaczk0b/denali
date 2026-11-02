@@ -8,7 +8,7 @@ na wdrożenie i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md]
 ## 1. Po Twojej stronie — teraz
 
 - [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
-      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury, **Etap 5** — migracje bazy 0009–0012
+      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury, **Etap 5** z uzupełnieniami — migracje bazy 0009–0013
       wykonają się same przy starcie).
 - [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).

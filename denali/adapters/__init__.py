@@ -56,6 +56,17 @@ class Update:
     security: bool = False
 
 
+# Interfejsy, których adresy nie są adresami maszyny w LAN: Docker, mosty i tunele, sieć wewnętrzna Home Assistanta
+# (hassio, 172.30.32.0/23). Ta sama lista co w agencie (SKIP_IFACES).
+VIRTUAL_IFACES = ("lo", "docker", "br-", "veth", "virbr", "cni", "flannel", "cali", "vxlan", "hassio", "tailscale",
+                  "wg", "zt", "tun", "tap")
+
+
+def lan_iface(name):
+    """Czy adres z tego interfejsu to adres maszyny (a nie sieci wirtualnej w jej środku)."""
+    return bool(name) and not str(name).startswith(VIRTUAL_IFACES)
+
+
 def apt_updates(external_id, packages):
     """Lista z `/nodes/<węzeł>/apt/update` (Proxmox VE i PBS — to samo, co ich panel pokazuje w „Updates”)."""
     out = []

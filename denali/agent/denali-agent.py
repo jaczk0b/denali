@@ -57,7 +57,8 @@ NFS_TIMEOUT = 8
 HIDDEN_TIMEOUT = 600
 HIDDEN_MAX_ENTRIES = 100000
 NFS_FS = ("nfs", "nfs4")
-SKIP_IFACES = ("lo", "docker", "br-", "veth", "virbr", "cni", "flannel", "tailscale", "wg", "zt", "tun", "tap")
+SKIP_IFACES = ("lo", "docker", "br-", "veth", "virbr", "cni", "flannel", "cali", "vxlan", "hassio", "tailscale", "wg",
+               "zt", "tun", "tap")
 
 
 def log(*a):

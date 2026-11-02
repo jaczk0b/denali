@@ -45,7 +45,8 @@ def pve_api(resources=None, auth_ok=True, seen=None):
                 {"name": "lo", "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "127.0.0.1"}]},
                 {"name": "ens18", "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "192.168.1.30"},
                                                    {"ip-address-type": "ipv6", "ip-address": "fe80::1"}]},
-                {"name": "docker0", "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "172.17.0.1"}]}]},
+                {"name": "docker0", "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "172.17.0.1"}]},
+                {"name": "hassio", "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "172.30.32.1"}]}]},
             "/nodes/pve/lxc/110/config": {"onboot": 1, "hostname": "pihole"},
             "/nodes/pve/qemu/120/config": {"name": "test"},
         }
@@ -69,7 +70,7 @@ def test_odczyt_wezlow_vm_i_lxc():
     assert set(found) == {"node/pve", "qemu/100", "qemu/107", "lxc/110", "qemu/120"}      # bez szablonu i storage
     assert found["node/pve"] == {"name": "pve", "kind": "host", "addresses": [{"kind": "ip", "value": "192.168.1.10"}]}
     assert found["qemu/100"]["parent"] == {"ref": "node/pve"} and found["qemu/100"]["kind"] == "vm"
-    assert found["qemu/100"]["addresses"] == [{"kind": "ip", "value": "192.168.1.30"}]   # bez lo i docker0
+    assert found["qemu/100"]["addresses"] == [{"kind": "ip", "value": "192.168.1.30"}]   # bez lo, docker0 i hassio
     assert found["qemu/107"]["addresses"] == []                                          # brak agenta QEMU
     assert found["lxc/110"]["kind"] == "lxc"
     states = {s.external_id: s for s in res.states}

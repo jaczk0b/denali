@@ -79,3 +79,24 @@ def test_worker_zapisuje_sygnal_zycia(settings):
 def test_haslo_zamiast_klucza_jest_odrzucone(tmp_path):
     with pytest.raises(SystemExit, match="nie jest klucz szyfrowania"):
         Settings(_env_file=None, data_dir=tmp_path, encryption_key="Haslo123").check()
+
+
+def test_migracja_0013_usuwa_adresy_hassio(settings):
+    """Adresy z sieci Home Assistanta dopisane przez integrację znikają; wpisane ręcznie i z LAN zostają."""
+    from alembic import command
+
+    from denali import inventory as inv
+    from denali.migrate import alembic_config
+    cfg = alembic_config(settings)
+    command.downgrade(cfg, "0012")
+    engine = make_engine(settings.db_url)
+    with engine.begin() as conn:
+        did = inv.create_device(conn, "ha", "vm")
+        for value, source in [("172.30.32.1", "integracja"), ("172.30.33.5", "integracja"),
+                              ("192.168.1.40", "integracja"), ("172.30.32.9", "manual")]:
+            inv.add_address(conn, did, "ip", value, source=source)
+    command.upgrade(cfg, "head")
+    with engine.connect() as conn:
+        left = {r.value for r in conn.execute(text("SELECT value FROM device_address WHERE device_id = :d"), {"d": did})}
+    engine.dispose()
+    assert left == {"192.168.1.40", "172.30.32.9"}
