@@ -1,8 +1,12 @@
-"""TrueNAS: pule ZFS, zadania snapshotów i replikacji, alerty TrueNAS. Tylko odczyt (klucz API).
+"""TrueNAS: pule ZFS, dyski (temperatura, testy SMART), zadania snapshotów i replikacji, alerty TrueNAS.
+Tylko odczyt (klucz API).
 
 Od 25.04 właściwym API jest JSON-RPC 2.0 po WebSocket (wss://host/api/current); REST v2.0 jest przestarzały,
 ale w starszych wersjach jedyny — próbujemy najpierw nowego, potem starego (tak samo jak HLC).
-Pule, snapshoty i replikacje nie są osobnymi urządzeniami — podpinają się pod kartę TrueNAS.
+Pule, dyski, snapshoty i replikacje nie są osobnymi urządzeniami — podpinają się pod kartę TrueNAS.
+Alerty: lista wszystkich nieodrzuconych (jak dzwonek w TrueNAS); stan „uwaga” dają tylko poważne (ERROR i wyżej).
+Dysk: „uwaga”, gdy ostatni test SMART się nie udał albo dysk jest za gorący. Temperatury i wyniki SMART czytamy
+tym, co TrueNAS już ma (bez budzenia uśpionych dysków); metoda nieznana w danej wersji = brak tych danych.
 """
 import json
 import socket
@@ -16,10 +20,16 @@ from .tls import ssl_context, validate_pem_field
 
 CA_HINT = "certyfikat z TrueNAS: Credentials → Certificates → truenas_default → pobierz"
 REST = {"system.info": "/system/info", "pool.query": "/pool", "pool.snapshottask.query": "/pool/snapshottask",
-        "replication.query": "/replication", "alert.list": "/alert/list", "sharing.nfs.query": "/sharing/nfs"}
+        "replication.query": "/replication", "alert.list": "/alert/list", "sharing.nfs.query": "/sharing/nfs",
+        "disk.query": "/disk", "smart.test.results": "/smart/test/results"}
+WS_ONLY = ("disk.temperatures",)     # w REST to POST — tam bez temperatur
 POOL_DOWN = {"FAULTED", "UNAVAIL", "OFFLINE", "REMOVED"}
 USAGE_WARN = 0.90
 ALERT_LEVELS = {"CRITICAL", "ERROR", "ALERT", "EMERGENCY"}
+LEVEL_ORDER = ("EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO")
+ALERTS_MAX = 50
+HOT = {"HDD": 55, "SSD": 70}         # °C — powyżej dysk dostaje „uwaga” (NVMe i nieznany typ liczą się jak SSD)
+SMART_BAD = {"FAILED", "FAILURE", "ERROR"}
 
 
 def _ts(v):
@@ -37,6 +47,91 @@ def _ts(v):
 
 def _when(ts):
     return datetime.fromtimestamp(ts).strftime("%d.%m %H:%M") if ts else "nigdy"
+
+
+def _alerts(raw):
+    """Wszystkie nieodrzucone alerty, od najpoważniejszych i najnowszych."""
+    out = []
+    for a in raw or []:
+        if not isinstance(a, dict) or a.get("dismissed"):
+            continue
+        level = str(a.get("level") or "INFO").upper()
+        out.append({"level": level, "text": str(a.get("formatted") or a.get("text") or "alert")[:300],
+                    "klass": str(a.get("klass") or "")[:60], "at": _ts(a.get("datetime"))})
+    out.sort(key=lambda a: (LEVEL_ORDER.index(a["level"]) if a["level"] in LEVEL_ORDER else 9, -(a["at"] or 0)))
+    return out[:ALERTS_MAX]
+
+
+def _pool_disks(pools):
+    """{nazwa dysku: pula} z topologii pul (vdevy i ich dyski)."""
+    out = {}
+
+    def walk(node, pool):
+        if isinstance(node, dict):
+            if node.get("disk"):
+                out[str(node["disk"])] = pool
+            for child in node.get("children") or []:
+                walk(child, pool)
+        elif isinstance(node, list):
+            for x in node:
+                walk(x, pool)
+
+    for p in pools or []:
+        if isinstance(p.get("topology"), dict):
+            for group in p["topology"].values():
+                walk(group, p.get("name"))
+    return out
+
+
+def _temp(v):
+    if isinstance(v, dict):
+        v = v.get("temp", v.get("temperature"))
+    return v if isinstance(v, (int, float)) else None
+
+
+def _smart(results):
+    """{dysk: ostatni test SMART} z smart.test.results (pierwszy na liście = najnowszy)."""
+    out = {}
+    for r in results or []:
+        if not isinstance(r, dict) or not r.get("disk"):
+            continue
+        tests = [t for t in r.get("tests") or [] if isinstance(t, dict)]
+        if tests:
+            t = tests[0]
+            out[str(r["disk"])] = {"desc": str(t.get("description") or "test")[:60],
+                                   "status": str(t.get("status") or "").upper(),
+                                   "verbose": str(t.get("status_verbose") or "")[:120],
+                                   "lifetime": t.get("lifetime")}
+    return out
+
+
+def _disk_states(data):
+    disks = [d for d in data.get("disk.query") or [] if isinstance(d, dict) and d.get("name")]
+    temps = data.get("disk.temperatures") if isinstance(data.get("disk.temperatures"), dict) else {}
+    smart, pools = _smart(data.get("smart.test.results")), _pool_disks(data.get("pool.query"))
+    out = []
+    for d in sorted(disks, key=lambda d: (pools.get(d["name"]) or "~", str(d["name"]))):
+        name = str(d["name"])
+        kind = str(d.get("type") or "").upper()
+        temp = _temp(temps.get(name))
+        test = smart.get(name)
+        problems = []
+        if test and test["status"] in SMART_BAD:
+            problems.append(f"test SMART nieudany ({test['verbose'] or test['status'].lower()})")
+        if temp is not None and temp >= HOT.get(kind, HOT["SSD"]):
+            problems.append(f"za gorący: {temp:.0f} °C")
+        parts = [f"dysk {name}", f"pula {pools[name]}" if pools.get(name) else "poza pulą"]
+        if temp is not None:
+            parts.append(f"{temp:.0f} °C")
+        if test:
+            parts.append(f"SMART: {test['desc']} — {test['verbose'] or test['status'].lower()}")
+        summary = f"dysk {name}: " + ", ".join(problems) if problems else " · ".join(parts)
+        serial = str(d.get("serial") or "").strip()
+        out.append(State(f"disk/{serial or name}", "warn" if problems else "ok", summary[:300], {
+            "name": name, "model": str(d.get("model") or "")[:80], "serial": serial[:60], "size": d.get("size"),
+            "type": kind, "pool": pools.get(name), "temp": temp, "smart": test, "problems": problems},
+            attach={"ref": "server"}, label=f"dysk {name}"))
+    return out
 
 
 class Truenas(Adapter):
@@ -121,6 +216,9 @@ class Truenas(Adapter):
         async with httpx.AsyncClient(base_url=base, timeout=20, follow_redirects=False,
                                      headers={"Authorization": f"Bearer {self.secrets['api_key'].strip()}"}, **kw) as cli:
             for m in methods:
+                if m not in REST:
+                    out[m] = None
+                    continue
                 try:
                     r = await cli.get(REST[m])
                 except httpx.ConnectError:
@@ -138,7 +236,7 @@ class Truenas(Adapter):
         return f"Połączono: TrueNAS {info.get('version', '?')} · pule: {len(data.get('pool.query') or [])}"
 
     async def poll(self):
-        data = await self._fetch(list(REST))
+        data = await self._fetch(list(REST) + list(WS_ONLY))
         info = data.get("system.info") or {}
         out = PollResult()
         host = urlsplit(str(self.config["url"])).hostname or "truenas"
@@ -148,10 +246,12 @@ class Truenas(Adapter):
         except OSError:
             addrs = []
         out.found.append(Found("server", {"name": info.get("hostname") or host, "kind": "nas", "addresses": addrs}))
-        alerts = [a for a in data.get("alert.list") or []
-                  if not a.get("dismissed") and str(a.get("level", "")).upper() in ALERT_LEVELS]
-        texts = [str(a.get("formatted") or a.get("text") or "alert")[:300] for a in alerts]
+        all_alerts = _alerts(data.get("alert.list"))
+        alerts = [a for a in all_alerts if a["level"] in ALERT_LEVELS]
+        texts = [a["text"] for a in alerts]
         server = {"version": info.get("version"), "alerts": len(alerts), "alert_texts": texts[:20],
+                  "alert_list": all_alerts, "disks_read": data.get("disk.query") is not None,
+                  "smart_read": data.get("smart.test.results") is not None,
                   "nfs": [x.get("path") or (x.get("paths") or [""])[0] for x in data.get("sharing.nfs.query") or []
                           if x.get("enabled", True)]}
         if alerts:
@@ -174,6 +274,7 @@ class Truenas(Adapter):
             summary = f"pula {name}: {status}" + (f" · zajęte {pct:.0%}" if pct is not None else "")
             out.states.append(State(f"pool/{name}", state, summary, {"status": status, "used": pct, "size": size, "allocated": alloc},
                                     attach={"ref": "server"}, label=f"pula {name}"))
+        out.states += _disk_states(data)
         for kind, method, label in (("snapshot", "pool.snapshottask.query", "snapshoty"),
                                     ("replication", "replication.query", "replikacja")):
             for t in data.get(method) or []:

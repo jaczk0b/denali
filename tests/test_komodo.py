@@ -16,8 +16,10 @@ SERVERS = [{"id": "srv1", "name": "docker", "info": {"state": "Ok", "address": "
            {"id": "srv2", "name": "stary", "info": {"state": "NotOk", "address": "http://192.168.1.21:8120"}}]
 STACKS = [
     {"id": "st1", "name": "immich", "info": {"state": "running", "server_id": "srv1",
-                                             "services": [{"service": "immich-server", "update_available": True},
-                                                          {"service": "redis", "update_available": False}]}},
+                                             "services": [{"service": "immich-server", "update_available": True,
+                                                           "image": "ghcr.io/immich-app/immich-server:release"},
+                                                          {"service": "redis", "update_available": False,
+                                                           "image": "docker.io/redis:6.2-alpine@sha256:abc"}]}},
     {"id": "st2", "name": "jellyfin", "info": {"state": "unhealthy", "server_id": "srv1", "services": []}},
     {"id": "st3", "name": "stary-stack", "info": {"state": "stopped", "server_id": "srv2"}},
     {"id": "st4", "name": "zepsuty", "info": {"state": "down", "server_id": "srv1"}},
@@ -50,6 +52,10 @@ def test_odczyt_serwerow_i_stackow():
     assert states["server/srv2"][0] == "down"
     assert states["stack/st1"] == ("ok", "stack działa · usługi: 2 · aktualizacja dostępna: immich-server")
     assert states["stack/st2"][0] == "warn" and states["stack/st3"][0] == "off" and states["stack/st4"][0] == "down"
+    immich = next(s for s in res.states if s.external_id == "stack/st1")
+    assert immich.data["images"] == [
+        {"service": "immich-server", "image": "ghcr.io/immich-app/immich-server:release", "update": True},
+        {"service": "redis", "image": "docker.io/redis:6.2-alpine@sha256:abc", "update": False}]
     assert seen[0].headers["x-api-key"] == "K-abc" and seen[0].headers["x-api-secret"] == "S-tajne"
     assert {json.loads(r.content)["type"] for r in seen} <= {"ListServers", "ListStacks"}     # tylko odczyt
 

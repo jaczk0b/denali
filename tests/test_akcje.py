@@ -351,7 +351,8 @@ def test_apt_upgrade_przez_agenta_po_snapshocie(app, pve, monkeypatch):
         assert actions.agent_exchange(conn, integrations.get(conn, iid), [])[0] == []
     run(actions.execute(app.state.engine, app.state.box, first, pve_actions(), wait=0.1))
     with app.state.engine.begin() as conn:
-        assert actions.get(conn, upgrade["id"])["status"] == "zlecona"
+        r = actions.get(conn, upgrade["id"])
+        assert r["status"] == "zlecona" and r["task"]["queued_at"]     # czas na odebranie liczy się od teraz
         row = integrations.get(conn, iid)
         jobs, _ = actions.agent_exchange(conn, row, [])
         assert jobs == [{"id": upgrade["id"], "action": "apt_upgrade"}]
@@ -390,6 +391,44 @@ def test_agent_bez_lokalnej_zgody(app, pve, monkeypatch):
         assert ack == []
 
 
+def test_aktualizacja_potem_restart_jesli_wymagany(app, pve, monkeypatch):
+    iid, target, _ = agent_on_vm(app, pve, monkeypatch, local=("apt_upgrade", "reboot"))
+    with app.state.engine.begin() as conn:
+        allow(conn, ["agent.apt_upgrade"])
+        with pytest.raises(actions.ActionError, match="Restart po aktualizacji"):
+            req(conn, target, "agent.apt_upgrade", reauth_ok=True, reboot_after=True)
+        allow(conn, ["agent.apt_upgrade", "agent.reboot"])
+        upgrade = req(conn, target, "agent.apt_upgrade", reauth_ok=True, reboot_after=True)
+        reboot = conn.execute(select(action_run).where(action_run.c.after_id == upgrade)).mappings().first()
+        assert reboot["action"] == "agent.reboot" and reboot["status"] == "czeka"
+        assert reboot["params"] == {"if_required": True}
+        row = integrations.get(conn, iid)
+        assert actions.agent_exchange(conn, row, [])[0] == [{"id": upgrade, "action": "apt_upgrade"}]
+        # wynik aktualizacji i zlecenie restartu w tej samej odpowiedzi
+        jobs, _ = actions.agent_exchange(conn, row, [{"id": upgrade, "state": "ok", "rc": 0, "output": "1 upgraded"}])
+        assert jobs == [{"id": reboot["id"], "action": "reboot", "params": {"if_required": True}}]
+        actions.agent_exchange(conn, row, [{"id": reboot["id"], "state": "ok", "rc": 0,
+                                            "output": "Restart niepotrzebny — maszyna go nie wymaga."}])
+        assert actions.get(conn, reboot["id"])["status"] == "ok"
+        # nieudana aktualizacja = bez restartu
+        upgrade = req(conn, target, "agent.apt_upgrade", reauth_ok=True, reboot_after=True)
+        actions.agent_exchange(conn, row, [])
+        actions.agent_exchange(conn, row, [{"id": upgrade, "state": "blad", "rc": 100, "output": "E: dpkg"}])
+        reboot = conn.execute(select(action_run).where(action_run.c.after_id == upgrade)).mappings().first()
+        assert reboot["status"] == "blad" and actions.agent_exchange(conn, row, [])[0] == []
+
+
+def test_okno_aktualizacji_z_restartem(app, pve, monkeypatch, admin):
+    _iid, (ref_id, dev), _ = agent_on_vm(app, pve, monkeypatch, local=("apt_upgrade", "reboot"))
+    with app.state.engine.begin() as conn:
+        allow(conn, ["agent.apt_upgrade"])
+    url = f"/urzadzenia/{dev}/akcje/{ref_id}/agent.apt_upgrade"
+    assert "Restart po aktualizacji: niedostępny" in admin.get(url).text
+    with app.state.engine.begin() as conn:
+        allow(conn, ["agent.apt_upgrade", "agent.reboot"])
+    assert 'name="reboot" value="1"' in admin.get(url).text
+
+
 def test_raport_agenta_przez_http_niesie_zlecenia(app, pve, monkeypatch, client):
     with app.state.engine.begin() as conn:
         code = agents.new_code(conn, "admin")
@@ -420,7 +459,7 @@ def test_agent_wykonuje_tylko_z_lokalnej_listy(tmp_path):
     (jobs / "smiec.txt").write_text("?")
     calls = []
 
-    def fake_upgrade():
+    def fake_upgrade(params):
         calls.append(1)
         return True, 0, "1 upgraded"
     # lista pusta: nic się nie wykonuje, wynik mówi, jak pozwolić
@@ -437,6 +476,28 @@ def test_agent_wykonuje_tylko_z_lokalnej_listy(tmp_path):
     assert calls == [1]
     [r] = agent.read_results(str(results))
     assert r["id"] == 10 and r["state"] == "ok" and r["output"] == "1 upgraded"
+
+
+def test_agent_restart_maszyny(tmp_path, monkeypatch):
+    jobs, results = tmp_path / "zlecenia", tmp_path / "wyniki"
+    jobs.mkdir()
+    results.mkdir()
+    agent.write_jobs([{"id": 1, "action": "reboot", "params": {"if_required": True, "cmd": "rm -rf /"}},
+                      {"id": 2, "action": "reboot", "params": {"if_required": "tak"}}], str(jobs), str(results))
+    assert json.loads((jobs / "1.json").read_text()) == {"id": 1, "action": "reboot", "params": {"if_required": True}}
+    assert json.loads((jobs / "2.json").read_text()) == {"id": 2, "action": "reboot"}
+    calls = []
+    monkeypatch.setattr(agent, "run", lambda cmd, **kw: calls.append(cmd) or (0, "", ""))
+    monkeypatch.setattr(agent, "reboot", lambda: {"required": False, "packages": []})
+    monkeypatch.setattr(agent, "kernel", lambda: {"running": "6.8.12-4", "newest": "6.8.12-4"})
+    agent.do_jobs({"actions": ["reboot"]}, str(jobs), str(results))
+    res = {r["id"]: r for r in agent.read_results(str(results))}
+    assert res[1]["state"] == "ok" and "niepotrzebny" in res[1]["output"]       # tylko gdy wymagany — nie był
+    assert res[2]["state"] == "ok" and "Restart za minutę" in res[2]["output"]  # zlecony wprost
+    assert calls == [["shutdown", "-r", "+1", "Denali: restart zlecony z panelu"]]
+    monkeypatch.setattr(agent, "kernel", lambda: {"running": "6.8.12-4", "newest": "6.8.12-5"})
+    assert agent.reboot_required_now() and agent.reboot_machine({"if_required": True})[0]
+    assert len(calls) == 2
 
 
 def test_uslugi_akcji_agenta():

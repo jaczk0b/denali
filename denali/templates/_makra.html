@@ -102,6 +102,12 @@
   {%- if s == "ok" %}<span class="pill">{{ st("ok", 12) }} wykonana</span>
   {%- elif s == "blad" %}<span class="pill down">{{ st("down", 12) }} błąd</span>
   {%- elif s == "trwa" %}<span class="pill warn">{{ st("warn", 12) }} trwa</span>
-  {%- elif s == "czeka" %}<span class="pill">{{ st("unknown", 12) }} czeka na snapshot</span>
+  {%- elif s == "czeka" %}<span class="pill">{{ st("unknown", 12) }} czeka na poprzedni krok</span>
   {%- else %}<span class="pill">{{ st("unknown", 12) }} zlecona</span>{% endif -%}
 {% endmacro %}
+
+{# Przyciski akcji gotowych do zlecenia (zakładki Infrastruktury) — prowadzą do okna potwierdzenia #}
+{% macro action_buttons(acts) -%}
+{%- if acts %}<div class="actions">{% for o in acts %}<a class="btn small" href="/urzadzenia/{{ o.device_id }}/akcje/{{ o.ref_id }}/{{ o.key }}" title="{{ o.spec.effect }}">{{ o.spec.label }}…</a>{% endfor %}</div>
+{%- else %}<span class="muted">—</span>{% endif -%}
+{%- endmacro %}

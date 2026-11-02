@@ -82,18 +82,34 @@ TN_CONFIG = {"url": "https://192.168.1.30", "verify_tls": False, "ca_pem": ""}
 TN_SECRETS = {"api_key": "1-tajnyklucz"}
 TN_DATA = {
     "system.info": {"version": "TrueNAS-SCALE-24.10.2", "hostname": "truenas"},
-    "pool.query": [{"name": "tank", "status": "ONLINE", "healthy": True, "size": 1000, "allocated": 630},
+    "pool.query": [{"name": "tank", "status": "ONLINE", "healthy": True, "size": 1000, "allocated": 630,
+                    "topology": {"data": [{"type": "MIRROR", "children": [{"disk": "sda"}, {"disk": "sdb"}]}],
+                                 "cache": [], "log": []}},
                    {"name": "kopie", "status": "DEGRADED", "healthy": False, "size": 100, "allocated": 10}],
     "pool.snapshottask.query": [
         {"dataset": "tank/zdjecia", "enabled": True, "state": {"state": "FINISHED", "datetime": {"$date": NOW * 1000}}},
         {"dataset": "tank/filmy", "enabled": True, "state": {"state": "ERROR", "error": "dataset is busy"}},
         {"dataset": "tank/stare", "enabled": False, "state": {}}],
     "replication.query": [],
-    "alert.list": [{"level": "WARNING", "formatted": "drobiazg", "dismissed": False}],
+    "alert.list": [{"level": "WARNING", "formatted": "drobiazg", "dismissed": False},
+                   {"level": "INFO", "formatted": "Nowa wersja TrueNAS", "dismissed": False,
+                    "datetime": {"$date": NOW * 1000}},
+                   {"level": "CRITICAL", "formatted": "odrzucony", "dismissed": True}],
+    "disk.query": [{"name": "sda", "serial": "WD-111", "model": "WDC WD40", "size": 4000, "type": "HDD"},
+                   {"name": "sdb", "serial": "WD-222", "model": "WDC WD40", "size": 4000, "type": "HDD"},
+                   {"name": "nvme0n1", "serial": "", "model": "Samsung 980", "size": 500, "type": "SSD"}],
+    "smart.test.results": [
+        {"disk": "sda", "tests": [{"num": 1, "description": "Short offline", "status": "SUCCESS",
+                                   "status_verbose": "Completed without error", "lifetime": 1200}]},
+        {"disk": "sdb", "tests": [{"num": 1, "description": "Extended offline", "status": "FAILED",
+                                   "status_verbose": "Completed: read failure", "lifetime": 1300},
+                                  {"num": 2, "description": "Short offline", "status": "SUCCESS"}]}],
+    "disk.temperatures": {"sda": 34, "sdb": {"temp": 58}, "nvme0n1": None},
     "sharing.nfs.query": [{"path": "/mnt/tank/zdjecia"}],
 }
 REST_PATHS = {"/system/info": "system.info", "/pool": "pool.query", "/pool/snapshottask": "pool.snapshottask.query",
-              "/replication": "replication.query", "/alert/list": "alert.list", "/sharing/nfs": "sharing.nfs.query"}
+              "/replication": "replication.query", "/alert/list": "alert.list", "/sharing/nfs": "sharing.nfs.query",
+              "/disk": "disk.query", "/smart/test/results": "smart.test.results"}
 
 
 def truenas_rest(seen=None):
@@ -115,6 +131,16 @@ def check_truenas_result(res):
     assert st["snapshot/tank/zdjecia"].state == "ok" and st["snapshot/tank/filmy"].state == "warn"
     assert "snapshot/tank/stare" not in st                                     # wyłączone zadanie
     assert all(s.attach == {"ref": "server"} for k, s in st.items() if k != "server")
+    # wszystkie nieodrzucone alerty, od najpoważniejszych; stan „uwaga” tylko od ERROR
+    assert [(a["level"], a["text"]) for a in st["server"].data["alert_list"]] == [
+        ("WARNING", "drobiazg"), ("INFO", "Nowa wersja TrueNAS")]
+    assert st["server"].data["alerts"] == 0
+    # dyski: po numerze seryjnym, pula z topologii, nieudany test SMART = uwaga
+    assert st["disk/WD-111"].state == "ok" and st["disk/WD-111"].data["pool"] == "tank"
+    assert st["disk/WD-111"].data["smart"]["verbose"] == "Completed without error"
+    assert st["disk/WD-222"].state == "warn" and "test SMART nieudany" in st["disk/WD-222"].summary
+    assert st["disk/nvme0n1"].state == "ok" and st["disk/nvme0n1"].data["pool"] is None
+    assert st["disk/nvme0n1"].data["smart"] is None and st["disk/nvme0n1"].label == "dysk nvme0n1"
 
 
 def test_truenas_rest():
@@ -172,6 +198,11 @@ def test_truenas_jsonrpc_wynik():
     res = run(scenario())
     st = {s.external_id: s for s in res.states}
     assert st["pool/tank"].state == "ok" and st["pool/kopie"].state == "warn"
+    # po WebSocket są też temperatury (w REST nie): sdb 58 °C = za gorący HDD
+    assert st["disk/WD-111"].data["temp"] == 34 and st["disk/WD-111"].summary == \
+        "dysk sda · pula tank · 34 °C · SMART: Short offline — Completed without error"
+    assert st["disk/WD-222"].data["problems"] == ["test SMART nieudany (Completed: read failure)", "za gorący: 58 °C"]
+    assert st["disk/nvme0n1"].data["temp"] is None
     assert {f.proposed["name"] for f in res.found} == {"truenas"}
 
 

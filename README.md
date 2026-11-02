@@ -13,8 +13,9 @@ sprawdzenia z LAN i z internetu, stan na żywo z automatycznymi incydentami, pow
 odświeżanie na żywo (SSE); jedna lista aktualizacji (Proxmox, PBS, Komodo, agent) i agent na maszynach (apt,
 wymagany restart, NFS); dział Infrastruktura z zakładkami Mapa (rysowana sama), Proxmox, TrueNAS, Docker, Sieć,
 Adresy IP (zajęte i wolne, konflikty) i Szafa (co na której wysokości); akcje z listy dozwolonych (Proxmox: start,
-wyłączenie, restart, snapshot; Komodo: start, restart, stop, Deploy; agent: apt upgrade po snapshocie) z potwierdzeniem
-i audytem. Nie ma: OpenWrt (odłożone), więc też akcji na routerze (kopia konfiguracji).
+wyłączenie, restart, snapshot; Komodo: start, restart, stop, Deploy; agent: apt upgrade po snapshocie i restart
+maszyny, gdy jest wymagany) z potwierdzeniem i audytem — z karty urządzenia i z zakładek Proxmox i Docker; TrueNAS:
+wszystkie powiadomienia (dzwonek), dyski z temperaturą i testami SMART. Nie ma: OpenWrt (odłożone), więc też akcji na routerze (kopia konfiguracji).
 
 Spis treści:
 [Instalacja](#instalacja) ·
@@ -172,6 +173,10 @@ Konto tylko do podglądu (np. dla domownika): `create-user LOGIN --role podglad`
 | Agent | pakiety apt (z poprawkami bezpieczeństwa), wymagany restart, montaże NFS | instalacja na maszynie (niżej) |
 
 TrueNAS i router TP-Link na razie nie podają aktualizacji (TrueNAS — później; TP-Link nie ma tego w API).
+TrueNAS za to pokazuje na swojej zakładce wszystkie powiadomienia z dzwonka (od informacji po krytyczne), a pod nimi
+dyski: pula, temperatura i ostatni test SMART. „Uwaga” na karcie TrueNAS dają tylko błędy i poważniejsze alerty,
+nieudany test SMART i za gorący dysk (HDD od 55 °C, SSD od 70 °C). Testy SMART planujesz w TrueNAS
+(*Data Protection → S.M.A.R.T. Tests*) — Denali tylko czyta wyniki.
 
 **Agent** instaluj tylko tam, gdzie API nie wystarcza — zwykle VM-ki z Dockerem i usługami. Na Proxmoxie, PBS i TrueNAS
 nie. *Integracje → Dodaj: Agent na maszynie → Wygeneruj polecenie* i wklej je na maszynie (Debian/Ubuntu z systemd,
@@ -186,12 +191,12 @@ certyfikat — token nie idzie zwykłym HTTP.
   gdy udział nie był podłączony.
 - `denali-agent-akcje.path` → `denali-agent-akcje.service` (root) — wykonuje akcję zleconą z panelu, **tylko jeśli
   jest na lokalnej liście** w `/etc/denali-agent/config.json`. Domyślnie lista jest pusta: agent niczego nie wykona.
-  Pozwolenie: `sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade` (cofnięcie: `zabron`), albo od razu
-  przy instalacji: `… install … --akcje apt_upgrade`. Panel tej listy nie zmieni.
+  Pozwolenie: `sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade` i `… pozwol reboot` (cofnięcie:
+  `zabron`), albo od razu przy instalacji: `… install … --akcje apt_upgrade,reboot`. Panel tej listy nie zmieni.
 - Agent nie słucha na żadnym porcie. Zlecenie przychodzi w odpowiedzi na jego raport; usługa raportu tylko zapisuje
   je do pliku, a wykonuje osobna usługa po sprawdzeniu lokalnej listy.
-- Agent zainstalowany przed wersją 1.1 nie zna akcji — wygeneruj nowe polecenie i wklej je jeszcze raz (ta sama
-  maszyna zostaje tą samą integracją, z historią).
+- Agent zainstalowany przed wersją 1.1 nie zna akcji, a przed 1.2 — restartu maszyny. Wygeneruj nowe polecenie i wklej
+  je jeszcze raz (ta sama maszyna zostaje tą samą integracją, z historią; lokalna lista akcji zostaje).
 - Stan: `systemctl status denali-agent`, `journalctl -u denali-agent -n 30`; raport bez wysyłania:
   `python3 /opt/denali-agent/denali-agent.py print`.
 - Usunięcie: `sudo python3 /opt/denali-agent/denali-agent.py uninstall`, a w Denali usuń agenta (unieważnia token).
@@ -204,7 +209,9 @@ TrueNAS, a nie VM. Profil *Dostępne aktualizacje: ignoruj* chowa urządzenie z 
 
 ## Akcje
 
-Restart VM, aktualizacja stacka, `apt upgrade` — z karty urządzenia (*Akcje*). Akcja wykona się tylko, gdy przejdzie
+Restart VM, aktualizacja stacka, `apt upgrade` — z karty urządzenia (*Akcje*), a dla maszyn i stacków także z zakładek
+*Infrastruktura → Proxmox* i *Docker* (kolumna *Akcje*, tylko administrator; przyciski pojawiają się tylko przy akcjach,
+które już przeszły zamki). Akcja wykona się tylko, gdy przejdzie
 wszystkie zamki, sprawdzane po stronie serwera przy każdym zleceniu (także przy bezpośrednim wywołaniu adresu):
 
 1. **akcje włączone** — *menu konta → Akcje*; „Wyłącz wszystkie akcje” działa od razu, włączenie wymaga hasła i kodu;
@@ -213,7 +220,7 @@ wszystkie zamki, sprawdzane po stronie serwera przy każdym zleceniu (także prz
 3. integracja ma **osobny token do akcji** (*Integracje → … → Akcje — osobny token*), zapisany oddzielnie od tokenu
    do odczytu; usunięcie go wyłącza akcje tej integracji. Agent zamiast tokenu ma lokalną listę na maszynie;
 4. akcja pasuje do stanu obiektu (np. „Uruchom” tylko wyłączonej VM) i nie trwa na nim inna;
-5. **niebezpieczne** (wyłączenie, restart, zatrzymanie, Deploy, apt upgrade) — po potwierdzeniu hasłem i kodem 2FA
+5. **niebezpieczne** (wyłączenie, restart, zatrzymanie, Deploy, apt upgrade, restart maszyny) — po potwierdzeniu hasłem i kodem 2FA
    (ważne 5 minut).
 
 Zmiana list dozwolonych i tokenu do akcji też wymaga hasła i kodu. Każde zlecenie, odmowa i wynik są w *Audycie*,
@@ -223,11 +230,14 @@ historia w *Akcjach*, a przy trwającym incydencie urządzenia — w jego przebi
 |---|---|---|
 | Proxmox VE | Uruchom, Wyłącz, Uruchom ponownie, Zatrzymaj natychmiast, Zrób snapshot (VM i LXC) | token `denali@pve!akcje` z rolą `PanelActions` (`VM.PowerMgmt`, `VM.Snapshot`) na `/vms` — instrukcja na stronie integracji |
 | Komodo | Uruchom, Uruchom ponownie, Zatrzymaj, Aktualizuj (Deploy) — na stackach | klucz osobnego użytkownika z prawem **Execute** tylko na wybranych stackach |
-| Agent | Zainstaluj aktualizacje (`apt-get update` + `apt-get upgrade`, bez usuwania pakietów) | lokalna lista na maszynie (`pozwol apt_upgrade`) |
+| Agent | Zainstaluj aktualizacje (`apt-get update` + `apt-get upgrade`, bez usuwania pakietów), Uruchom ponownie maszynę (`shutdown -r +1`) | lokalna lista na maszynie (`pozwol apt_upgrade`, `pozwol reboot`; restart od agenta 1.2) |
 
 `apt upgrade` na VM z Proxmoxa: w oknie potwierdzenia „Najpierw snapshot w Proxmoxie” (gdy snapshot tej VM jest
 dozwolony i Proxmox ma token do akcji) — aktualizacja ruszy dopiero po udanym snapshocie, a nieudany snapshot ją
-wstrzymuje. Panel nie ma akcji na samym sobie ani na routerze.
+wstrzymuje. „Potem uruchom ponownie, jeśli jest wymagany restart” (gdy restart przez agenta jest dozwolony): po udanej
+aktualizacji agent sprawdza `/run/reboot-required` i nowsze jądro i tylko wtedy restartuje maszynę za minutę; nieudana
+aktualizacja = bez restartu. Na VM z Proxmoxa restart „z zewnątrz” to dalej „Uruchom ponownie” z Proxmoxa.
+Panel nie ma akcji na samym sobie ani na routerze.
 
 ---
 

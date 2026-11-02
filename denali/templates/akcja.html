@@ -16,6 +16,11 @@
     {% else %}
     <p class="muted small">Bez snapshotu przed aktualizacją: ta maszyna nie ma w Denali gotowej akcji „Zrób snapshot” z Proxmoxa (token do akcji w integracji Proxmox i snapshot na liście dozwolonych).</p>
     {% endif %}
+    {% if reboot %}
+    <label class="check"><input type="checkbox" name="reboot" value="1"> Potem uruchom maszynę ponownie, <strong>jeśli jest wymagany restart</strong> (sprawdzi agent po aktualizacji) — restart tylko po udanej aktualizacji</label>
+    {% elif o.key == "agent.apt_upgrade" %}
+    <p class="muted small">Restart po aktualizacji: niedostępny — agent 1.2 z <code>pozwol reboot</code> na maszynie i „Uruchom ponownie maszynę” na liście dozwolonych.</p>
+    {% endif %}
     <p class="muted small">Agent odbierze zlecenie przy najbliższym raporcie (do minuty) i wykona je tylko, jeśli akcja jest na jego lokalnej liście.</p>
   {% endif %}
   {% if o.reason %}

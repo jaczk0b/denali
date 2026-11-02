@@ -1,9 +1,11 @@
-"""Zakładki działu Infrastruktura. Odczyt: każdy zalogowany. Szafa (dokumentacja) — zmiany tylko administrator."""
+"""Zakładki działu Infrastruktura. Odczyt: każdy zalogowany. Szafa (dokumentacja) — zmiany tylko administrator.
+Przyciski akcji (Proxmox, Docker) widzi tylko administrator i tylko te, które przeszły zamki — prowadzą do tego samego
+okna potwierdzenia co karta urządzenia."""
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
-from .. import auth, infra_views as views, live, mapview, racks, status
+from .. import actions, auth, infra_views as views, live, mapview, racks, status
 from ..models import device, rack, rack_item
 from ..templating import render
 from .deps import client_ip, require_admin, require_user
@@ -25,19 +27,35 @@ def infra_home(sess: dict = Depends(require_user)):
     return RedirectResponse("/infrastruktura/mapa", 303)
 
 
+def _actions(conn, sess, rows):
+    """{(integracja, external_id): [akcje gotowe do zlecenia]} dla administratora, inaczej pusto."""
+    if sess["role"] != "admin":
+        return {}
+    return actions.ready_by_target(conn, [r["device_id"] for r in rows if r["device_id"]])
+
+
 @router.get("/infrastruktura/proxmox")
 def tab_proxmox(request: Request, sess: dict = Depends(require_user)):
-    return _page(request, "infra_proxmox.html", "proxmox", lambda c: {"clusters": views.proxmox(c)})
+    def build(conn):
+        clusters = views.proxmox(conn)
+        return {"clusters": clusters, "admin": sess["role"] == "admin",
+                "acts": _actions(conn, sess, [g for c in clusters for g in c["guests"]])}
+    return _page(request, "infra_proxmox.html", "proxmox", build)
 
 
 @router.get("/infrastruktura/truenas")
 def tab_truenas(request: Request, sess: dict = Depends(require_user)):
-    return _page(request, "infra_truenas.html", "truenas", lambda c: {"nases": views.truenas(c)})
+    return _page(request, "infra_truenas.html", "truenas", lambda c: {"nases": views.truenas(c),
+                                                                      "tn_levels": views.TN_LEVELS})
 
 
 @router.get("/infrastruktura/docker")
 def tab_docker(request: Request, sess: dict = Depends(require_user)):
-    return _page(request, "infra_docker.html", "docker", lambda c: {"komodos": views.docker(c)})
+    def build(conn):
+        komodos = views.docker(conn)
+        return {"komodos": komodos, "admin": sess["role"] == "admin",
+                "acts": _actions(conn, sess, [s for k in komodos for g in k["groups"] for s in g["stacks"]])}
+    return _page(request, "infra_docker.html", "docker", build)
 
 
 @router.get("/infrastruktura/siec")

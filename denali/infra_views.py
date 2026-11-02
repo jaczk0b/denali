@@ -111,29 +111,45 @@ def _consumers(conn, device_id):
                         .order_by(device.c.name)).mappings().all()
 
 
+TN_LEVELS = {"EMERGENCY": "awaria", "ALERT": "alarm", "CRITICAL": "krytyczny", "ERROR": "błąd",
+             "WARNING": "ostrzeżenie", "NOTICE": "uwaga", "INFO": "informacja"}
+
+
 def truenas(conn):
     out = []
     for src in sources(conn, "truenas"):
         server = src["states"].get("server")
-        pools, tasks = [], []
+        pools, tasks, disks = [], [], []
         for eid, s in sorted(src["states"].items()):
             d = s["data"] or {}
             if eid.startswith("pool/"):
                 pools.append({"name": eid.split("/", 1)[1], "state": s["state"], "summary": s["summary"],
                               "status": d.get("status"), "used": d.get("used"), "size": d.get("size"),
                               "allocated": d.get("allocated")})
+            elif eid.startswith("disk/"):
+                disks.append({**d, "state": s["state"], "summary": s["summary"]})
             elif eid.startswith(("snapshot/", "replication/")):
                 kind, key = eid.split("/", 1)
                 tasks.append({"kind": "snapshoty" if kind == "snapshot" else "replikacja", "key": key,
                               "state": s["state"], "summary": s["summary"], "last": d.get("last")})
         device_id = _device_of(src, "server")
+        disks.sort(key=lambda x: (x["state"] == "ok", x.get("pool") or "~", str(x.get("name"))))
         out.append({"row": src["row"], "server": server, "data": (server["data"] or {}) if server else {},
-                    "device_id": device_id, "pools": pools, "tasks": tasks,
+                    "device_id": device_id, "pools": pools, "tasks": tasks, "disks": disks,
                     "consumers": _consumers(conn, device_id)})
     return out
 
 
 # ───────────────────────── Docker (Komodo) ─────────────────────────
+def _image(i):
+    """{"service", "image": "ghcr.io/immich-app/immich-server:v1.120"} → + "name" (bez rejestru) i "tag"."""
+    ref = str(i.get("image") or "")
+    ref, _, digest = ref.partition("@")
+    last = ref.rsplit("/", 1)[-1]
+    name, _, tag = last.partition(":")
+    return {**i, "name": name or ref, "tag": tag or ("digest" if digest else "latest")}
+
+
 def docker(conn):
     out = []
     for src in sources(conn, "komodo"):
@@ -157,7 +173,7 @@ def docker(conn):
             (servers.get(parent) or loose)["stacks"].append({
                 "eid": eid, "name": _name(src, eid) or eid, "device_id": _device_of(src, eid), "state": s["state"],
                 "summary": s["summary"], "komodo_state": d.get("komodo_state"), "services": d.get("services"),
-                "updates": images.get(eid, [])})
+                "updates": images.get(eid, []), "images": [_image(i) for i in d.get("images") or []]})
         groups = sorted(servers.values(), key=lambda g: g["name"].lower()) + ([loose] if loose["stacks"] else [])
         for g in groups:
             g["stacks"].sort(key=lambda x: (WORST.index(x["state"]) if x["state"] in WORST else 9, x["name"].lower()))

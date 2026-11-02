@@ -35,10 +35,10 @@
         (plik <code>/run/reboot-required</code> albo nowsze jądro niż uruchomione).</li>
       <li><strong>Montaże NFS</strong>: czy są zamontowane i odpowiadają, czy pod montażem nie leżą stare dane
         (zapisane, gdy udział nie był podłączony). Udział łączy się sam z TrueNAS jako zależność „dane”.</li>
-      <li>Co minutę wysyła raport do Denali. Nie słucha na żadnym porcie. Akcję z panelu (apt upgrade) wykona
-        <strong>tylko, jeśli jest na lokalnej liście</strong> na maszynie — domyślnie pustej. Pozwolenie:
-        <code>sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade</code> albo przy instalacji
-        dopisz <code>--akcje apt_upgrade</code>.</li>
+      <li>Co minutę wysyła raport do Denali. Nie słucha na żadnym porcie. Akcję z panelu (apt upgrade, restart
+        maszyny) wykona <strong>tylko, jeśli jest na lokalnej liście</strong> na maszynie — domyślnie pustej. Pozwolenie:
+        <code>sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade</code> (i <code>pozwol reboot</code>)
+        albo przy instalacji dopisz <code>--akcje apt_upgrade,reboot</code>.</li>
     </ul>
     <h2>Uprawnienia</h2>
     <ul>
