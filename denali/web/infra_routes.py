@@ -408,6 +408,27 @@ def queue_link_matches(request: Request, sess: dict = Depends(require_admin)):
     return _queue_action(request, sess, lambda c: discovery.link_matches(c, user=sess["login"], ip=client_ip(request)))
 
 
+@router.post("/zatwierdz/wybrane")
+async def queue_apply(request: Request, sess: dict = Depends(require_admin)):
+    form = await request.form()
+    choices = {}
+    for key, val in form.multi_items():
+        rid = _int(key[2:]) if key.startswith("d_") else None
+        val = str(val)
+        if not rid or not val:
+            continue                    # „nie ruszaj” — zostaje w kolejce
+        if val in ("nowe", "pomin"):
+            choices[rid] = val
+        elif val.startswith("dev:") and _int(val[4:]):
+            choices[rid] = _int(val[4:])
+
+    def apply(c):
+        if not choices:
+            raise inv.InventoryError("Nic nie wybrano — przy każdym obiekcie wybierz, co z nim zrobić.")
+        discovery.apply_choices(c, choices, user=sess["login"], ip=client_ip(request))
+    return _queue_action(request, sess, apply)
+
+
 @router.post("/zatwierdz/wszystko")
 def queue_approve_all(request: Request, sess: dict = Depends(require_admin)):
     return _queue_action(request, sess, lambda c: discovery.approve_all(c, user=sess["login"], ip=client_ip(request)))

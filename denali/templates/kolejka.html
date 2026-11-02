@@ -5,38 +5,32 @@
 <div class="row-between">
   <div>
     <h1>Do zatwierdzenia</h1>
-    <p class="muted">Integracje znalazły nowe obiekty. Zatwierdzenie tworzy urządzenie z nazwą, adresami, „na czym działa” i profilem — bez formularza.
-      Zatwierdzenie VM zatwierdza też czekające stacki na niej i host, na którym stoi.</p>
+    <p class="muted">Integracje znalazły nowe obiekty. Przy każdym wybierz, co z nim zrobić, i kliknij „Zastosuj wybrane” —
+      te bez wyboru zostają w kolejce na później. Zatwierdzenie tworzy urządzenie z nazwą, adresami, „na czym działa” i profilem.
+      Dodanie VM jako nowej zatwierdza też czekające stacki na niej i host, na którym stoi.</p>
   </div>
   {% if rows and sess.role == "admin" %}
   <div class="actions">
-    {% if matches %}
-    <form method="post" action="/zatwierdz/dopasowane">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <button class="btn primary" type="submit">Przypnij dopasowane ({{ matches | length }})</button>
-    </form>
-    {% endif %}
-    <form method="post" action="/zatwierdz/wszystko">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <button class="btn {{ '' if matches else 'primary' }}" type="submit">Zatwierdź wszystko jako nowe ({{ rows | length }})</button>
-    </form>
+    <button class="btn primary" type="submit" form="kolejka-wybor">Zastosuj wybrane</button>
   </div>
   {% endif %}
 </div>
 {{ alerts(error) }}
 {% if matches %}
 <div class="alert warn">{{ st("warn") }}<span>{{ matches | length }} z tych obiektów wygląda na urządzenia, które już są w Denali (ten sam MAC, IP albo nazwa — np. przeniesione z HLC).
-  „Przypnij dopasowane” połączy je z istniejącymi kartami zamiast tworzyć duplikaty. Najpierw przypnij, potem zatwierdź resztę.</span></div>
+  To tylko podpowiedź („Wygląda na: …”) — sam wybierz „Przypnij do …”, jeśli się zgadza.</span></div>
 {% endif %}
 {% if not rows %}
 <div class="card"><p class="muted">Nic nie czeka. Nowe obiekty pojawią się tu, gdy integracje (Etap 3) je znajdą.</p></div>
 {% else %}
+<form method="post" action="/zatwierdz/wybrane" id="kolejka-wybor">
+<input type="hidden" name="csrf_token" value="{{ csrf }}">
 <section class="card">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Nazwa</th><th>Typ</th><th>Skąd</th><th>Adresy</th><th>Na czym działa</th><th></th></tr></thead>
+      <thead><tr><th>Nazwa</th><th>Typ</th><th>Skąd</th><th>Adresy</th><th>Na czym działa</th><th>Co zrobić</th></tr></thead>
       <tbody>
-      {% for r in rows %}{% set p = r.proposed %}
+      {% for r in rows %}{% set p = r.proposed %}{% set m = matches.get(r.id) %}
       <tr>
         <td><strong>{{ p.name }}</strong><div class="muted small mono">{{ r.external_id }}</div></td>
         <td>{{ KINDS.get(p.kind, p.kind) }}</td>
@@ -44,31 +38,19 @@
         <td class="mono">{% for a in p.addresses %}{{ a.value }}<br>{% endfor %}</td>
         <td>{% if p.parent %}{{ p.parent.values() | first }}{% else %}—{% endif %}</td>
         <td>
+          {% if m %}<p class="small">Wygląda na: <a href="/urzadzenia/{{ m.id }}">{{ m.name }}</a></p>{% endif %}
           {% if sess.role == "admin" %}
-          {% set m = matches.get(r.id) %}
-          {% if m %}
-          <p class="small">Wygląda na: <a href="/urzadzenia/{{ m.id }}">{{ m.name }}</a></p>
-          <div class="actions">
-            <form method="post" action="/zatwierdz/{{ r.id }}/przypnij"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="device_id" value="{{ m.id }}"><button class="btn small primary" type="submit">Przypnij do „{{ m.name }}”</button></form>
-            <form method="post" action="/zatwierdz/{{ r.id }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">To inne — dodaj jako nowe</button></form>
-          </div>
-          {% else %}
-          <div class="actions">
-            <form method="post" action="/zatwierdz/{{ r.id }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small primary" type="submit">Zatwierdź</button></form>
-            <form method="post" action="/zatwierdz/{{ r.id }}/odrzuc"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Pomiń na stałe</button></form>
-          </div>
-          {% endif %}
-          {% if all_devices %}
-          <details class="mt">
-            <summary>To urządzenie już jest</summary>
-            <form method="post" action="/zatwierdz/{{ r.id }}/przypnij" class="form-row">
-              <input type="hidden" name="csrf_token" value="{{ csrf }}">
-              <select name="device_id" aria-label="Urządzenie" required><option value="">—</option>
-                {% for x in all_devices %}<option value="{{ x.id }}">{{ x.name }}</option>{% endfor %}</select>
-              <button class="btn small" type="submit">Przypnij</button>
-            </form>
-          </details>
-          {% endif %}
+          <select name="d_{{ r.id }}" aria-label="Co zrobić z {{ p.name }}">
+            <option value="">— zdecyduję później</option>
+            <option value="nowe">Dodaj jako nowe</option>
+            <option value="pomin">Pomiń na stałe</option>
+            {% if m %}<option value="dev:{{ m.id }}">Przypnij do „{{ m.name }}”</option>{% endif %}
+            {% if all_devices %}
+            <optgroup label="Przypnij do istniejącego">
+              {% for x in all_devices %}<option value="dev:{{ x.id }}">{{ x.name }}</option>{% endfor %}
+            </optgroup>
+            {% endif %}
+          </select>
           {% endif %}
         </td>
       </tr>
@@ -76,6 +58,10 @@
       </tbody>
     </table>
   </div>
+  {% if sess.role == "admin" %}
+  <div class="actions mt"><button class="btn primary" type="submit">Zastosuj wybrane</button></div>
+  {% endif %}
 </section>
+</form>
 {% endif %}
 {% endblock %}

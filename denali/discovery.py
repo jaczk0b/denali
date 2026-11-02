@@ -229,6 +229,28 @@ def link_matches(conn, user="system", ip=""):
     return len(taken)
 
 
+def apply_choices(conn, choices, user="system", ip="", now=None):
+    """Decyzje z kolejki naraz: {ref_id: "nowe" | "pomin" | id urządzenia do przypięcia}.
+    Najpierw przypięcia i pominięcia, potem nowe — żeby zatwierdzenie z powiązanymi nie wciągnęło
+    obiektu, o którym zdecydowano inaczej. Zwraca liczbę wykonanych decyzji."""
+    done = 0
+    for ref_id, what in choices.items():
+        if _get(conn, ref_id)["status"] != "nowy":
+            continue
+        if what == "pomin":
+            ignore(conn, ref_id, user=user, ip=ip)
+        elif isinstance(what, int):
+            link(conn, ref_id, what, user=user, ip=ip)
+        else:
+            continue
+        done += 1
+    for ref_id, what in choices.items():
+        if what == "nowe" and _get(conn, ref_id)["status"] == "nowy":
+            approve(conn, ref_id, user=user, ip=ip, now=now)
+            done += 1
+    return done
+
+
 def ignore(conn, ref_id, user="system", ip=""):
     ref = _get(conn, ref_id)
     conn.execute(external_ref.update().where(external_ref.c.id == ref_id).values(status="ignorowany"))

@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import select
 
 from denali import auth, discovery, docs, incidents, inventory as inv
-from denali.models import audit_log, device, integration, profile
+from denali.models import audit_log, device, external_ref, integration, profile
 
 from .conftest import ADMIN_PW, csrf_from, do_login, enable_2fa, make_user, new_client, user_row
 
@@ -178,6 +178,25 @@ def test_zatwierdzenie_z_kolejki(admin, lab, app):
     with app.state.engine.connect() as conn:
         assert conn.execute(select(device.c.kind).where(device.c.name == "Jellyfin")).scalar_one() == "kontener"
     assert "Nic nie czeka" in admin.get("/zatwierdz").text
+
+
+def test_kolejka_wybor_przy_kazdym(admin, lab, app):
+    with app.state.engine.begin() as conn:
+        i = conn.execute(select(external_ref.c.integration_id).where(external_ref.c.id == lab["ref"])).scalar_one()
+        skip, _ = discovery.upsert(conn, i, "client/telefon", {"name": "Telefon", "kind": "komputer"})
+        later, _ = discovery.upsert(conn, i, "client/laptop", {"name": "Laptop", "kind": "komputer"})
+        pin, _ = discovery.upsert(conn, i, "client/nas", {"name": "nas-mac", "kind": "komputer"})
+    r = post(admin, "/zatwierdz/wybrane", "/zatwierdz")
+    assert r.status_code == 400 and "Nic nie wybrano" in r.text            # bez wyboru nic się nie dzieje
+    r = post(admin, "/zatwierdz/wybrane", "/zatwierdz", **{f"d_{lab['ref']}": "nowe", f"d_{skip}": "pomin",
+                                                           f"d_{later}": "", f"d_{pin}": f"dev:{lab['truenas']}"})
+    assert r.status_code == 303
+    with app.state.engine.connect() as conn:
+        st = dict(conn.execute(select(external_ref.c.id, external_ref.c.status)).all())
+        assert st[lab["ref"]] == "zatwierdzony" and st[skip] == "ignorowany" and st[later] == "nowy"
+        assert st[pin] == "zatwierdzony" and conn.execute(select(external_ref.c.device_id).where(
+            external_ref.c.id == pin)).scalar_one() == lab["truenas"]
+    assert "Laptop" in admin.get("/zatwierdz").text
 
 
 def test_incydent_reczny_od_poczatku_do_konca(admin, lab):
