@@ -264,3 +264,13 @@ def test_szafa_klikanie(app):
             assert racks.for_device(c, pc)["u"] == 2
         r = cl.post(f"/infrastruktura/szafa/{rid}/umiesc", data={"csrf_token": csrf, "what": "urzadzenie", "u": "8"})
         assert r.status_code == 400 and "Wybierz urządzenie" in r.text
+
+
+def test_szablony_bez_atrybutu_style():
+    """CSP (default-src 'self') blokuje style="…" — pasek byłby zawsze pełny. Style z serwera idą w data-style."""
+    import re
+    from pathlib import Path
+    root = Path(infra_views.__file__).parent / "templates"
+    bad = [str(p.relative_to(root)) for p in root.rglob("*.html")
+           if re.search(r'(?<![\w-])style="', p.read_text(encoding="utf-8"))]
+    assert bad == []
