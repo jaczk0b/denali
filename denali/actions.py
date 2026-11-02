@@ -9,7 +9,8 @@ każdym zleceniu (formularz i bezpośredni POST przechodzą tę samą drogę):
   5. akcja niebezpieczna: świeże potwierdzenie hasłem i kodem 2FA (5 minut).
 Każde zlecenie, odmowa i wynik trafiają do audytu, a przy trwającym incydencie urządzenia — do jego przebiegu.
 
-Przebieg (action_run): zlecona → trwa → ok | blad. „czeka” = najpierw inna akcja (snapshot przed aktualizacją).
+Przebieg (action_run): zlecona → trwa → ok | blad. „czeka” = najpierw inna akcja (snapshot przed aktualizacją,
+aktualizacja przed restartem maszyny).
 Zlecenie bierze do wykonania ten, komu uda się zmienić stan „zlecona” → „trwa” (panel od razu albo worker, gdy panel
 nie zdążył) — akcja nie wykona się dwa razy.
 """
@@ -190,6 +191,23 @@ def snapshot_option(conn, device_id):
     return next((o for o in for_device(conn, device_id) if o["key"] == "proxmox.snapshot" and not o["reason"]), None)
 
 
+def reboot_option(conn, device_id, ref_id):
+    """Restart przez tego samego agenta po aktualizacji (gotowy do zlecenia) albo None."""
+    return next((o for o in for_device(conn, device_id)
+                 if o["key"] == "agent.reboot" and o["ref_id"] == ref_id and not o["reason"]), None)
+
+
+def ready_by_target(conn, device_ids):
+    """{(integration_id, external_id): [akcje gotowe do zlecenia]} — przyciski na zakładkach Infrastruktury."""
+    out = {}
+    for did in sorted(set(device_ids)):
+        for o in for_device(conn, did):
+            if not o["reason"]:
+                o["device_id"] = did
+                out.setdefault((o["integration"]["id"], o["external_id"]), []).append(o)
+    return out
+
+
 # ───────────────────────── zlecenie ─────────────────────────
 def _incident_note(conn, device_id, text, user, now):
     if not device_id:
@@ -209,9 +227,11 @@ def _insert(conn, o, dev, user, ip, params, status, now, after_id=None):
         requested_by=user, ip=ip)).inserted_primary_key[0]
 
 
-def request(conn, *, device_id, ref_id, key, user, role, ip="", reauth_ok=False, snapshot_first=False, now=None):
+def request(conn, *, device_id, ref_id, key, user, role, ip="", reauth_ok=False, snapshot_first=False,
+            reboot_after=False, now=None):
     """Zleca akcję po sprawdzeniu wszystkich zamków. Zwraca id przebiegu, który trzeba wykonać od razu
-    (pierwszy w łańcuchu: snapshot albo sama akcja). Odmowa → ActionError i wpis „action_blocked” w audycie."""
+    (pierwszy w łańcuchu: snapshot albo sama akcja). reboot_after: po udanej aktualizacji przez agenta restart
+    maszyny — tylko gdy jest wymagany (sprawdza agent). Odmowa → ActionError i wpis „action_blocked” w audycie."""
     now = now or time.time()
     dev = conn.execute(select(device.c.id, device.c.name).where(device.c.id == device_id)).first()
 
@@ -232,6 +252,12 @@ def request(conn, *, device_id, ref_id, key, user, role, ip="", reauth_ok=False,
         refuse(o["reason"])
     if o["spec"].dangerous and not reauth_ok:
         refuse("Ta akcja wymaga potwierdzenia hasłem i kodem 2FA.")
+    reboot = None
+    if reboot_after and o["key"] == "agent.apt_upgrade":
+        reboot = reboot_option(conn, device_id, ref_id)
+        if not reboot:
+            refuse("Restart po aktualizacji jest niemożliwy (agent: „Uruchom ponownie maszynę” niedozwolone w profilu "
+                   "albo nie ma go na lokalnej liście maszyny).")
     first = None
     if snapshot_first and o["cls"].push:
         snap = snapshot_option(conn, device_id)
@@ -245,8 +271,14 @@ def request(conn, *, device_id, ref_id, key, user, role, ip="", reauth_ok=False,
     run_id = _insert(conn, o, dev, user, ip, {}, "czeka" if first else "zlecona", now, after_id=first)
     auth.audit(conn, "action_request", user=user, ip=ip, target=dev.name,
                params={"run": run_id, "action": key, "external_id": o["external_id"], "after": first})
+    if reboot:
+        last = _insert(conn, reboot, dev, user, ip, {"if_required": True}, "czeka", now, after_id=run_id)
+        auth.audit(conn, "action_request", user=user, ip=ip, target=dev.name,
+                   params={"run": last, "action": reboot["key"], "external_id": reboot["external_id"],
+                           "after": run_id, "if_required": True})
     _incident_note(conn, device_id, f"Akcja zlecona: {o['spec'].label} ({o['integration']['name']})"
-                   + (" — najpierw snapshot" if first else ""), user, now)
+                   + (" — najpierw snapshot" if first else "") + (" — potem restart, jeśli wymagany" if reboot else ""),
+                   user, now)
     return first or run_id
 
 
@@ -274,7 +306,10 @@ def finish(conn, run, ok, text, now=None):
     for nxt in conn.execute(select(action_run).where(action_run.c.after_id == run["id"],
                                                      action_run.c.status == "czeka")).mappings().all():
         if ok:
-            conn.execute(action_run.update().where(action_run.c.id == nxt["id"]).values(status="zlecona"))
+            # agent liczy czas na odebranie zlecenia od chwili, gdy ono naprawdę czeka (nie od zlecenia łańcucha)
+            push = bool((cls := _row_and_cls(conn, nxt)[1]) and cls.push)
+            conn.execute(action_run.update().where(action_run.c.id == nxt["id"]).values(
+                status="zlecona", **({"task": {"queued_at": now}} if push else {})))
         else:
             finish(conn, nxt, False, f"Nie wykonano — poprzedni krok ({run['label']}) nie powiódł się.", now)
     if run["integration_id"]:       # świeży stan obiektu przy najbliższym obiegu workera
@@ -396,9 +431,10 @@ def get_after(engine, run_id):
 # ───────────────────────── agent ─────────────────────────
 def _agent_timeouts(conn, r, now):
     delivered = (r["task"] or {}).get("delivered_at")
+    queued = (r["task"] or {}).get("queued_at") or r["created_at"]
     if r["status"] == "zlecona" and not delivered and not enabled(conn):
         finish(conn, r, False, "Akcje wyłączono, zanim agent odebrał zlecenie.", now)
-    elif r["status"] == "zlecona" and not delivered and now - r["created_at"] > AGENT_ACK_TIMEOUT:
+    elif r["status"] == "zlecona" and not delivered and now - queued > AGENT_ACK_TIMEOUT:
         finish(conn, r, False, "Agent nie odebrał zlecenia (nie wysyła raportów?).", now)
     elif r["status"] == "zlecona" and delivered and now - delivered > AGENT_ACK_TIMEOUT:
         finish(conn, r, False, "Agent nie potwierdził zlecenia — czy działa denali-agent-akcje.path?", now)
@@ -438,7 +474,10 @@ def agent_exchange(conn, row, reported, now=None):
             if (run["task"] or {}).get("delivered_at"):
                 continue
             conn.execute(action_run.update().where(action_run.c.id == run["id"]).values(task={"delivered_at": now}))
-            jobs.append({"id": run["id"], "action": run["action"].split(".", 1)[1]})
+            job = {"id": run["id"], "action": run["action"].split(".", 1)[1]}
+            if (run["params"] or {}).get("if_required"):
+                job["params"] = {"if_required": True}
+            jobs.append(job)
     return jobs, ack
 
 

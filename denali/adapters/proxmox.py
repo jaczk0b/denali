@@ -15,7 +15,7 @@ from urllib.parse import quote, urlsplit
 
 import httpx
 
-from . import Adapter, ActionResult, ActionSpec, AdapterError, Field, Found, PollResult, State, apt_updates
+from . import Adapter, ActionResult, ActionSpec, AdapterError, Field, Found, PollResult, State, apt_updates, lan_iface
 from .tls import clean_pem as _clean_pem, ssl_context, validate_pem_field
 
 GB = 1024 ** 3
@@ -148,14 +148,14 @@ class Proxmox(Adapter):
             if typ == "qemu":
                 data = await self._get(cli, f"/nodes/{node}/qemu/{vmid}/agent/network-get-interfaces", timeout=5) or {}
                 for iface in data.get("result", []):
-                    if iface.get("name", "") == "lo" or iface.get("name", "").startswith(("docker", "br-", "veth")):
+                    if not lan_iface(iface.get("name", "")):
                         continue
                     ips += [a["ip-address"] for a in iface.get("ip-addresses", [])
                             if a.get("ip-address-type") == "ipv4" and not a.get("ip-address", "").startswith("127.")]
             else:
                 for iface in await self._get(cli, f"/nodes/{node}/lxc/{vmid}/interfaces", timeout=5) or []:
                     ip = (iface.get("inet") or "").split("/")[0]
-                    if iface.get("name") != "lo" and ip and not ip.startswith("127."):
+                    if lan_iface(iface.get("name")) and ip and not ip.startswith("127."):
                         ips.append(ip)
         except AdapterError:
             return []           # brak agenta QEMU albo uprawnień — maszyna i tak trafia do panelu, bez IP

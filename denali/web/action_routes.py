@@ -36,8 +36,9 @@ def _confirm_page(request, conn, device_id, ref_id, key, error=None, status_code
     except actions.ActionError as e:
         raise NotFound(str(e)) from None
     snap = actions.snapshot_option(conn, device_id) if o["cls"].push else None
+    reboot = actions.reboot_option(conn, device_id, ref_id) if key == "agent.apt_upgrade" else None
     return render(request, "akcja.html", {
-        "d": d, "o": o, "error": error, "snap": snap, "fresh": auth.reauth_fresh(request.state.sess),
+        "d": d, "o": o, "error": error, "snap": snap, "reboot": reboot, "fresh": auth.reauth_fresh(request.state.sess),
         "here": f"/urzadzenia/{device_id}/akcje/{ref_id}/{key}"}, status_code)
 
 
@@ -54,7 +55,8 @@ async def action_start(request: Request, device_id: int, ref_id: int, key: str, 
         try:
             run_id = actions.request(conn, device_id=device_id, ref_id=ref_id, key=key, user=sess["login"],
                                      role=sess["role"], ip=client_ip(request), reauth_ok=auth.reauth_fresh(sess),
-                                     snapshot_first=form.get("snapshot") == "1")
+                                     snapshot_first=form.get("snapshot") == "1",
+                                     reboot_after=form.get("reboot") == "1")
         except actions.ActionError as e:
             error = str(e)
         else:

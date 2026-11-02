@@ -74,6 +74,37 @@ def test_strony_zakladek(full):
             assert text in r.text, path
             assert 'class="tabs infra-tabs"' in r.text, path
         assert cl.get("/infrastruktura").headers["location"] == "/infrastruktura/mapa"
+        tn = cl.get("/infrastruktura/truenas").text
+        assert "Powiadomienia TrueNAS" in tn and "Nowa wersja TrueNAS" in tn and "informacja" in tn
+        assert "odrzucony" not in tn
+        assert "Dyski i SMART" in tn and "WD-222" in tn and "Completed: read failure" in tn
+        docker = cl.get("/infrastruktura/docker").text
+        assert "immich-server:<strong>release</strong>" in docker and "nowszy obraz w rejestrze" in docker
+        assert "redis:<strong>6.2-alpine</strong>" in docker
+
+
+def test_przyciski_akcji_na_zakladkach(full):
+    from denali import actions, profiles
+    from denali.models import integration
+    from .test_akcje import ACTION_SECRETS
+    with full.state.engine.begin() as c:
+        [pve] = [r for r in c.execute(integration.select()).mappings() if r["type"] == "proxmox"]
+        actions.save_credentials(c, full.state.box, pve, ACTION_SECRETS, "admin")
+        p = profiles.profile_for(c, {"profile_id": None, "kind": "vm"})
+        profiles.set_profile_setting(c, p["id"], "actions", ["proxmox.snapshot"])
+    make_user(full)
+    with new_client(full) as cl:
+        do_login(cl)
+        enable_2fa(cl, full)
+        page = cl.get("/infrastruktura/proxmox").text
+        assert "<th>Akcje</th>" in page and "Zrób snapshot…" in page
+        assert "/akcje/" in page and "proxmox.snapshot" in page and "proxmox.reboot" not in page
+        assert "<th>Akcje</th>" in cl.get("/infrastruktura/docker").text      # Komodo bez tokenu: same kreski
+    make_user(full, "domownik", "inne-dlugie-haslo-domownika", role="podglad")
+    with new_client(full) as cl:
+        do_login(cl, "domownik", "inne-dlugie-haslo-domownika")
+        page = cl.get("/infrastruktura/proxmox").text
+        assert page.count("Maszyny i kontenery") and "<th>Akcje</th>" not in page and "Zrób snapshot" not in page
 
 
 def test_zakladka_bez_zrodla_wraca_do_listy(app):
@@ -233,3 +264,13 @@ def test_szafa_klikanie(app):
             assert racks.for_device(c, pc)["u"] == 2
         r = cl.post(f"/infrastruktura/szafa/{rid}/umiesc", data={"csrf_token": csrf, "what": "urzadzenie", "u": "8"})
         assert r.status_code == 400 and "Wybierz urządzenie" in r.text
+
+
+def test_szablony_bez_atrybutu_style():
+    """CSP (default-src 'self') blokuje style="…" — pasek byłby zawsze pełny. Style z serwera idą w data-style."""
+    import re
+    from pathlib import Path
+    root = Path(infra_views.__file__).parent / "templates"
+    bad = [str(p.relative_to(root)) for p in root.rglob("*.html")
+           if re.search(r'(?<![\w-])style="', p.read_text(encoding="utf-8"))]
+    assert bad == []

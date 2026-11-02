@@ -33,7 +33,7 @@ VIRT_KIND = {"kvm": "vm", "qemu": "vm", "vmware": "vm", "microsoft": "vm", "xen"
              "lxc": "lxc", "lxc-libvirt": "lxc", "none": "host"}
 
 
-AGENT_ACTIONS = ("apt_upgrade",)    # akcje, które agent umie wykonać (jego lokalna lista może zawierać tylko te)
+AGENT_ACTIONS = ("apt_upgrade", "reboot")    # akcje, które agent umie wykonać (jego lokalna lista może zawierać tylko te)
 
 
 class AgentError(ValueError):
@@ -52,6 +52,10 @@ class Agent(Adapter):
                    "Agent na maszynie wykona apt-get update i apt-get upgrade (bez usuwania pakietów, z zachowaniem "
                    "zmienionych plików konfiguracji). Usługi z aktualizowanych pakietów mogą się zrestartować. "
                    "Maszyna sama się nie zrestartuje.", ("host",), True),
+        ActionSpec("reboot", "Uruchom ponownie maszynę",
+                   "Agent zrestartuje system za minutę (shutdown -r +1). Wszystko, co działa na maszynie, przez kilka "
+                   "minut nie będzie dostępne. Na VM z Proxmoxa to samo robi „Uruchom ponownie” z Proxmoxa.",
+                   ("host",), True),
     ]
 
     async def test(self):

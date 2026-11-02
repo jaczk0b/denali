@@ -8,7 +8,8 @@ przypięcie do istniejącej VM. Stack „działa na” swoim serwerze.
 Stan stacka: running → działa; unhealthy/restarting → uwaga; down/dead → nie działa;
 stopped/paused/created → wyłączony celowo.
 Aktualizacje: usługa stacka z `update_available` (Komodo samo sprawdza, czy w rejestrze jest nowszy obraz tego samego
-tagu — „Poll for updates” w ustawieniach stacka) = pozycja na liście aktualizacji.
+tagu — „Poll for updates” w ustawieniach stacka) = pozycja na liście aktualizacji. Wersja = tag obrazu z compose
+(np. `immich-server:v1.120`); numeru nowszej wersji Komodo nie podaje — wie tylko, że pod tym tagiem jest nowszy obraz.
 """
 import socket
 from urllib.parse import urlsplit
@@ -176,8 +177,11 @@ class Komodo(Adapter):
                 summary += f" · usługi: {len(services)}"
             if updates:
                 summary += f" · aktualizacja dostępna: {', '.join(str(u) for u in updates[:3])}"
+            images = [{"service": str(x.get("service") or "?")[:100], "image": str(x.get("image") or "")[:200],
+                       "update": bool(x.get("update_available"))} for x in services if isinstance(x, dict)][:30]
             out.states.append(State(eid, STACK_STATE.get(st, "unknown"), summary,
-                                    {"komodo_state": st, "services": len(services), "updates": updates}))
+                                    {"komodo_state": st, "services": len(services), "updates": updates,
+                                     "images": images}))
         return out
 
     # ───────────────────────── akcje ─────────────────────────

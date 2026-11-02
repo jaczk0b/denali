@@ -182,7 +182,8 @@
   <section class="card" aria-labelledby="aktualizacje">
     <h2 id="aktualizacje">Aktualizacje</h2>
     {% if updates.reboot %}<p><span class="pill warn">{{ st("warn", 12) }} wymagany restart</span>
-      <span class="muted small">według: {{ updates.reboot | join(", ") }}</span></p>{% endif %}
+      <span class="muted small">według: {{ updates.reboot | join(", ") }}</span>
+      {%- if admin and dev_actions | selectattr("key", "in", ["agent.reboot", "proxmox.reboot"]) | rejectattr("reason") | list %} · <a class="small" href="#akcje">uruchom ponownie (Akcje)</a>{% endif %}</p>{% endif %}
     {% if updates.rows %}
     <ul class="plain small">
       {% for i in updates.rows %}<li><span class="mono">{{ i.component }}</span> <span class="muted">{{ version_text(i) }} · {{ i.source }}</span>

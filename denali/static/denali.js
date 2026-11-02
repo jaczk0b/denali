@@ -28,6 +28,16 @@
       .catch(function () { setTimeout(reloadWhenUp, 30 * 1000); });
   }
 
+  // Style liczone na serwerze (szerokość paska, miejsce w szafie) są w data-style: CSP blokuje atrybut style="…",
+  // a ustawienie przez CSSOM przepuszcza.
+  function inlineStyles() {
+    var els = document.querySelectorAll("[data-style]");
+    for (var i = 0; i < els.length; i++) {
+      els[i].style.cssText = els[i].getAttribute("data-style");
+    }
+  }
+  inlineStyles();
+
   // Tablet raz na godzinę ładuje stronę od nowa — po wdrożeniu dostaje nowy wygląd.
   if (body.classList.contains("kiosk")) {
     setTimeout(reloadWhenUp, HOUR);
@@ -88,6 +98,7 @@
         current = doc.body.dataset.live || target;
         body.dataset.live = current;
         document.title = doc.title;
+        inlineStyles();
         window.scrollTo(0, y);
         clock();
       })

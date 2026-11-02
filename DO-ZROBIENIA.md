@@ -8,7 +8,7 @@ na wdrożenie i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md]
 ## 1. Po Twojej stronie — teraz
 
 - [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
-      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury, **Etap 5** — migracje bazy 0009–0012
+      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury, **Etap 5** z uzupełnieniami — migracje bazy 0009–0013
       wykonają się same przy starcie).
 - [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).
@@ -73,6 +73,19 @@ Zacznij od maszyny testowej (VM 120 albo inna, której restart niczego nie psuje
 - [ ] *Akcje → Wyłącz wszystkie akcje* → przyciski znikają z kart; włączenie wymaga hasła.
 - [ ] Akceptacja Etapu 5.
 
+### Uzupełnienia Etapu 5 (2.11.2026) — do sprawdzenia razem z nim
+
+- [ ] *Infrastruktura → Proxmox* i *Docker*: kolumna *Akcje* z przyciskami tylko tych akcji, które są dozwolone
+      i gotowe (np. „Zrób snapshot…”); przycisk otwiera to samo okno potwierdzenia co karta urządzenia.
+- [ ] Agent 1.2 na testowej VM (ponowna instalacja poleceniem z panelu), `sudo python3 /opt/denali-agent/denali-agent.py
+      pozwol reboot`, w profilu „Agent na maszynie: Uruchom ponownie maszynę”. *Zainstaluj aktualizacje* z „Potem uruchom
+      ponownie, jeśli wymagany” → po aktualizacji wynik restartu: „Restart niepotrzebny” albo „Restart za minutę”, a VM
+      faktycznie wstaje (w LXC też: `shutdown -r` w kontenerze).
+- [ ] *Docker*: przy każdej usłudze obraz i tag (np. `immich-server:release`) zgadzają się z plikiem compose w Komodo.
+- [ ] *TrueNAS*: lista powiadomień = dzwonek w TrueNAS (bez odrzuconych). Dyski: pula, temperatura, ostatni test SMART
+      zgadzają się z *Storage → Disks* i *Data Protection → S.M.A.R.T. Tests*. Jeśli zamiast wyników SMART jest
+      „TrueNAS nie podał wyników SMART” albo nie ma temperatur — wklej wersję TrueNAS (25.10 zmieniło API SMART).
+
 ### Etap 3 — zostało do sprawdzenia po wdrożeniu
 
 - [x] Integracje: Proxmox, Komodo, PBS, TrueNAS, router TP-Link; powiadomienia na Discord; strażnik (potwierdzone 31.10).
@@ -117,10 +130,10 @@ Zacznij od maszyny testowej (VM 120 albo inna, której restart niczego nie psuje
 - [ ] **Router**: brak akcji. Jedyna planowana (kopia konfiguracji, `sysupgrade -b`) wymaga OpenWrt — biblioteka
       TP-Linka jej nie ma.
 - [ ] **TrueNAS, PBS**: bez akcji (nie było ich w projekcie).
-- [ ] **Restart maszyny przez agenta** po aktualizacji („wymagany restart”) — zrób „Uruchom ponownie” z Proxmoxa;
-      agent ma tylko `apt_upgrade`.
+- [x] **Restart maszyny przez agenta** po aktualizacji („wymagany restart”) — agent 1.2: akcja `reboot` i opcja
+      „potem uruchom ponownie, jeśli wymagany” przy aktualizacji (2.11.2026).
 - [ ] **Cofnięcie snapshotu** (rollback) — świadomie tylko w Proxmoxie (nieodwracalne, łatwo stracić dane).
-- [ ] Przyciski akcji na zakładkach *Proxmox* i *Docker* — na razie tylko na karcie urządzenia.
+- [x] Przyciski akcji na zakładkach *Proxmox* i *Docker* (2.11.2026).
 
 ## 7. Infrastruktura — zakładki z makiety (przed Etapem 5)
 
@@ -144,8 +157,10 @@ Zakładka źródła (Proxmox, TrueNAS, Docker, Sieć) pokazuje się dopiero, gdy
       stan na żywo, zależność „dane” czerwona, gdy źródło nie działa.
 - [ ] **Do sprawdzenia u Ciebie:** wygląd na prawdziwych danych (mapa przy wielu urządzeniach, tablet), czy liczby
       zgadzają się z Proxmoxem / Komodo / routerem.
-- [ ] Później: dyski i SMART w TrueNAS (adapter jeszcze nie czyta `/disk`), wersje obrazów w Docker (Komodo podaje
-      tylko „jest nowszy”), porty i prędkość łącza w Sieci (dopiero z OpenWrt), DHCP: która pula jest rozdawana.
+- [x] Dyski i SMART w TrueNAS (pula, temperatura, ostatni test), wszystkie powiadomienia TrueNAS na zakładce;
+      wersje obrazów w Docker = tag z compose (numeru nowszej wersji Komodo nie podaje — tylko „pod tym tagiem jest
+      nowszy obraz”) (2.11.2026).
+- [ ] Później: porty i prędkość łącza w Sieci (dopiero z OpenWrt), DHCP: która pula jest rozdawana.
 
 ## 8. Następne etapy
 

@@ -5,8 +5,9 @@ Jeden plik, tylko biblioteka standardowa (Python 3.9+, Debian/Ubuntu z systemd).
 Nie słucha na żadnym porcie. Akcję zleconą przez panel (np. apt upgrade) wykona tylko wtedy, gdy jest na lokalnej
 liście dozwolonych akcji w /etc/denali-agent/config.json (plik roota — panel go nie zmieni). Domyślnie lista jest pusta.
 
-    sudo python3 denali-agent.py install https://denali.example.com KOD-Z-PANELU [--akcje apt_upgrade]
+    sudo python3 denali-agent.py install https://denali.example.com KOD-Z-PANELU [--akcje apt_upgrade,reboot]
     sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade     # dopisz akcję do lokalnej listy
+    sudo python3 /opt/denali-agent/denali-agent.py pozwol reboot          # restart maszyny z panelu
     sudo python3 /opt/denali-agent/denali-agent.py zabron apt_upgrade     # usuń akcję z listy
     sudo python3 /opt/denali-agent/denali-agent.py uninstall
     python3 /opt/denali-agent/denali-agent.py print        # raport na ekran, bez wysyłania
@@ -34,7 +35,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 USER = "denali-agent"
 CONFIG_PATH = "/etc/denali-agent/config.json"
 INSTALL_DIR = "/opt/denali-agent"
@@ -46,7 +47,9 @@ RESULTS_DIR = STATE_DIR + "/wyniki"        # zapisuje usługa akcji, usuwa usłu
 JOB_NAME = re.compile(r"^(\d{1,12})\.json$")
 OUTPUT_MAX = 3000
 # Akcje, które agent umie wykonać. Wykona tylko te, które są też na lokalnej liście w config.json („actions”).
-ACTIONS = {"apt_upgrade": "apt-get update i apt-get upgrade (bez usuwania pakietów, stare pliki konfiguracji zostają)"}
+ACTIONS = {"apt_upgrade": "apt-get update i apt-get upgrade (bez usuwania pakietów, stare pliki konfiguracji zostają)",
+           "reboot": "restart maszyny za minutę (shutdown -r +1); po aktualizacji z panelu — tylko gdy jest wymagany"}
+REBOOT_DELAY = "+1"         # minuta: wynik zdąży trafić do pliku, a raport zwykle jeszcze przed restartem
 UNIT_DIR = "/etc/systemd/system"
 INTERVAL = 60
 APT_EVERY = 3600
@@ -54,7 +57,8 @@ NFS_TIMEOUT = 8
 HIDDEN_TIMEOUT = 600
 HIDDEN_MAX_ENTRIES = 100000
 NFS_FS = ("nfs", "nfs4")
-SKIP_IFACES = ("lo", "docker", "br-", "veth", "virbr", "cni", "flannel", "tailscale", "wg", "zt", "tun", "tap")
+SKIP_IFACES = ("lo", "docker", "br-", "veth", "virbr", "cni", "flannel", "cali", "vxlan", "hassio", "tailscale", "wg",
+               "zt", "tun", "tap")
 
 
 def log(*a):
@@ -368,9 +372,11 @@ def write_jobs(jobs, jobs_dir=None, tmp_dir=None):
         if not isinstance(j, dict) or not isinstance(j.get("id"), int) or j.get("action") not in ACTIONS:
             continue
         try:
+            job = {"id": j["id"], "action": j["action"]}
+            if isinstance(j.get("params"), dict) and j["params"].get("if_required") is True:
+                job["params"] = {"if_required": True}      # jedyny parametr, jaki agent przyjmuje
             # plik tymczasowy w katalogu wyników, żeby w katalogu zleceń pojawił się od razu cały
-            _write_json(jobs_dir or JOBS_DIR, "{}.json".format(j["id"]), {"id": j["id"], "action": j["action"]},
-                        tmp_dir=tmp_dir or RESULTS_DIR)
+            _write_json(jobs_dir or JOBS_DIR, "{}.json".format(j["id"]), job, tmp_dir=tmp_dir or RESULTS_DIR)
             log("zlecenie {} z Denali: {}".format(j["id"], j["action"]))
         except OSError as e:
             log("nie da się zapisać zlecenia {}: {}".format(j["id"], e))
@@ -409,7 +415,7 @@ def _tail(*texts):
     return "\n".join(t.strip() for t in texts if t and t.strip())[-OUTPUT_MAX:]
 
 
-def apt_upgrade():
+def apt_upgrade(params=None):
     env = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "none", "NEEDRESTART_MODE": "a"}
     rc, so, err = run(["apt-get", "update"], timeout=900, env=env)
     if rc != 0:
@@ -419,7 +425,22 @@ def apt_upgrade():
     return rc == 0, rc, _tail(so2, err2)
 
 
-RUNNERS = {"apt_upgrade": apt_upgrade}
+def reboot_required_now():
+    """Wymagany restart: plik reboot-required albo nowsze jądro niż uruchomione (to samo, co raport)."""
+    k = kernel()
+    return reboot()["required"] or bool(k["running"] and k["newest"] and k["running"] != k["newest"])
+
+
+def reboot_machine(params=None):
+    if (params or {}).get("if_required") and not reboot_required_now():
+        return True, 0, "Restart niepotrzebny — maszyna go nie wymaga."
+    rc, so, err = run(["shutdown", "-r", REBOOT_DELAY, "Denali: restart zlecony z panelu"], timeout=30)
+    if rc != 0:
+        return False, rc, _tail("shutdown:", so, err)
+    return True, 0, _tail("Restart za minutę (shutdown -r {}).".format(REBOOT_DELAY), so, err)
+
+
+RUNNERS = {"apt_upgrade": apt_upgrade, "reboot": reboot_machine}
 
 
 def do_jobs(cfg, jobs_dir=None, results_dir=None, runners=None):
@@ -456,7 +477,7 @@ def do_jobs(cfg, jobs_dir=None, results_dir=None, runners=None):
         _write_json(results_dir, name, {"id": jid, "state": "trwa", "started": started}, 0o644)
         log("zlecenie {}: {} — start".format(jid, action))
         try:
-            ok, rc, out = runners[action]()
+            ok, rc, out = runners[action](job.get("params") if isinstance(job.get("params"), dict) else {})
         except Exception as e:  # noqa: BLE001
             ok, rc, out = False, None, "{}: {}".format(type(e).__name__, e)
         _write_json(results_dir, name, {"id": jid, "state": "ok" if ok else "blad", "rc": rc,
@@ -754,7 +775,8 @@ def main():
     i.add_argument("server")
     i.add_argument("code")
     i.add_argument("--ca-file", default="", help="własny certyfikat CA (gdy Denali nie ma certyfikatu Let's Encrypt)")
-    i.add_argument("--akcje", default=None, help="lokalna lista dozwolonych akcji, np. apt_upgrade (domyślnie pusta)")
+    i.add_argument("--akcje", default=None,
+                   help="lokalna lista dozwolonych akcji, np. apt_upgrade,reboot (domyślnie pusta)")
     for cmd, text in (("pozwol", "dopisz akcję do lokalnej listy dozwolonych"), ("zabron", "usuń akcję z listy")):
         p = sub.add_parser(cmd, help=text)
         p.add_argument("akcja", choices=sorted(ACTIONS))

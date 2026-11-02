@@ -38,19 +38,19 @@
 {% macro rack_view(x, rows, side_back) %}{% set r = x.rack %}
 <div class="rk" aria-label="{{ r.name }} — {{ 'tył' if side_back else 'przód' }}">
   <div class="rk-cap"></div>
-  <div class="rk-body" style="--units: {{ r.units }}">
+  <div class="rk-body" data-style="--units: {{ r.units }}">
     <div class="rk-rail">{% for u in range(r.units, 0, -1) %}<div class="rk-u"><i></i><span>{{ u }}</span><i></i></div>{% endfor %}</div>
     <div class="rk-slots">
       {% for row in rows %}
       {% if not row.item %}
         {% if admin %}{% set on = x.sel_u == row.top and x.sel_back == side_back %}
-        <a class="rk-empty add{% if on %} sel{% endif %}" style="grid-row: {{ row.row }}" title="Dodaj w U{{ row.top }}"
+        <a class="rk-empty add{% if on %} sel{% endif %}" data-style="grid-row: {{ row.row }}" title="Dodaj w U{{ row.top }}"
            href="/infrastruktura/szafa?szafa={{ r.id }}&u={{ row.top }}{% if side_back %}&tyl=1{% endif %}#rack-{{ r.id }}"><span>{{ "+ dodaj w U" ~ row.top if on else "+ U" ~ row.top }}</span></a>
-        {% else %}<div class="rk-empty" style="grid-row: {{ row.row }}"></div>{% endif %}
+        {% else %}<div class="rk-empty" data-style="grid-row: {{ row.row }}"></div>{% endif %}
       {% else %}{% set i = row.item %}{% set pos = "U" ~ i.u ~ ("–U" ~ (i.u + i.height - 1) if i.height > 1 else "") %}
         {% set sel = x.sel_item and x.sel_item.id == i.id %}
         {% if i.shelf %}
-        <div class="rk-shelf{% if sel %} sel{% endif %}" style="grid-row: {{ row.row }} / span {{ row.span }}">
+        <div class="rk-shelf{% if sel %} sel{% endif %}" data-style="grid-row: {{ row.row }} / span {{ row.span }}">
           <div class="rk-shelf-items">
             {% for s in i.on_shelf %}{{ boxed(r, s, sel) }}{% else %}<a class="rk-shelf-empty" {% if admin %}href="{{ href(r, i) }}"{% endif %}>{{ i.label or "półka" }} — pusta{% if admin %}, kliknij, żeby coś postawić{% endif %}</a>{% endfor %}
           </div>
@@ -58,7 +58,7 @@
         </div>
         {% else %}{% set h = href(r, i) %}
         <{{ "a" if h else "div" }} class="rk-dev face-{{ face(i) }} {{ tone(i) }}{% if sel %} sel{% endif %}"{% if h %} href="{{ h }}"{% endif %}
-           style="grid-row: {{ row.row }} / span {{ row.span }}; --h: {{ row.span }}" title="{{ i.name or i.label }} · {{ pos }}">
+           data-style="grid-row: {{ row.row }} / span {{ row.span }}; --h: {{ row.span }}" title="{{ i.name or i.label }} · {{ pos }}">
           <span class="rk-ear"></span>
           <span class="rk-name"><b>{{ i.name or i.label }}</b>{% if i.device_id %}<small>{{ i.label or KINDS.get(i.kind, i.kind) }}</small>{% endif %}</span>
           <span class="rk-face" aria-hidden="true"></span>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import infra_nav, state_pill, st %}
+{% from "_makra.html" import infra_nav, state_pill, st, action_buttons %}
 {% block title %}Docker · Infrastruktura{% endblock %}
 {% block content %}
 <h1>Infrastruktura</h1>
@@ -20,10 +20,10 @@
 <section class="card" aria-label="Stacki">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Stack</th><th>Stan</th><th>Usługi</th><th>Nowszy obraz</th></tr></thead>
+      <thead><tr><th>Stack</th><th>Stan</th><th>Obrazy (usługa · obraz:wersja)</th>{% if admin %}<th>Akcje</th>{% endif %}</tr></thead>
       <tbody>
       {% for g in k.groups %}
-      <tr class="group"><td colspan="4"><strong>{% if g.device_id %}<a href="/urzadzenia/{{ g.device_id }}">{{ g.name }}</a>{% else %}{{ g.name }}{% endif %}</strong>
+      <tr class="group"><td colspan="{{ 4 if admin else 3 }}"><strong>{% if g.device_id %}<a href="/urzadzenia/{{ g.device_id }}">{{ g.name }}</a>{% else %}{{ g.name }}{% endif %}</strong>
         {% if g.address %} · <span class="mono">{{ g.address }}</span>{% endif %}
         {% if g.state not in ("ok", "unknown") %} · {{ state_pill(g.state, g.summary) }}{% endif %}
         · stacków: {{ g.stacks | length }}</td></tr>
@@ -31,15 +31,17 @@
       <tr{% if s.state == "down" %} class="is-down"{% endif %}>
         <td>{% if s.device_id %}<a href="/urzadzenia/{{ s.device_id }}">{{ s.name }}</a>{% else %}{{ s.name }} <span class="pill">do zatwierdzenia</span>{% endif %}</td>
         <td>{{ state_pill(s.state, s.komodo_state if s.state != "ok" else "") }}</td>
-        <td>{{ s.services if s.services is not none else "—" }}</td>
-        <td>{% if s.updates %}<span class="pill ok">{{ s.updates | join(", ") }}</span>{% else %}<span class="muted">aktualny</span>{% endif %}</td>
+        <td>{% if s.images %}<ul class="plain small">{% for i in s.images %}<li><span class="muted">{{ i.service }}</span> · <span class="mono" title="{{ i.image }}">{{ i.name }}:<strong>{{ i.tag }}</strong></span>{% if i.update %} <span class="pill warn">nowszy obraz w rejestrze</span>{% endif %}</li>{% endfor %}</ul>
+          {%- elif s.updates %}<span class="pill warn">nowszy obraz: {{ s.updates | join(", ") }}</span>
+          {%- else %}<span class="muted">{{ "usług: %s" % s.services if s.services is not none else "—" }}</span>{% endif %}</td>
+        {% if admin %}<td>{{ action_buttons(acts.get((k.row.id, s.eid))) }}</td>{% endif %}
       </tr>
       {% endfor %}
       {% endfor %}
       </tbody>
     </table>
   </div>
-  <p class="muted small mt">Logi, terminal i pliki compose zostają w Komodo. Restart i aktualizacja stacka z panelu — na karcie stacka (Akcje), jeśli Komodo ma klucz do akcji.</p>
+  <p class="muted small mt">Wersja to tag obrazu z pliku compose. „Nowszy obraz w rejestrze” — Komodo sprawdziło, że pod tym samym tagiem jest nowszy obraz (numeru nowej wersji nie podaje); „Aktualizuj (Deploy)” go pobierze. Logi, terminal i pliki compose zostają w Komodo.</p>
 </section>
 {% endfor %}
 {% endblock %}
