@@ -40,7 +40,7 @@
         <td>
           {% if m %}<p class="small">Wygląda na: <a href="/urzadzenia/{{ m.id }}">{{ m.name }}</a></p>{% endif %}
           {% if sess.role == "admin" %}
-          <select name="d_{{ r.id }}" aria-label="Co zrobić z {{ p.name }}">
+          <select class="choice" name="d_{{ r.id }}" aria-label="Co zrobić z {{ p.name }}">
             <option value="">— zdecyduję później</option>
             <option value="nowe">Dodaj jako nowe</option>
             <option value="pomin">Pomiń na stałe</option>

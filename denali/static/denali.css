@@ -295,6 +295,9 @@ td a:hover { text-decoration: underline; }
 .field textarea { padding: 10px 12px; line-height: 1.5; }
 .field input:focus, .field select:focus, .field textarea:focus, input.grow:focus { outline: none; border-color: var(--link); }
 .small-input { width: 90px; min-height: 34px; padding: 0 8px; }
+select.choice { min-height: 34px; min-width: 200px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border-strong);
+  background: #181d23; color: var(--text); font: inherit; font-size: 14px; color-scheme: dark; }
+select.choice:focus { outline: none; border-color: var(--link); }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--text-2); min-height: 44px; }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .form-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 12px; }
