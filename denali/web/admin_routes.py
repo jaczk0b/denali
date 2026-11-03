@@ -27,9 +27,18 @@ def _hash(code):
 
 
 # ───────────────────────── ponowne potwierdzenie ─────────────────────────
+def _reauth_page(request: Request, sess: dict, nxt: str, error: str | None = None, status: int = 200):
+    with request.app.state.engine.connect() as conn:
+        user = conn.execute(select(app_user).where(app_user.c.id == sess["user_id"])).mappings().first()
+    oidc_on = request.app.state.settings.oidc_enabled and bool(user["oidc_sub"])
+    return render(request, "potwierdz.html", {"next": nxt, "error": error, "has_password": auth.has_password(user),
+                                              "oidc_label": request.app.state.settings.oidc_label if oidc_on else ""},
+                  status)
+
+
 @router.get("/potwierdz")
 def reauth_form(request: Request, next: str = "", sess: dict = Depends(require_user)):
-    return render(request, "potwierdz.html", {"next": safe_next(next), "error": None})
+    return _reauth_page(request, sess, safe_next(next))
 
 
 @router.post("/potwierdz")
@@ -38,8 +47,7 @@ def reauth(request: Request, password: str = Form(""), code: str = Form(""), nex
     nxt, ip = safe_next(next), client_ip(request)
     with request.app.state.engine.begin() as conn:
         if auth.login_blocked(conn, sess["login"], ip):
-            return render(request, "potwierdz.html", {"next": nxt, "error": "Za dużo nieudanych prób. "
-                                                                            "Spróbuj za 15 minut."}, 429)
+            return _reauth_page(request, sess, nxt, "Za dużo nieudanych prób. Spróbuj za 15 minut.", 429)
         user = conn.execute(select(app_user).where(app_user.c.id == sess["user_id"])).mappings().first()
         ok = auth.verify_password(user["pw_hash"], password)
         if ok and user["totp_ct"]:
@@ -47,7 +55,7 @@ def reauth(request: Request, password: str = Form(""), code: str = Form(""), nex
         if not ok:
             auth.record_attempt(conn, sess["login"], ip, False)
             auth.audit(conn, "reauth_failed", user=sess["login"], ip=ip, result="złe dane")
-            return render(request, "potwierdz.html", {"next": nxt, "error": "Złe hasło albo kod."}, 400)
+            return _reauth_page(request, sess, nxt, "Złe hasło albo kod.", 400)
         auth.mark_reauth(conn, sess["token"])
         auth.audit(conn, "reauth", user=sess["login"], ip=ip)
     return RedirectResponse(nxt or "/", 303)

@@ -15,6 +15,10 @@
       <input name="password" type="password" autocomplete="current-password" required>
     </label>
     <button class="btn primary wide" type="submit">Zaloguj</button>
+    {% if oidc_label %}
+    <p class="or muted">albo</p>
+    <a class="btn wide" href="/login/oidc{% if next %}?next={{ next | urlencode }}{% endif %}">{{ oidc_label }}</a>
+    {% endif %}
   </form>
 </main>
 {% endblock %}

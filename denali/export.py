@@ -108,6 +108,7 @@ def run(conn, data_dir, pdf=None, force=False, now=None, out=None):
     for name, html in pages.items():
         (tmp / name).write_text(html, encoding="utf-8")
     shutil.copyfile(CSS, tmp / "eksport.css")
+    shutil.copyfile(CSS.with_name("favicon.svg"), tmp / "favicon.svg")
     if pdf is None:
         pdf = pdf_available()
     if pdf:

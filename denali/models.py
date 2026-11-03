@@ -31,6 +31,7 @@ app_user = Table(
     Column("disabled", Boolean, nullable=False, default=False),
     Column("created_at", Float, nullable=False),
     Column("pw_changed_at", Float, nullable=False),
+    Column("oidc_sub", String(300), unique=True),                # „issuer|sub” z Pocket ID; NULL = niepołączone
 )
 
 # Sesje po stronie serwera: w ciasteczku jest losowy token, w bazie tylko jego skrót.
@@ -47,6 +48,7 @@ session = Table(
     Column("last_seen_at", Float, nullable=False),
     Column("expires_at", Float, nullable=False),
     Column("reauth_at", Float),                                     # ostatnie ponowne potwierdzenie hasłem i kodem
+    Column("method", String(16), nullable=False, default="haslo", server_default="haslo"),  # haslo | oidc
 )
 
 login_attempt = Table(

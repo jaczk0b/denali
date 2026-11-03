@@ -145,6 +145,37 @@ Jeśli jest adres NPM, popraw `DENALI_TRUSTED_PROXIES` w `.env` i zrób `docker 
 
 Konto tylko do podglądu (np. dla domownika): `create-user LOGIN --role podglad`.
 
+### 6. Logowanie przez Pocket ID (opcjonalnie)
+
+Własne konto (hasło + 2FA) zostaje zawsze — gdy Pocket ID nie działa, logujesz się nim jak dotąd.
+
+1. W Pocket ID: *OIDC Clients → Add*: nazwa `Denali`, *Callback URL* `https://denali.serwispowers.com/login/oidc/callback`
+   (dokładnie `DENALI_BASE_URL` + `/login/oidc/callback`). Zapisz *Client ID* i *Client secret*.
+2. W *Environment* stacka:
+   ```
+   DENALI_OIDC_ISSUER=https://id.serwispowers.com      # adres Pocket ID, bez ukośnika na końcu
+   DENALI_OIDC_CLIENT_ID=…
+   DENALI_OIDC_CLIENT_SECRET=…
+   ```
+   i *Deploy*. Na stronie logowania pojawi się przycisk „Zaloguj przez Pocket ID”.
+3. Zaloguj się hasłem → *Konto → Pocket ID → Połącz* → potwierdź hasłem → zaloguj się w Pocket ID.
+   Od teraz przycisk wpuszcza Cię na to samo konto.
+
+**Grupy (dla domowników):** w Pocket ID utwórz grupy, np. `denali-admins` i `denali-podglad`, a w *Environment*
+`DENALI_OIDC_ADMIN_GROUP=denali-admins` i `DENALI_OIDC_VIEWER_GROUP=denali-podglad`. Wtedy osoba z grupy dostaje konto
+w Denali przy pierwszym logowaniu (bez hasła — tylko przez Pocket ID), rola idzie za grupą przy każdym logowaniu,
+a usunięcie z grup odbiera dostęp. Ostatni administrator nigdy nie traci roli. Bez ustawionych grup wchodzą tylko
+konta połączone ręcznie.
+
+Zasady:
+- konto łączy się wyłącznie po identyfikatorze z Pocket ID, nigdy po nazwie — ktoś z nazwą `jakub` w Pocket ID nie
+  wejdzie na Twoje konto (dostanie `jakub-oidc`);
+- po wejściu przez Pocket ID 2FA Denali nie jest pytane — drugim składnikiem jest klucz dostępu w Pocket ID;
+- pokazanie hasła ze skarbca i akcja niebezpieczna: *Potwierdź w Pocket ID* (Pocket ID musi zapytać o klucz jeszcze
+  raz — jeśli tylko przekieruje z powrotem, Denali odmówi; wtedy potwierdź hasłem Denali);
+- *Rozłącz* (Konto) wylogowuje wszystkie sesje otwarte przez Pocket ID;
+- Pocket ID musi mieć ważny certyfikat (https) — Denali łączy się z nim bezpośrednio z kontenera.
+
 ---
 
 ## Pierwsze kroki
@@ -399,7 +430,7 @@ Kto co zmienił: *Audyt* w panelu.
 
 - Dostęp tylko z LAN i Tailscale; HTTPS w Nginx Proxy Manager (Let's Encrypt), bez otwartych portów w internecie.
 - Hasła argon2id, obowiązkowe 2FA dla administratora, limit prób logowania, sesje po stronie serwera
-  (wylogowanie wszędzie, wygasanie po 12 h bezczynności).
+  (wylogowanie wszędzie, wygasanie po 12 h bezczynności). Opcjonalnie Pocket ID (OIDC z PKCE) obok własnego konta.
 - Role: administrator i podgląd. Tablet: tylko podgląd, tylko ze swojego adresu.
 - Skarbiec zaszyfrowany; pokazanie hasła wymaga ponownego potwierdzenia hasłem i 2FA i trafia do audytu.
 - Każda zmiana ma wpis w audycie. Panel nie ma i nie będzie miał dostępu do powłoki serwerów.

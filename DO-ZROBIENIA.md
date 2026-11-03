@@ -8,7 +8,7 @@ na wdrożenie i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md]
 ## 1. Po Twojej stronie — teraz
 
 - [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
-      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury, **Etap 5** z uzupełnieniami — migracje bazy 0009–0013
+      od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury, **Etap 5** z uzupełnieniami, Pocket ID — migracje bazy 0009–0014
       wykonają się same przy starcie).
 - [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).
@@ -19,6 +19,17 @@ na wdrożenie i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md]
 - [ ] Rekord DNS `denali` w Cloudflare (szara chmurka) albo wpis w lokalnym DNS.
 - [ ] Procedura **„Jak odtworzyć Denali”** (Procedury → Nowa, zakres „gdy nie działa sam panel”) — trafi na górę kopii awaryjnej.
 - [ ] Zapisz w menedżerze haseł: `DENALI_ENCRYPTION_KEY` i 10 kodów zapasowych 2FA (jeśli jeszcze nie).
+
+## 1a. Pocket ID i favicon (3.11.2026) — do sprawdzenia
+
+Kod sprawdzony testami na udawanym dostawcy; z prawdziwym Pocket ID nie był uruchomiony.
+
+- [ ] Klient OIDC w Pocket ID i zmienne `DENALI_OIDC_*` (README → Instalacja → krok 6), *Deploy* (migracja bazy 0014).
+- [ ] *Konto → Pocket ID → Połącz*, wyloguj, „Zaloguj przez Pocket ID” → to samo konto, w *Audycie* „login · przez pocket-id”.
+- [ ] *Potwierdź w Pocket ID* (np. pokazanie hasła ze skarbca): czy Pocket ID pyta o klucz ponownie. Jeśli Denali
+      odpowiada „nie poprosił o ponowne zalogowanie” — potwierdzaj hasłem (albo zgłoś, poszukamy obejścia).
+- [ ] Jeśli chcesz konta dla domowników: grupy w Pocket ID i `DENALI_OIDC_ADMIN_GROUP` / `DENALI_OIDC_VIEWER_GROUP`.
+- [ ] Favicon w karcie przeglądarki (i w kopii awaryjnej).
 
 ## 2. Bezpieczeństwo — do domknięcia
 

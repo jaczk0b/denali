@@ -69,7 +69,9 @@ async def require_user(request: Request) -> dict:
     sess = get_session(request)
     if not sess or sess["kind"] == "pending":
         raise Redirect(f"/login?next={quote(request.url.path)}")
-    if sess["role"] == "admin" and not sess["totp_ct"] and request.url.path not in PATHS_WITHOUT_2FA:
+    # Po zalogowaniu przez Pocket ID drugim składnikiem jest klucz dostępu u dostawcy — 2FA Denali nie jest wymagane.
+    if (sess["role"] == "admin" and not sess["totp_ct"] and sess["method"] != "oidc"
+            and request.url.path not in PATHS_WITHOUT_2FA):
         raise Redirect("/konto/2fa")
     if request.method not in ("GET", "HEAD"):
         await check_csrf(request, sess["csrf"])

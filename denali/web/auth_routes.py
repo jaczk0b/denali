@@ -23,7 +23,9 @@ def _secure(request: Request) -> bool:
 
 def _login_page(request: Request, error: str | None = None, nxt: str = "", status: int = 200):
     pre = secrets.token_urlsafe(24)
-    resp = render(request, "login.html", {"pre": pre, "next": nxt, "error": error}, status)
+    settings = request.app.state.settings
+    resp = render(request, "login.html", {"pre": pre, "next": nxt, "error": error,
+                                          "oidc_label": settings.oidc_label if settings.oidc_enabled else ""}, status)
     set_cookie(resp, PRELOGIN_COOKIE, pre, 900, _secure(request))
     return resp
 
@@ -123,10 +125,13 @@ async def logout(request: Request):
 
 # ───────────────────────── konto ─────────────────────────
 def _account_page(request: Request, sess: dict, message: str | None = None, error: str | None = None, status=200):
+    settings = request.app.state.settings
     with request.app.state.engine.connect() as conn:
         sessions = auth.user_sessions(conn, sess["user_id"])
+        user = conn.execute(select(app_user).where(app_user.c.id == sess["user_id"])).mappings().first()
     return render(request, "konto.html", {"sessions": sessions, "current": sess["public_id"],
-                                          "message": message, "error": error}, status)
+                                          "has_password": auth.has_password(user), "oidc_linked": bool(user["oidc_sub"]),
+                                          "oidc_on": settings.oidc_enabled, "message": message, "error": error}, status)
 
 
 @router.get("/konto")
@@ -139,6 +144,8 @@ def change_password(request: Request, old: str = Form(""), new: str = Form(""), 
                     sess: dict = Depends(require_user)):
     with request.app.state.engine.begin() as conn:
         user = conn.execute(select(app_user).where(app_user.c.id == sess["user_id"])).mappings().first()
+        if not auth.has_password(user):
+            return _account_page(request, sess, error="To konto loguje się tylko przez Pocket ID.", status=400)
         if not auth.verify_password(user["pw_hash"], old):
             auth.audit(conn, "password_change", user=sess["login"], ip=client_ip(request), result="złe obecne hasło")
             return _account_page(request, sess, error="Złe obecne hasło.", status=400)

@@ -362,7 +362,7 @@ Migrację można powtórzyć — drugi przebieg niczego nie dubluje.
 | Pytanie | Odpowiedź / stan |
 |---|---|
 | Nazwa | **Denali** |
-| OIDC | Masz dostawcę, ale OIDC → [POMYSLY.md](POMYSLY.md); najpierw standard logowania dla wszystkich aplikacji |
+| OIDC | **Pocket ID** (3.11.2026): drugi sposób logowania obok własnego konta; rola z grup albo konto połączone ręcznie |
 | VPN | **Tailscale** |
 | AX23 — wersja sprzętowa | Do sprawdzenia później. Nie blokuje Etapu 2; adapter OpenWrt i TP-Link powstają w Etapie 3 |
 | pve2 | Nie istnieje. Odporność na start: PBS + eksport na VPS; replikacja i HA, gdy pve2 powstanie |

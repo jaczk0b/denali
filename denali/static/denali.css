@@ -313,6 +313,7 @@ select.choice:focus { outline: none; border-color: var(--link); }
 .btn.danger { border-color: var(--down-border); background: var(--down-bg); color: var(--down-text); }
 .btn.small { min-height: 32px; padding: 0 12px; font-size: 13px; }
 .btn.wide { width: 100%; min-height: 44px; }
+.or { text-align: center; margin: 12px 0; font-size: 13px; }
 button.link { background: none; border: 0; padding: 0; color: var(--link); font: inherit; font-size: 13px; cursor: pointer; }
 button.link:hover { text-decoration: underline; }
 form.inline { display: inline; margin: 0; }

@@ -124,7 +124,7 @@ def main(argv=None):
             with engine.connect() as conn:
                 for u in conn.execute(app_user.select().order_by(app_user.c.login)).mappings():
                     print(f"{u['login']:20} {u['role']:8} 2FA: {'tak' if u['totp_ct'] else 'nie'}"
-                          f"{'  (wyłączone)' if u['disabled'] else ''}")
+                          f"{'  Pocket ID' if u['oidc_sub'] else ''}{'  (wyłączone)' if u['disabled'] else ''}")
             return
         try:
             if a.cmd == "create-user":

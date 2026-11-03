@@ -14,7 +14,7 @@ from .crypto import Box
 from .db import kv_get, make_engine
 from .templating import render
 from .web import (action_routes, admin_routes, agent_routes, auth_routes, docs_routes, infra_routes, infra_tab_routes,
-                  integration_routes, live_routes, notify_routes)
+                  integration_routes, live_routes, notify_routes, oidc_routes)
 from .web.deps import CsrfError, Forbidden, NotFound, Redirect
 
 WORKER_LATE_AFTER = 120  # s bez sygnału życia = worker nie działa
@@ -64,7 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     for r in (auth_routes, infra_routes, infra_tab_routes, docs_routes, admin_routes, integration_routes, notify_routes, live_routes,
-              agent_routes, action_routes):
+              agent_routes, action_routes, oidc_routes):
         app.include_router(r.router)
 
     @app.get("/health")

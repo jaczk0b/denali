@@ -15,6 +15,18 @@ class Settings(BaseSettings):
     # Nigdy "*": port panelu jest otwarty w LAN, więc każdy mógłby podać fałszywy adres klienta.
     trusted_proxies: list[str] = ["127.0.0.1"]
     dev: bool = False
+    # Logowanie przez OIDC (Pocket ID). Puste issuer albo client_id = wyłączone; własne konto zostaje zawsze.
+    oidc_issuer: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_label: str = "Zaloguj przez Pocket ID"
+    # Grupy u dostawcy → rola w Denali. Obie puste: wchodzą tylko konta połączone ręcznie (Konto → Połącz).
+    oidc_admin_group: str = ""
+    oidc_viewer_group: str = ""
+
+    @property
+    def oidc_enabled(self) -> bool:
+        return bool(self.oidc_issuer and self.oidc_client_id)
 
     @property
     def db_path(self) -> Path:

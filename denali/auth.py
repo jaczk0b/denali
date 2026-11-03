@@ -44,6 +44,11 @@ def hash_password(password: str) -> str:
     return _ph.hash(password)
 
 
+def has_password(user) -> bool:
+    """Konto założone przez Pocket ID nie ma hasła (w pw_hash jest znacznik, nie skrót argon2)."""
+    return bool(user and (user["pw_hash"] or "").startswith("$argon2"))
+
+
 def verify_password(stored: str | None, password: str) -> bool:
     """Zawsze liczy argon2 — także dla nieistniejącego konta, żeby czas odpowiedzi nie zdradzał, czy login istnieje."""
     try:
@@ -154,14 +159,16 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256((token or "").encode()).hexdigest()
 
 
-def create_session(conn, user_id: int, kind: str, ip: str = "", user_agent: str = "", now: float | None = None) -> str:
+def create_session(conn, user_id: int, kind: str, ip: str = "", user_agent: str = "", now: float | None = None,
+                   method: str = "haslo") -> str:
+    """method: haslo (hasło + 2FA Denali) | oidc (Pocket ID — tam jest drugi składnik, np. klucz dostępu)."""
     now = now if now is not None else time.time()
     token = secrets.token_urlsafe(32)
     age = {"zwykla": MAX_AGE, "kiosk": KIOSK_AGE, "pending": PENDING_AGE}[kind]
     conn.execute(insert(session).values(token_hash=_token_hash(token), public_id=secrets.token_hex(8), user_id=user_id,
                                         kind=kind, csrf=secrets.token_urlsafe(32), ip=ip or "",
                                         user_agent=(user_agent or "")[:300], created_at=now, last_seen_at=now,
-                                        expires_at=now + age))
+                                        expires_at=now + age, method=method))
     return token
 
 
@@ -173,7 +180,7 @@ def load_session(conn, token: str, ip: str = "", now: float | None = None, touch
         return None
     now = now if now is not None else time.time()
     row = conn.execute(
-        select(session, app_user.c.login, app_user.c.role, app_user.c.disabled, app_user.c.totp_ct)
+        select(session, app_user.c.login, app_user.c.role, app_user.c.disabled, app_user.c.totp_ct, app_user.c.oidc_sub)
         .join(app_user, app_user.c.id == session.c.user_id)
         .where(session.c.token_hash == _token_hash(token))
     ).mappings().first()

@@ -8,10 +8,18 @@
   {{ alerts(error) }}
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <input type="hidden" name="next" value="{{ next }}">
+  {% if has_password %}
   <label class="field">Hasło<input name="password" type="password" autocomplete="current-password" required autofocus></label>
   {% if sess.totp_ct %}
   <label class="field">Kod z aplikacji (albo zapasowy)<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
   {% endif %}
   <button class="btn primary wide" type="submit">Potwierdź</button>
+  {% endif %}
+  {% if oidc_label %}
+  {% if has_password %}<p class="or muted">albo</p>{% endif %}
+  <a class="btn wide{% if not has_password %} primary{% endif %}" href="/login/oidc?cel=reauth{% if next %}&amp;next={{ next | urlencode }}{% endif %}">Potwierdź w Pocket ID</a>
+  {% elif not has_password %}
+  <p class="muted">To konto loguje się tylko przez Pocket ID, a logowanie przez Pocket ID jest wyłączone.</p>
+  {% endif %}
 </form>
 {% endblock %}

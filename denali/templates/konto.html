@@ -4,7 +4,8 @@
 <div>
   <h1>Konto: {{ sess.login }}</h1>
   <p class="muted">Rola: {{ "administrator" if sess.role == "admin" else "podgląd" }} ·
-    logowanie dwuetapowe: {% if sess.totp_ct %}włączone{% else %}<a href="/konto/2fa">wyłączone — włącz</a>{% endif %}</p>
+    {% if has_password %}logowanie dwuetapowe: {% if sess.totp_ct %}włączone{% else %}<a href="/konto/2fa">wyłączone — włącz</a>{% endif %}
+    {% else %}logowanie tylko przez Pocket ID{% endif %}</p>
 </div>
 {% if message %}<div class="alert ok" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
@@ -19,7 +20,7 @@
         <tr>
           <td>{{ s.user_agent[:80] or "—" }}{% if s.public_id == current %} <strong>(ta sesja)</strong>{% endif %}</td>
           <td class="mono">{{ s.ip }}</td>
-          <td>{{ "tablet (kiosk)" if s.kind == "kiosk" else "zwykła" }}</td>
+          <td>{{ "tablet (kiosk)" if s.kind == "kiosk" else ("Pocket ID" if s.method == "oidc" else "hasło") }}</td>
           <td>{{ s.last_seen_at | dt }}</td>
           <td>
             <form method="post" action="/konto/sesje/{{ s.public_id }}/usun">
@@ -38,6 +39,27 @@
   </form>
 </section>
 
+{% if oidc_on or oidc_linked %}
+<section class="card" aria-labelledby="oidc">
+  <h2 id="oidc">Pocket ID</h2>
+  {% if oidc_linked %}
+  <p>Konto jest połączone z Pocket ID — możesz logować się kluczem dostępu{% if has_password %} albo jak dotąd hasłem i kodem{% endif %}.</p>
+  {% if has_password %}
+  <form method="post" action="/konto/oidc/rozlacz" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn" type="submit">Rozłącz</button>
+  </form>
+  {% endif %}
+  {% else %}
+  <p>Po połączeniu zalogujesz się przyciskiem na stronie logowania. Hasło i 2FA Denali zostają jako logowanie awaryjne,
+     gdy Pocket ID nie działa.</p>
+  <a class="btn primary mt" href="/login/oidc?cel=link">Połącz z Pocket ID</a>
+  <p class="muted mt">Najpierw potwierdzisz hasłem, potem zalogujesz się w Pocket ID.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if has_password %}
 <section class="card" aria-labelledby="haslo">
   <h2 id="haslo">Zmiana hasła</h2>
   <form method="post" action="/konto/haslo" class="narrow-form">
@@ -49,4 +71,5 @@
     <p class="muted mt">Po zmianie wszystkie inne sesje zostaną wylogowane.</p>
   </form>
 </section>
+{% endif %}
 {% endblock %}
