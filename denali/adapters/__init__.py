@@ -111,6 +111,9 @@ class Adapter:
     fields: list = []
     default_poll = 60
     push = False                # True: źródło samo wysyła dane (agent) — worker go nie odpytuje
+    # Przedrostki external_id obiektów, których zniknięcie ze źródła znaczy „usunięte” (VM, stack), a nie „chwilowo
+    # nie widać” (telefon poza Wi-Fi). Takie obiekty po GONE_AFTER trafiają do kolejki z pytaniem, co zrobić.
+    removable: tuple = ()
     actions: list = []          # ActionSpec
     action_fields: list = []    # osobny token do akcji (Field); pusta lista = akcje bez tokenu (agent)
     action_help = ""            # jak założyć token do akcji (markdown-free, krótko)

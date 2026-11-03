@@ -125,6 +125,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "live": live.saved(conn).get(device_id),
         "updates": updates.for_device(conn, device_id), "rack_pos": racks.for_device(conn, device_id),
         "refs": conn.execute(select(external_ref).where(external_ref.c.device_id == device_id)).mappings().all(),
+        "gone": discovery.gone(conn, device_id),
         "dev_actions": actions.for_device(conn, device_id) if is_admin else [],
         "action_keys": actions.known_for_device(conn, device_id) if is_admin else [],
         "action_runs": actions.recent(conn, device_id, 5) if is_admin else [],
@@ -383,7 +384,8 @@ def secret_remove(request: Request, device_id: int, secret_id: int, sess: dict =
 def _queue_page(request, conn, error=None, status_code=200):
     sources = {r.id: r.name for r in conn.execute(select(integration.c.id, integration.c.name))}
     all_devices = conn.execute(select(device.c.id, device.c.name).order_by(device.c.name)).mappings().all()
-    return render(request, "kolejka.html", {"rows": discovery.pending(conn), "integrations": sources,
+    return render(request, "kolejka.html", {"rows": discovery.pending(conn), "gone": discovery.gone(conn),
+                                            "integrations": sources,
                                             "matches": discovery.suggest_matches(conn),
                                             "all_devices": all_devices, "error": error}, status_code)
 
@@ -421,11 +423,14 @@ async def queue_apply(request: Request, sess: dict = Depends(require_admin)):
             choices[rid] = val
         elif val.startswith("dev:") and _int(val[4:]):
             choices[rid] = _int(val[4:])
+    gone = {_int(k[2:]): str(v) for k, v in form.multi_items() if k.startswith("g_") and _int(k[2:]) and v}
 
     def apply(c):
-        if not choices:
+        if not choices and not gone:
             raise inv.InventoryError("Nic nie wybrano — przy każdym obiekcie wybierz, co z nim zrobić.")
+        discovery.resolve_gone(c, gone, user=sess["login"], ip=client_ip(request))
         discovery.apply_choices(c, choices, user=sess["login"], ip=client_ip(request))
+        files.cleanup_orphans(c, request.app.state.settings.data_dir)
     return _queue_action(request, sess, apply)
 
 

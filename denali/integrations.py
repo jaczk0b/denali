@@ -122,6 +122,7 @@ def record(conn, integration_id, result, now=None):
         record_updates(conn, integration_id, result.updates, now)
     conn.execute(integration.update().where(integration.c.id == integration_id).values(
         last_ok_at=now, last_attempt_at=now, last_error=""))
+    discovery.forget_gone(conn, integration_id)
 
 
 def record_updates(conn, integration_id, updates, now):

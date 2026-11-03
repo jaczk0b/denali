@@ -115,3 +115,84 @@ def test_dopasowanie_do_urzadzen_z_hlc(conn):
     assert discovery.suggest_matches(conn) == {}
     left = {r["external_id"] for r in discovery.pending(conn)}
     assert "node/pve" not in left and "qemu/100" not in left
+
+
+# ───────────────────────── usunięte w źródle ─────────────────────────
+def _poll(conn, iid, found, now, states=()):
+    from denali import integrations
+    from denali.adapters import Found, PollResult, State
+    integrations.record(conn, iid, PollResult(found=[Found(e, p) for e, p in found],
+                                              states=[State(e, "ok") for e in states]), now=now)
+
+
+def test_usunieta_vm_trafia_do_kolejki_i_znika_po_decyzji(conn):
+    from denali.models import observed_state
+    pve = add_integration(conn, "proxmox", "pve")
+    vm = {"name": "stara", "kind": "vm"}
+    _poll(conn, pve, [("qemu/120", vm), ("qemu/121", {"name": "nowa", "kind": "vm"}),
+                      ("lxc/130", {"name": "testowy", "kind": "lxc"})], now=1000, states=["qemu/120"])
+    rid = conn.execute(select(external_ref.c.id).where(external_ref.c.external_id == "qemu/120")).scalar()
+    discovery.approve(conn, rid)
+    lxc = conn.execute(select(external_ref.c.id).where(external_ref.c.external_id == "lxc/130")).scalar()
+    discovery.approve(conn, lxc)
+    did = conn.execute(select(external_ref.c.device_id).where(external_ref.c.id == rid)).scalar()
+
+    _poll(conn, pve, [], now=1300)                              # chwilowa dziura — jeszcze nic
+    assert discovery.gone(conn) == []
+    _poll(conn, pve, [("lxc/130", {"name": "testowy", "kind": "lxc"})], now=1700)
+    gone = discovery.gone(conn)
+    assert [(g["external_id"], g["device_name"]) for g in gone] == [("qemu/120", "stara")]
+    assert discovery.gone(conn, did)[0]["iname"] == "pve"
+    # czekająca VM, której już nie ma, sama znika z kolejki
+    assert [r["external_id"] for r in discovery.pending(conn)] == []
+
+    assert discovery.resolve_gone(conn, {gone[0]["id"]: "usun"}, user="jakub") == 1
+    assert inv.get_device(conn, did) is None
+    assert not conn.execute(select(external_ref).where(external_ref.c.external_id == "qemu/120")).first()
+    assert not conn.execute(select(observed_state).where(observed_state.c.external_id == "qemu/120")).first()
+    assert conn.execute(select(audit_log.c.action).order_by(audit_log.c.id.desc())).scalar() == "device_delete"
+    # ten sam numer VM w Proxmoxie później = nowy obiekt w kolejce, nie stare urządzenie
+    _poll(conn, pve, [("qemu/120", {"name": "inna", "kind": "vm"}), ("lxc/130", {"name": "testowy", "kind": "lxc"})],
+          now=1800)
+    assert [r["proposed"]["name"] for r in discovery.pending(conn)] == ["inna"]
+
+
+def test_zostaw_urzadzenie_bez_powiazania(conn):
+    pve = add_integration(conn, "proxmox", "pve")
+    _poll(conn, pve, [("lxc/130", {"name": "testowy", "kind": "lxc"})], now=1000)
+    rid = conn.execute(select(external_ref.c.id)).scalar()
+    discovery.approve(conn, rid)
+    did = conn.execute(select(external_ref.c.device_id)).scalar()
+    _poll(conn, pve, [], now=1700)
+    assert discovery.resolve_gone(conn, {rid: "zostaw"}) == 1
+    assert inv.get_device(conn, did)["name"] == "testowy"
+    assert discovery.gone(conn) == [] and not conn.execute(select(external_ref)).first()
+
+
+def test_klient_wifi_poza_siecia_to_nie_usuniecie(conn):
+    router = add_integration(conn, "tplink", "router")
+    _poll(conn, router, [("mac/aa:bb:cc:dd:ee:ff", {"name": "telefon", "kind": "telefon"})], now=1000)
+    discovery.approve(conn, conn.execute(select(external_ref.c.id)).scalar())
+    _poll(conn, router, [], now=5000)
+    assert discovery.gone(conn) == []
+
+
+def test_kolejka_i_karta_pokazuja_usuniete(app, client):
+    from .conftest import csrf_from, do_login, enable_2fa, make_user
+    with app.state.engine.begin() as c:
+        pve = add_integration(c, "proxmox", "pve")
+        _poll(c, pve, [("qemu/120", {"name": "stara", "kind": "vm"})], now=1000)
+        rid = c.execute(select(external_ref.c.id)).scalar()
+        discovery.approve(c, rid)
+        did = c.execute(select(external_ref.c.device_id)).scalar()
+        _poll(c, pve, [], now=1700)
+    make_user(app)
+    do_login(client)
+    enable_2fa(client, app)
+    assert "Nie ma go już w źródle" in client.get(f"/urzadzenia/{did}").text
+    page = client.get("/zatwierdz").text
+    assert "Usunięte w źródle" in page and f'name="g_{rid}"' in page
+    r = client.post("/zatwierdz/wybrane", data={"csrf_token": csrf_from(page), f"g_{rid}": "usun"})
+    assert r.status_code == 303
+    with app.state.engine.connect() as c:
+        assert inv.get_device(c, did) is None

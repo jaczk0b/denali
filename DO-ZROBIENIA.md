@@ -30,6 +30,9 @@ Kod sprawdzony testami na udawanym dostawcy; z prawdziwym Pocket ID nie był uru
       odpowiada „nie poprosił o ponowne zalogowanie” — potwierdzaj hasłem (albo zgłoś, poszukamy obejścia).
 - [ ] Jeśli chcesz konta dla domowników: grupy w Pocket ID i `DENALI_OIDC_ADMIN_GROUP` / `DENALI_OIDC_VIEWER_GROUP`.
 - [ ] Favicon w karcie przeglądarki (i w kopii awaryjnej).
+- [ ] **Usunięte w Proxmoxie / Komodo** (VM, LXC, węzeł, serwer, stack): po ~10 minutach w *Do zatwierdzenia* sekcja
+      „Usunięte w źródle” (usuń z Denali / zostaw bez powiązania), na karcie urządzenia ostrzeżenie. Czekające
+      w kolejce i pominięte znikają same. Klienci routera (telefon poza Wi-Fi) się nie liczą.
 
 ## 2. Bezpieczeństwo — do domknięcia
 

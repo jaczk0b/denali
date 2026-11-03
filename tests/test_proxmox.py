@@ -134,10 +134,15 @@ def test_odczyt_zasila_kolejke_i_stan(app):
     resources = [r for r in RESOURCES if r.get("vmid") != 120]
     with app.state.engine.begin() as conn:
         row = integrations.get(conn, iid)
-    run(integrations.poll_one(app.state.engine, app.state.box, row, pve_api(resources=resources), now=2000))
+    run(integrations.poll_one(app.state.engine, app.state.box, row, pve_api(resources=resources), now=1100))
     with app.state.engine.begin() as conn:
         states = {r.external_id: (r.state, r.summary) for r in conn.execute(select(observed_state))}
         assert states["qemu/120"] == ("unknown", "nie ma go już w źródle")
+    # po 10 minutach nieobecności czekająca VM 120 znika z kolejki razem ze stanem
+    run(integrations.poll_one(app.state.engine, app.state.box, row, pve_api(resources=resources), now=2000))
+    with app.state.engine.begin() as conn:
+        assert "qemu/120" not in {r["external_id"] for r in discovery.pending(conn)}
+        assert "qemu/120" not in {r.external_id for r in conn.execute(select(observed_state))}
 
 
 def test_blad_odczytu_zapisany_i_nie_zatrzymuje(app):

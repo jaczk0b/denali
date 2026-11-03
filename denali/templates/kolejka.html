@@ -9,7 +9,7 @@
       te bez wyboru zostają w kolejce na później. Zatwierdzenie tworzy urządzenie z nazwą, adresami, „na czym działa” i profilem.
       Dodanie VM jako nowej zatwierdza też czekające stacki na niej i host, na którym stoi.</p>
   </div>
-  {% if rows and sess.role == "admin" %}
+  {% if (rows or gone) and sess.role == "admin" %}
   <div class="actions">
     <button class="btn primary" type="submit" form="kolejka-wybor">Zastosuj wybrane</button>
   </div>
@@ -20,11 +20,44 @@
 <div class="alert warn">{{ st("warn") }}<span>{{ matches | length }} z tych obiektów wygląda na urządzenia, które już są w Denali (ten sam MAC, IP albo nazwa — np. przeniesione z HLC).
   To tylko podpowiedź („Wygląda na: …”) — sam wybierz „Przypnij do …”, jeśli się zgadza.</span></div>
 {% endif %}
-{% if not rows %}
+{% if not rows and not gone %}
 <div class="card"><p class="muted">Nic nie czeka. Nowe obiekty pojawią się tu, gdy integracje (Etap 3) je znajdą.</p></div>
 {% else %}
 <form method="post" action="/zatwierdz/wybrane" id="kolejka-wybor">
 <input type="hidden" name="csrf_token" value="{{ csrf }}">
+{% if gone %}
+<section class="card" aria-labelledby="zniknely">
+  <h2 id="zniknely">Usunięte w źródle</h2>
+  <p class="muted">Tych obiektów od ponad 10 minut nie ma w odczytach integracji — najpewniej usunąłeś je (VM, kontener,
+    stack). Sprawdź, zanim usuniesz z Denali: to samo widać, gdy token integracji stracił uprawnienia.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Urządzenie w Denali</th><th>Skąd</th><th>Ostatnio widziany</th><th>Co zrobić</th></tr></thead>
+      <tbody>
+      {% for g in gone %}
+      <tr>
+        <td><a href="/urzadzenia/{{ g.device_id }}"><strong>{{ g.device_name }}</strong></a><div class="muted small mono">{{ g.external_id }}</div></td>
+        <td>{{ g.iname }}</td>
+        <td>{{ g.last_seen | dt }}</td>
+        <td>
+          {% if sess.role == "admin" %}
+          <select class="choice" name="g_{{ g.id }}" aria-label="Co zrobić z {{ g.device_name }}">
+            <option value="">— zdecyduję później</option>
+            <option value="usun">Usuń urządzenie z Denali</option>
+            <option value="zostaw">Zostaw w dokumentacji, bez powiązania</option>
+          </select>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small mt">Usunięcie kasuje kartę urządzenia razem z adresami, zależnościami, plikami i hasłami ze skarbca
+    przypiętymi do niego. „Zostaw” zachowuje kartę — przyda się, gdy maszyna wróci pod innym numerem.</p>
+</section>
+{% endif %}
+{% if rows %}
 <section class="card">
   <div class="table-wrap">
     <table>
@@ -62,6 +95,7 @@
   <div class="actions mt"><button class="btn primary" type="submit">Zastosuj wybrane</button></div>
   {% endif %}
 </section>
+{% endif %}
 </form>
 {% endif %}
 {% endblock %}

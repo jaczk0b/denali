@@ -13,13 +13,20 @@ Integracja opisuje obiekt słownikiem `proposed`:
 Adres pozwala połączyć obiekty z różnych integracji: stack z Komodo trafia na VM z Proxmoxa o tym samym IP.
 Zatwierdzenie jednego obiektu zatwierdza też czekające obiekty, na których działa, i te, które działają na nim —
 nowa VM ze stackami to jedno kliknięcie.
+
+Usunięte w źródle (VM, LXC, stack — przedrostki `Adapter.removable`): gdy udane odczyty nie zgłaszają obiektu przez
+GONE_AFTER, czekający i pominięci znikają z kolejki sami, a zatwierdzony trafia do kolejki z pytaniem: usunąć
+urządzenie z Denali czy zostawić je w dokumentacji bez powiązania. Sami niczego nie kasujemy — brak obiektu może
+też znaczyć zmienione uprawnienia tokenu.
 """
 import time
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from . import auth, inventory
-from .models import external_ref
+from .models import device, external_ref, integration, observed_state
+
+GONE_AFTER = 600   # s bez obiektu w udanych odczytach — kilka odczytów, nie jedna dziura
 
 TARGET_KEYS = ("ref",) + inventory.ADDRESS_KINDS
 
@@ -256,3 +263,66 @@ def ignore(conn, ref_id, user="system", ip=""):
     conn.execute(external_ref.update().where(external_ref.c.id == ref_id).values(status="ignorowany"))
     auth.audit(conn, "device_ignore", user=user, ip=ip, target=ref["proposed"]["name"],
                params={"external_id": ref["external_id"]})
+
+
+# ───────────────────────── usunięte w źródle ─────────────────────────
+def _removable():
+    from .adapters import registry
+    return {t: cls.removable for t, cls in registry().items() if cls.removable}
+
+
+def _gone_query(conn, statuses):
+    """(ref, typ integracji, nazwa integracji) obiektów z przedrostkiem `removable`, których dawno nie było w odczycie."""
+    prefixes = _removable()
+    rows = conn.execute(
+        select(external_ref, integration.c.type.label("itype"), integration.c.name.label("iname"))
+        .join(integration, integration.c.id == external_ref.c.integration_id)
+        .where(external_ref.c.status.in_(statuses), integration.c.last_ok_at.isnot(None),
+               external_ref.c.last_seen < integration.c.last_ok_at - GONE_AFTER)).mappings().all()
+    return [r for r in rows if r["external_id"].startswith(prefixes.get(r["itype"], ()))]
+
+
+def forget_gone(conn, integration_id):
+    """Po udanym odczycie: czekające i pominięte obiekty, których już nie ma w źródle, znikają z kolejki
+    (także powiązania po urządzeniu usuniętym wcześniej ręcznie)."""
+    for r in _gone_query(conn, ("nowy", "ignorowany", "zatwierdzony")):
+        if r["integration_id"] == integration_id and (r["status"] != "zatwierdzony" or r["device_id"] is None):
+            _drop_ref(conn, r)
+
+
+def gone(conn, device_id=None):
+    """Zatwierdzone obiekty usunięte w źródle (do decyzji): ref + nazwa urządzenia i integracji."""
+    rows = [dict(r) for r in _gone_query(conn, ("zatwierdzony",))
+            if r["device_id"] and (device_id is None or r["device_id"] == device_id)]
+    names = {d.id: d.name for d in conn.execute(select(device.c.id, device.c.name).where(
+        device.c.id.in_([r["device_id"] for r in rows if r["device_id"]])))}
+    for r in rows:
+        r["device_name"] = names.get(r["device_id"])
+    return rows
+
+
+def _drop_ref(conn, ref):
+    conn.execute(delete(observed_state).where(observed_state.c.integration_id == ref["integration_id"],
+                                              observed_state.c.external_id == ref["external_id"]))
+    conn.execute(delete(external_ref).where(external_ref.c.id == ref["id"]))
+
+
+def resolve_gone(conn, choices, user="system", ip=""):
+    """{ref_id: "usun" (urządzenie z Denali) | "zostaw" (urządzenie zostaje, bez powiązania)}. Zwraca liczbę decyzji."""
+    current = {r["id"]: r for r in gone(conn)}
+    done = 0
+    for ref_id, what in choices.items():
+        r = current.get(ref_id)
+        if not r or what not in ("usun", "zostaw"):
+            continue                    # wrócił w źródle albo już rozstrzygnięty
+        _drop_ref(conn, r)
+        params = {"external_id": r["external_id"], "integracja": r["iname"]}
+        if what == "usun":
+            inventory.delete_device(conn, r["device_id"])
+            auth.audit(conn, "device_delete", user=user, ip=ip, target=r["device_name"] or r["external_id"],
+                       params={**params, "powod": "usunięte w źródle"})
+        else:
+            auth.audit(conn, "device_unlink", user=user, ip=ip, target=r["device_name"] or r["external_id"],
+                       params=params)
+        done += 1
+    return done

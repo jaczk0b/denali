@@ -9,7 +9,7 @@ from markdown_it import MarkdownIt
 from markupsafe import Markup
 from sqlalchemy import func, select
 
-from . import incidents, inventory, live, updates
+from . import discovery, incidents, inventory, live, updates
 from .models import external_ref, incident
 from .status import initials, tile_color
 
@@ -84,7 +84,7 @@ def _counts(request: Request) -> dict:
             "incidents": conn.execute(select(func.count()).select_from(incident)
                                       .where(incident.c.status != "zamkniety")).scalar(),
             "queue": conn.execute(select(func.count()).select_from(external_ref)
-                                  .where(external_ref.c.status == "nowy")).scalar(),
+                                  .where(external_ref.c.status == "nowy")).scalar() + len(discovery.gone(conn)),
             "updates": updates.count(conn),
         }
 

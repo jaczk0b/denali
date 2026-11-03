@@ -46,6 +46,7 @@ def _ram(mem, maxmem):
 
 class Proxmox(Adapter):
     type = "proxmox"
+    removable = ("qemu/", "lxc/", "node/")
     label = "Proxmox VE"
     default_poll = 60
     fields = [

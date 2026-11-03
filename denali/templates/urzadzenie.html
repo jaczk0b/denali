@@ -33,6 +33,11 @@
   </div>
 </section>
 
+{% for g in gone %}
+<div class="alert warn">{{ st("warn") }}<span>Nie ma go już w źródle „{{ g.iname }}” ({{ g.external_id }}) — ostatnio widziany
+  {{ g.last_seen | dt }}. {% if admin %}<a href="/zatwierdz">Zdecyduj w kolejce</a>: usunąć z Denali czy zostawić w dokumentacji.{% endif %}</span></div>
+{% endfor %}
+
 <nav class="tabs" aria-label="Sekcje urządzenia">
   <a href="#zaleznosci">Zależności</a>
   <a href="#co-robic">Co robić</a>

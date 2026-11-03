@@ -67,6 +67,7 @@ def _host_ip(address):
 
 class Komodo(Adapter):
     type = "komodo"
+    removable = ("server/", "stack/")
     label = "Komodo"
     default_poll = 60
     fields = [
