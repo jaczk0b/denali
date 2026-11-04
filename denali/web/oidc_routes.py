@@ -2,6 +2,8 @@
 
 Start to zwykły link (GET), nie formularz: CSP „form-action 'self'” zablokowałaby przekierowanie formularza do dostawcy.
 """
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, select
@@ -34,7 +36,7 @@ def start(request: Request, cel: str = "login", next: str = ""):
         if not sess or sess["kind"] != "zwykla":
             return RedirectResponse("/login", 303)
         if cel == "link" and not auth.reauth_fresh(sess):
-            return RedirectResponse("/potwierdz?next=/konto", 303)
+            return RedirectResponse(f"/potwierdz?next={quote('/login/oidc?cel=link', safe='')}", 303)
         if cel == "reauth" and not sess["oidc_sub"]:
             return RedirectResponse(f"/potwierdz?next={safe_next(next)}", 303)
         uid = sess["user_id"]

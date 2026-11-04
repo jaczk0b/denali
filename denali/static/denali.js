@@ -38,6 +38,10 @@
   }
   inlineStyles();
 
+  // Po potwierdzeniu hasłem panel sam dokańcza działanie, które na nie czekało.
+  var resume = document.querySelector("form[data-autosubmit]");
+  if (resume) { resume.submit(); }
+
   // Uprawnienia integracji: pod polami widać polecenie dla tego, co jest teraz zaznaczone.
   function grantCommands(box) {
     function show() {

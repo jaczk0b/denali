@@ -14,7 +14,7 @@ from .. import actions, auth, consoles, inventory as inv, polecenia
 from ..adapters import AdapterError
 from ..models import action_run
 from ..templating import render
-from .deps import COOKIE, NotFound, Redirect, client_ip, require_admin
+from .deps import COOKIE, NotFound, client_ip, require_admin, require_fresh
 
 router = APIRouter()
 COMMAND_KEY = "agent.polecenia"
@@ -49,7 +49,7 @@ def terminal_device(request: Request, device_id: int, sess: dict = Depends(requi
         history = consoles.recent(conn, device_id, 10)
     return render(request, "terminal.html", {
         "d": d, "console": [o for o in opts if o["key"] == consoles.KEY], "agents": [o for o in opts if o["key"] == COMMAND_KEY],
-        "commands": polecenia.COMMANDS, "runs": runs, "history": history, "fresh": auth.reauth_fresh(sess),
+        "commands": polecenia.COMMANDS, "runs": runs, "history": history,
         "active": any(r["status"] in actions.ACTIVE for r in runs), "labels": actions.STATUS_LABEL})
 
 
@@ -75,9 +75,8 @@ async def terminal_command(request: Request, device_id: int, sess: dict = Depend
 
 
 @router.post("/terminale/{device_id:int}/konsola/{ref_id:int}")
-def console_request(request: Request, device_id: int, ref_id: int, sess: dict = Depends(require_admin)):
-    if not auth.reauth_fresh(sess):
-        raise Redirect(f"/potwierdz?next=/terminale/{device_id}")
+async def console_request(request: Request, device_id: int, ref_id: int, sess: dict = Depends(require_admin)):
+    await require_fresh(request, sess)
     with request.app.state.engine.begin() as conn:
         try:
             console_id = consoles.request(conn, device_id=device_id, ref_id=ref_id, user=sess["login"], role=sess["role"],

@@ -260,7 +260,8 @@ wszystkie zamki, sprawdzane po stronie serwera przy każdym zleceniu (także prz
 5. **niebezpieczne** (wyłączenie, restart, zatrzymanie, Deploy, apt upgrade, restart maszyny) — po potwierdzeniu hasłem i kodem 2FA
    (ważne 5 minut).
 
-Zmiana list dozwolonych i tokenu do akcji też wymaga hasła i kodu. Każde zlecenie, odmowa i wynik są w *Audycie*,
+Zmiana list dozwolonych i tokenu do akcji też wymaga hasła i kodu. Gdy potwierdzenie jest potrzebne, panel sam pokazuje
+okno z hasłem (albo Pocket ID), a po nim dokańcza kliknięte działanie bez ponownego wypełniania formularza. Każde zlecenie, odmowa i wynik są w *Audycie*,
 historia w *Akcjach*, a przy trwającym incydencie urządzenia — w jego przebiegu.
 
 | Źródło | Akcje | Token do akcji |

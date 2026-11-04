@@ -11,7 +11,7 @@ from ..adapters import AdapterError, registry
 from ..models import external_ref, integration, observed_state
 from ..templating import render
 from .agent_routes import agent_page
-from .deps import NotFound, Redirect, client_ip, require_admin
+from .deps import NotFound, Redirect, client_ip, require_admin, require_fresh
 
 router = APIRouter()
 log = logging.getLogger("denali.integrations")
@@ -44,8 +44,8 @@ def _form(request, cls, row=None, values=None, error=None, message=None, objects
     return render(request, "integracja.html", {
         "cls": cls, "row": row, "values": values or {}, "error": error, "message": message, "objects": objects,
         "action_hint": actions.credentials_hint(row, request.app.state.box) if row else "",
-        "commands": cls.setup_commands((row["config"] or {}).get("token_id", "") if row else "") if cls.grants else {},
-        "fresh": auth.reauth_fresh(request.state.sess)}, status_code)
+        "commands": cls.setup_commands((row["config"] or {}).get("token_id", "") if row else "") if cls.grants else {}},
+        status_code)
 
 
 def _moved(cls, old, new):
@@ -138,24 +138,21 @@ async def integration_view(request: Request, integration_id: int, sprawdz: str =
 async def integration_update(request: Request, integration_id: int, sess: dict = Depends(require_admin)):
     form = await request.form()
     box = request.app.state.box
-    with request.app.state.engine.begin() as conn:
+    with request.app.state.engine.connect() as conn:
         try:
             row = integrations.get(conn, integration_id)
         except integrations.IntegrationError as e:
             raise NotFound(str(e)) from None
-        cls = integrations.adapter_class(row["type"])
-        if cls.push:      # agent nie ma ustawień — zapis formularza skasowałby skrót tokenu
-            raise NotFound("Agent nie ma ustawień do zmiany.")
-        config, secrets = integrations.split_form(cls, form, integrations.secrets_of(row, box))
-        old = row["config"] or {}
-        if cls.grants:
-            config["permissions"] = old.get("permissions") or []     # zakresy zmienia się osobno, po potwierdzeniu
-        if config.get("permissions") and _moved(cls, old, config) and not auth.reauth_fresh(sess):
-            return _form(request, cls, row=row, values={**config, "name": form.get("name", ""),
-                                                         "poll_seconds": form.get("poll_seconds")},
-                         error="Ten token ma prawo do akcji: zmiana adresu albo certyfikatu wysłałaby go gdzie indziej, "
-                               "więc wymaga potwierdzenia hasłem. Potwierdź w menu konta i zapisz ponownie.",
-                         objects=_objects(conn, integration_id), status_code=403)
+    cls = integrations.adapter_class(row["type"])
+    if cls.push:      # agent nie ma ustawień — zapis formularza skasowałby skrót tokenu
+        raise NotFound("Agent nie ma ustawień do zmiany.")
+    config, secrets = integrations.split_form(cls, form, integrations.secrets_of(row, box))
+    old = row["config"] or {}
+    if cls.grants:
+        config["permissions"] = old.get("permissions") or []         # zakresy zmienia się osobno
+    if config.get("permissions") and _moved(cls, old, config):       # token z prawem do akcji nie pójdzie gdzie indziej
+        await require_fresh(request, sess)
+    with request.app.state.engine.begin() as conn:
         try:
             integrations.save(conn, box, row["type"], form.get("name", ""), config, secrets, form.get("poll_seconds"),
                               integration_id=integration_id)

@@ -1,10 +1,15 @@
 """Wspólne elementy tras: kto jest zalogowany, wymagane role, CSRF, ciasteczka."""
 import hmac
+import json
+import time
 from urllib.parse import quote
 
 from fastapi import Request
+from sqlalchemy import delete
 
 from .. import auth
+from ..db import kv_get, kv_set
+from ..models import setting
 
 COOKIE = "denali_session"
 PRELOGIN_COOKIE = "denali_prelogin"
@@ -13,6 +18,8 @@ PATHS_WITHOUT_2FA = {"/konto/2fa", "/logout"}
 # Odświeżanie na żywo: strumień SSE i pobrania strony w tle (nagłówek) to nie aktywność użytkownika.
 LIVE_PATH = "/na-zywo"
 LIVE_HEADER = "X-Denali-Live"
+RESUME_PATH = "/potwierdz/dokoncz"
+PENDING_VALID = 600     # tyle czeka zapamiętane działanie na hasło
 
 
 class Redirect(Exception):
@@ -83,6 +90,35 @@ async def require_admin(request: Request) -> dict:
     if sess["role"] != "admin":
         raise Forbidden()
     return sess
+
+
+def _pending_key(sess: dict) -> str:
+    return f"reauth.pending.{sess['user_id']}"
+
+
+async def require_fresh(request: Request, sess: dict) -> None:
+    """Tu potrzeba hasła: pokazuje okno potwierdzenia, a po nim samo dokańcza to działanie (ten sam POST).
+
+    Formularz czeka zaszyfrowany, bo bywa w nim sekret. Działa też z Pocket ID, które wraca do panelu przekierowaniem."""
+    if auth.reauth_fresh(sess):
+        return
+    form = await request.form()
+    fields = [(k, v) for k, v in form.multi_items() if k != "csrf_token" and isinstance(v, str)]
+    pending = {"session": sess["public_id"], "at": time.time(), "url": request.url.path, "fields": fields}
+    with request.app.state.engine.begin() as conn:
+        kv_set(conn, _pending_key(sess), request.app.state.box.encrypt(json.dumps(pending)))
+    raise Redirect(f"/potwierdz?next={RESUME_PATH}")
+
+
+def take_pending(conn, box, sess: dict, now: float | None = None) -> dict | None:
+    """Zapamiętane działanie tej sesji — jednorazowo."""
+    raw = kv_get(conn, _pending_key(sess))
+    if not raw:
+        return None
+    conn.execute(delete(setting).where(setting.c.key == _pending_key(sess)))
+    pending = json.loads(box.decrypt(raw))
+    fresh = (now or time.time()) - pending["at"] < PENDING_VALID
+    return pending if fresh and pending["session"] == sess["public_id"] else None
 
 
 def set_cookie(resp, name: str, value: str, max_age: int, secure: bool) -> None:

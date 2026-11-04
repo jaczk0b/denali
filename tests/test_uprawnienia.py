@@ -136,7 +136,7 @@ def test_token_z_zakresem_nie_pojdzie_na_inny_adres_bez_potwierdzenia(app, pve, 
     data = {"csrf_token": csrf_from(page), "type": "proxmox", "name": "pve", "url": "https://zly.host:8006",
             "token_id": CONFIG["token_id"], "verify_tls": "1"}
     r = admin.post(f"/admin/integracje/{pve['iid']}", data=data)
-    assert r.status_code == 403 and "potwierdzenia" in r.text
+    assert r.status_code == 303 and r.headers["location"].startswith("/potwierdz")
     with app.state.engine.connect() as conn:
         assert integrations.get(conn, pve["iid"])["config"]["url"] == CONFIG["url"]
     fresh_reauth(app, admin)

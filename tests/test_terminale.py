@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from sqlalchemy import select
 from starlette.websockets import WebSocketDisconnect
 
-from denali import actions, auth, consoles, integrations, polecenia
+from denali import actions, consoles, integrations, polecenia
 from denali.adapters import AdapterError
 from denali.adapters.proxmox import Proxmox
 from denali.models import action_run

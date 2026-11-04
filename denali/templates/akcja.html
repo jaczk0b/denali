@@ -26,18 +26,12 @@
   {% if o.reason %}
     <div class="alert error" role="alert">{{ st("down") }}<span>{{ o.reason }}</span></div>
     <a class="btn" href="/urzadzenia/{{ d.id }}#akcje">Wróć</a>
-  {% elif o.spec.dangerous and not fresh %}
-    <p>To akcja niebezpieczna — najpierw potwierdź, że to Ty (hasło i kod 2FA, ważne 5 minut).</p>
-    <div class="actions mt">
-      <a class="btn primary" href="/potwierdz?next={{ here | urlencode }}">Potwierdź hasłem i kodem</a>
-      <a class="btn" href="/urzadzenia/{{ d.id }}#akcje">Anuluj</a>
-    </div>
   {% else %}
     <div class="actions mt">
       <button class="btn {{ 'danger' if o.spec.dangerous else 'primary' }}" type="submit">{{ o.spec.label }}</button>
       <a class="btn" href="/urzadzenia/{{ d.id }}#akcje">Anuluj</a>
     </div>
-    <p class="muted small mt">Zlecenie i wynik trafią do audytu{% if o.spec.dangerous %}; potwierdzenie jest jeszcze ważne{% endif %}.</p>
+    <p class="muted small mt">Zlecenie i wynik trafią do audytu.{% if o.spec.dangerous %} Panel poprosi o hasło, jeśli potrzeba.{% endif %}</p>
   {% endif %}
 </form>
 {% endblock %}

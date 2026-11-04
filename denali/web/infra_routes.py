@@ -14,7 +14,7 @@ from .. import (actions, auth, checks, discovery, docs, files, incidents, infra_
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook)
 from ..templating import render
-from .deps import NotFound, Redirect, client_ip, require_admin, require_user
+from .deps import NotFound, client_ip, require_admin, require_fresh, require_user
 
 router = APIRouter()
 EDIT_SETTINGS = ("monitor", "down_after_s", "notify", "updates")   # akcje: osobny formularz (action_routes)
@@ -130,7 +130,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "action_keys": actions.known_for_device(conn, device_id) if is_admin else [],
         "action_runs": actions.recent(conn, device_id, 5) if is_admin else [],
         "action_labels": {k: f"{c.label}: {a.label}" for k, (c, a) in actions.catalog().items()},
-        "actions_on": actions.enabled(conn), "fresh": auth.reauth_fresh(request.state.sess),
+        "actions_on": actions.enabled(conn),
     }
     return render(request, "urzadzenie.html", ctx, status_code)
 
@@ -358,9 +358,8 @@ def secret_add(request: Request, device_id: int, label: str = Form(""), username
 
 
 @router.post("/urzadzenia/{device_id}/skarbiec/{secret_id}/odslon")
-def secret_reveal(request: Request, device_id: int, secret_id: int, sess: dict = Depends(require_admin)):
-    if not auth.reauth_fresh(sess):
-        raise Redirect(f"/potwierdz?next=/urzadzenia/{device_id}%23skarbiec")
+async def secret_reveal(request: Request, device_id: int, secret_id: int, sess: dict = Depends(require_admin)):
+    await require_fresh(request, sess)
     with request.app.state.engine.begin() as conn:
         try:
             plain = vault.reveal(conn, request.app.state.box, secret_id, role=sess["role"],

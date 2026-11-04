@@ -233,7 +233,7 @@ def admin(app):
     make_user(app)
     with new_client(app) as c:
         do_login(c)
-        enable_2fa(c, app)
+        c.secret = enable_2fa(c, app)
         yield c
 
 
@@ -279,9 +279,9 @@ def test_niebezpieczna_po_wygasnieciu_potwierdzenia(app, pve, admin):
         allow(conn, ["proxmox.stop"])
     url = f"/urzadzenia/{dev}/akcje/{ref_id}/proxmox.stop"
     page = admin.get(url).text
-    assert "/potwierdz?next=" in page and "<button class=\"btn danger\"" not in page
+    assert "<button class=\"btn danger\"" in page             # przycisk jest, hasło pada po kliknięciu
     r = admin.post(url, data={"csrf_token": csrf_from(page)})
-    assert r.status_code == 403 and "hasłem" in r.text
+    assert r.status_code == 303 and r.headers["location"].startswith("/potwierdz")
     with app.state.engine.connect() as conn:
         assert not conn.execute(select(action_run)).first()
 

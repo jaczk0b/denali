@@ -4,8 +4,6 @@ w integracji, listy „Dozwolone akcje” w profilu i na urządzeniu.
 O tym, czy akcja może się wykonać, decyduje wyłącznie actions.request — te trasy tylko zbierają dane z formularza.
 Zmiana tego, co wolno (wyłącznik, token, listy dozwolonych), wymaga świeżego potwierdzenia hasłem i kodem.
 """
-from urllib.parse import quote
-
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -14,18 +12,13 @@ from .. import actions, auth, integrations, inventory as inv, profiles
 from ..adapters import registry
 from ..models import integration, profile
 from ..templating import render
-from .deps import NotFound, Redirect, client_ip, require_admin
+from .deps import NotFound, client_ip, require_admin, require_fresh
 
 router = APIRouter()
 
 
 def _transport(request):
     return getattr(request.app.state, "adapter_transport", None)   # w testach: nagrane odpowiedzi API
-
-
-def _need_reauth(sess, back):
-    if not auth.reauth_fresh(sess):
-        raise Redirect(f"/potwierdz?next={quote(back, safe='/#?=&')}")
 
 
 def _confirm_page(request, conn, device_id, ref_id, key, error=None, status_code=200):
@@ -39,7 +32,7 @@ def _confirm_page(request, conn, device_id, ref_id, key, error=None, status_code
     snap = actions.snapshot_option(conn, device_id) if o["cls"].push else None
     reboot = actions.reboot_option(conn, device_id, ref_id) if key == "agent.apt_upgrade" else None
     return render(request, "akcja.html", {
-        "d": d, "o": o, "error": error, "snap": snap, "reboot": reboot, "fresh": auth.reauth_fresh(request.state.sess),
+        "d": d, "o": o, "error": error, "snap": snap, "reboot": reboot,
         "here": f"/urzadzenia/{device_id}/akcje/{ref_id}/{key}"}, status_code)
 
 
@@ -52,6 +45,12 @@ def action_confirm(request: Request, device_id: int, ref_id: int, key: str, sess
 @router.post("/urzadzenia/{device_id:int}/akcje/{ref_id:int}/{key}")
 async def action_start(request: Request, device_id: int, ref_id: int, key: str, sess: dict = Depends(require_admin)):
     form = await request.form()
+    if (known := actions.catalog().get(key)) and known[1].dangerous:
+        with request.app.state.engine.connect() as conn:
+            ready = any(o["ref_id"] == ref_id and o["key"] == key and not o["reason"]
+                        for o in actions.for_device(conn, device_id))
+        if ready:       # odmowa z innego powodu nie pyta o hasło na próżno
+            await require_fresh(request, sess)
     with request.app.state.engine.begin() as conn:
         try:
             run_id = actions.request(conn, device_id=device_id, ref_id=ref_id, key=key, user=sess["login"],
@@ -84,8 +83,7 @@ def action_list(request: Request, sess: dict = Depends(require_admin)):
         tokens = [{"row": r, "cls": types[r["type"]], "ready": actions.has_credentials(r)}
                   for r in ints if r["type"] in types and types[r["type"]].actions]
         on = actions.enabled(conn)
-    return render(request, "akcje.html", {"rows": rows, "tokens": tokens, "on": on, "labels": actions.STATUS_LABEL,
-                                          "fresh": auth.reauth_fresh(sess)})
+    return render(request, "akcje.html", {"rows": rows, "tokens": tokens, "on": on, "labels": actions.STATUS_LABEL})
 
 
 @router.get("/akcje/{run_id:int}")
@@ -102,8 +100,8 @@ def action_view(request: Request, run_id: int, sess: dict = Depends(require_admi
 
 
 @router.post("/akcje/wlacz")
-def actions_on(request: Request, sess: dict = Depends(require_admin)):
-    _need_reauth(sess, "/akcje")
+async def actions_on(request: Request, sess: dict = Depends(require_admin)):
+    await require_fresh(request, sess)
     with request.app.state.engine.begin() as conn:
         actions.set_enabled(conn, True, sess["login"], client_ip(request))
     return RedirectResponse("/akcje", 303)
@@ -128,13 +126,14 @@ def _integration(conn, integration_id):
 @router.post("/admin/integracje/{integration_id:int}/uprawnienia")
 async def integration_grants(request: Request, integration_id: int, sess: dict = Depends(require_admin)):
     form = await request.form()
-    with request.app.state.engine.begin() as conn:
+    with request.app.state.engine.connect() as conn:
         row = _integration(conn, integration_id)
-        if not registry()[row["type"]].grants:
-            raise NotFound("Ta integracja nie ma zakresów do wyboru.")
-        chosen = set(form.getlist("grant"))
-        if chosen - set((row["config"] or {}).get("permissions") or []):      # odebranie działa od razu, jak wyłącznik
-            _need_reauth(sess, f"/admin/integracje/{integration_id}#uprawnienia")
+    if not registry()[row["type"]].grants:
+        raise NotFound("Ta integracja nie ma zakresów do wyboru.")
+    chosen = set(form.getlist("grant"))
+    if chosen - set((row["config"] or {}).get("permissions") or []):          # odebranie działa od razu, jak wyłącznik
+        await require_fresh(request, sess)
+    with request.app.state.engine.begin() as conn:
         actions.save_grants(conn, row, chosen, sess["login"], client_ip(request))
     return RedirectResponse(f"/admin/integracje/{integration_id}?sprawdz=1", 303)
 
@@ -142,7 +141,7 @@ async def integration_grants(request: Request, integration_id: int, sess: dict =
 @router.post("/admin/integracje/{integration_id:int}/akcje")
 async def action_token_save(request: Request, integration_id: int, sess: dict = Depends(require_admin)):
     back = f"/admin/integracje/{integration_id}#akcje"
-    _need_reauth(sess, back)
+    await require_fresh(request, sess)
     form = await request.form()
     with request.app.state.engine.begin() as conn:
         row = _integration(conn, integration_id)
@@ -170,7 +169,7 @@ def _keys(form):
 @router.post("/urzadzenia/{device_id:int}/akcje-dozwolone")
 async def device_allowed(request: Request, device_id: int, sess: dict = Depends(require_admin)):
     back = f"/urzadzenia/{device_id}#akcje"
-    _need_reauth(sess, back)
+    await require_fresh(request, sess)
     form = await request.form()
     with request.app.state.engine.begin() as conn:
         if not inv.get_device(conn, device_id):
@@ -193,7 +192,7 @@ async def device_allowed(request: Request, device_id: int, sess: dict = Depends(
 
 @router.post("/admin/profile/{profile_id:int}/akcje")
 async def profile_allowed(request: Request, profile_id: int, sess: dict = Depends(require_admin)):
-    _need_reauth(sess, "/admin/profile")
+    await require_fresh(request, sess)
     form = await request.form()
     with request.app.state.engine.begin() as conn:
         p = conn.execute(select(profile).where(profile.c.id == profile_id)).mappings().first()

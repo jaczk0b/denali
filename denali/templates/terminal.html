@@ -15,7 +15,7 @@
       <p class="muted small">{{ o.spec.effect }} Sesja kończy się po 2 godzinach, a system w maszynie dalej pyta o własne hasło.</p>
       <form method="post" action="/terminale/{{ d.id }}/konsola/{{ o.ref_id }}">
         <input type="hidden" name="csrf_token" value="{{ csrf }}">
-        <button class="btn primary" type="submit">{{ "Otwórz konsolę" if fresh else "Otwórz konsolę (potwierdzenie hasłem)" }}</button>
+        <button class="btn primary" type="submit">Otwórz konsolę</button>
       </form>
     {% endif %}
   {% else %}

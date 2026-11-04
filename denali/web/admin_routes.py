@@ -13,7 +13,8 @@ from ..db import kv_get, kv_set
 from ..models import app_user, device, profile, session
 from ..templating import render
 from .auth_routes import _secure
-from .deps import COOKIE, PRELOGIN_COOKIE, client_ip, get_session, require_admin, require_user, safe_next, set_cookie
+from .deps import (COOKIE, PRELOGIN_COOKIE, RESUME_PATH, Redirect, client_ip, get_session, require_admin, require_user,
+                   safe_next, set_cookie, take_pending)
 from .infra_routes import EDIT_SETTINGS, parse_setting
 
 router = APIRouter()
@@ -59,6 +60,17 @@ def reauth(request: Request, password: str = Form(""), code: str = Form(""), nex
         auth.mark_reauth(conn, sess["token"])
         auth.audit(conn, "reauth", user=sess["login"], ip=ip)
     return RedirectResponse(nxt or "/", 303)
+
+
+@router.get(RESUME_PATH)
+def reauth_resume(request: Request, sess: dict = Depends(require_user)):
+    if not auth.reauth_fresh(sess):
+        raise Redirect(f"/potwierdz?next={RESUME_PATH}")
+    with request.app.state.engine.begin() as conn:
+        pending = take_pending(conn, request.app.state.box, sess)
+    if not pending:
+        raise Redirect("/")
+    return render(request, "dokoncz.html", {"pending": pending})
 
 
 # ───────────────────────── tablet (kiosk) ─────────────────────────
@@ -158,7 +170,7 @@ def _profiles_page(request, conn, error=None, status_code=200):
     return render(request, "admin_profile.html", {
         "rows": rows, "usage": usage, "defs": profiles.SETTINGS, "edit_settings": EDIT_SETTINGS, "error": error,
         "action_catalog": [(k, c, a) for k, (c, a) in actions.catalog().items()],
-        "fresh": auth.reauth_fresh(request.state.sess)}, status_code)
+}, status_code)
 
 
 @router.get("/admin/profile")

@@ -289,7 +289,6 @@
     </ul>
     <details class="mt">
       <summary>Dozwolone akcje: {{ allowed | select("in", action_keys | map(attribute=0) | list) | list | length }} z {{ action_keys | length }}{% if settings.actions.source == "urzadzenie" %} · <span class="pill warn">inne niż profil</span>{% endif %}</summary>
-      {% if fresh %}
       <form method="post" action="/urzadzenia/{{ d.id }}/akcje-dozwolone" class="mt">
         <input type="hidden" name="csrf_token" value="{{ csrf }}">
         {% for key, spec, cls in action_keys %}
@@ -301,9 +300,6 @@
       <form method="post" action="/urzadzenia/{{ d.id }}/akcje-dozwolone"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="clear" value="1"><button class="link" type="submit">jak w profilu „{{ profile_name }}”</button></form>
       {% endif %}
       <p class="muted small">Najlepiej raz w <a href="/admin/profile">Profilach</a> — dla wszystkich urządzeń tego typu.</p>
-      {% else %}
-      <p class="small mt">Zmiana tego, co wolno, wymaga potwierdzenia. <a href="/potwierdz?next={{ ('/urzadzenia/%d#akcje' % d.id) | urlencode }}">Potwierdź hasłem i kodem</a></p>
-      {% endif %}
     </details>
     {% endif %}
     {% if action_runs %}

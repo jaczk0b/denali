@@ -34,7 +34,6 @@
       <td colspan="2">
         <details>
           <summary>{% for k, c, a in action_catalog if k in allowed %}{{ c.label }}: {{ a.label }}{% if not loop.last %}, {% endif %}{% else %}żadne{% endfor %}</summary>
-          {% if fresh %}
           <form method="post" action="/admin/profile/{{ p.id }}/akcje" class="mt">
             <input type="hidden" name="csrf_token" value="{{ csrf }}">
             {% for k, c, a in action_catalog %}
@@ -42,9 +41,6 @@
             {% endfor %}
             <div class="actions mt"><button class="btn small" type="submit">Zapisz dla profilu „{{ p.name }}”</button></div>
           </form>
-          {% else %}
-          <p class="small mt">Zmiana tego, co wolno, wymaga potwierdzenia. <a href="/potwierdz?next={{ '/admin/profile' | urlencode }}">Potwierdź hasłem i kodem</a></p>
-          {% endif %}
         </details>
       </td>
     </tr>

@@ -12,7 +12,7 @@
     {% if on %}
       <form method="post" action="/akcje/wylacz"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn danger" type="submit">Wyłącz wszystkie akcje</button></form>
     {% else %}
-      <form method="post" action="/akcje/wlacz"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn primary" type="submit">Włącz akcje{% if not fresh %} (potwierdzenie hasłem){% endif %}</button></form>
+      <form method="post" action="/akcje/wlacz"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn primary" type="submit">Włącz akcje</button></form>
     {% endif %}
   </div>
 </div>

@@ -77,7 +77,6 @@
     {% else %}
       <p class="muted">Brak — panel nie wykona żadnej akcji przez tę integrację.</p>
     {% endif %}
-    {% if fresh %}
     <form method="post" action="/admin/integracje/{{ row.id }}/akcje" class="mt" autocomplete="off">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       {% for f in cls.action_fields %}
@@ -87,9 +86,6 @@
       {% endfor %}
       <button class="btn" type="submit">{{ "Zmień token do akcji" if row.action_ct else "Zapisz token do akcji" }}</button>
     </form>
-    {% else %}
-    <p class="small mt">Zapis tokenu do akcji wymaga potwierdzenia. <a href="/potwierdz?next={{ ('/admin/integracje/%d#akcje' % row.id) | urlencode }}">Potwierdź hasłem i kodem</a></p>
-    {% endif %}
   </section>
   {% endif %}
 

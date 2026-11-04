@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Potwierdzono{% endblock %}
+{% block content %}
+{# denali.js wysyła ten formularz sam; przycisk jest na wypadek wyłączonego JavaScriptu #}
+<form class="card narrow" method="post" action="{{ pending.url }}" data-autosubmit>
+  <h1>Potwierdzono</h1>
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% for name, value in pending.fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+  <p class="muted">Dokańczam to, co było kliknięte…</p>
+  <button class="btn primary wide" type="submit">Dokończ</button>
+</form>
+{% endblock %}
