@@ -27,6 +27,14 @@ STATES = {"running": ("ok", "działa"), "stopped": ("down", "wyłączony"), "sto
           "upgrading": ("warn", "zmiana planu"), "maintenance": ("warn", "prace serwisowe OVH"),
           "backuping": ("warn", "kopia w toku"), "rescued": ("warn", "tryb ratunkowy")}
 WORST = ("down", "warn", "ok")
+# Kody OVH, które dotyczą samych kluczy — tylko te przerywają odczyt; każdy inny błąd dotyczy jednego zapytania.
+KEY_ERRORS = {
+    "INVALID_KEY": "OVH nie zna tego Application Key — sprawdź pole i region API (token z ovh-eu nie działa w ovh-ca).",
+    "INVALID_SIGNATURE": "OVH odrzuciło podpis — Application Secret jest błędny albo należy do innego tokenu.",
+    "INVALID_CREDENTIAL": "OVH odrzuciło Consumer Key — jest błędny, wygasł albo token nie został potwierdzony.",
+    "NOT_CREDENTIAL": "OVH nie zna tego Consumer Key — sprawdź pole i czy jest z tego samego tokenu co Application Key.",
+    "QUERY_TIME_OUT": "OVH odrzuciło czas zapytania — sprawdź zegar serwera panelu.",
+}
 
 
 class _Unavailable(AdapterError):
@@ -117,13 +125,16 @@ class Ovh(Adapter):
             except ValueError:
                 raise AdapterError("Odpowiedź nie wygląda na API OVH.") from None
         try:
-            code = r.json().get("errorCode", "")
+            body = r.json()
+            code, message = body.get("errorCode", ""), str(body.get("message") or "")[:150]
         except (ValueError, AttributeError):
-            code = ""
+            code, message = "", ""
+        if code in KEY_ERRORS:
+            raise AdapterError(KEY_ERRORS[code])
         if r.status_code == 404 or code == "NOT_GRANTED_CALL":
             raise _Unavailable(f"Token nie ma dostępu do {path} — załóż nowy z uprawnieniami z instrukcji.")
-        if r.status_code in (400, 401, 403):
-            raise AdapterError("OVH odrzuciło klucze — sprawdź Application Key, Application Secret i Consumer Key.")
+        if r.status_code < 500:
+            raise _Unavailable(f"OVH odrzuciło {path} (błąd {r.status_code}): {message or code or 'bez opisu'}")
         raise AdapterError(f"API OVH zwróciło błąd {r.status_code} dla {path}.")
 
     async def _optional(self, cli, path, params=None):

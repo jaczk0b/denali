@@ -140,14 +140,39 @@ def test_bez_uprawnien_do_rachunkow_dziala_dalej():
     assert "brak uprawnień" in run(adapter(ovh_api(billing=False)).test())
 
 
-def test_bledy():
+@pytest.mark.parametrize("status,code,field", [
+    (403, "INVALID_KEY", "Application Key"), (400, "INVALID_SIGNATURE", "Application Secret"),
+    (403, "INVALID_CREDENTIAL", "Consumer Key"), (403, "NOT_CREDENTIAL", "Consumer Key"),
+    (400, "QUERY_TIME_OUT", "zegar"),
+])
+def test_blad_wskazuje_ktory_klucz(status, code, field):
     def denied(request):
         if request.url.path.endswith("/auth/time"):
             return httpx.Response(200, json=1_800_000_000)
-        return httpx.Response(403, json={"errorCode": "INVALID_CREDENTIAL", "message": "This credential is not valid"})
-    with pytest.raises(AdapterError, match="odrzuciło klucze"):
+        return httpx.Response(status, json={"errorCode": code, "message": "nie"})
+    with pytest.raises(AdapterError, match=field):
         run(adapter(httpx.MockTransport(denied)).test())
 
+
+def test_blad_jednego_zapytania_to_nie_odrzucone_klucze():
+    good = ovh_api()
+
+    def transport(request):
+        if request.url.path.endswith("/me/bill"):
+            return httpx.Response(400, json={"message": "Bad date"})
+        return good.handler(request)
+    out = run(adapter(httpx.MockTransport(transport)).poll())
+    assert len(out.found) == 1
+
+    def vps_fails(request):
+        if request.url.path.endswith("/1.0/vps"):
+            return httpx.Response(403, json={"message": "Zablokowane przez IAM"})
+        return good.handler(request)
+    with pytest.raises(AdapterError, match="Zablokowane przez IAM"):
+        run(adapter(httpx.MockTransport(vps_fails)).test())
+
+
+def test_bledy():
     def empty(request):
         return httpx.Response(200, json=1_800_000_000 if request.url.path.endswith("/auth/time") else [])
     with pytest.raises(AdapterError, match="nie ma VPS"):
