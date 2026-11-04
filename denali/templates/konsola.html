@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}Konsola: {{ row.target }}{% endblock %}
+{% block head %}{% if not ended %}<script type="module" src="/static/konsola.js?v={{ STATIC_V }}"></script>{% endif %}{% endblock %}
+{% block chrome %}
+{% set back = "/terminale/%d" % row.device_id if row.device_id else "/terminale" %}
+{% if ended %}
+<main class="page">
+  <section class="card narrow">
+    <h1>Konsola: {{ row.target }}</h1>
+    {{ alerts(row.close_reason or "Ta sesja już się skończyła.") }}
+    <a class="btn mt" href="{{ back }}">Wróć i otwórz ponownie</a>
+  </section>
+</main>
+{% else %}
+<div class="console-page" id="konsola" data-start="/terminale/konsola/{{ row.id }}/start"
+     data-ws="/terminale/konsola/{{ row.id }}/ws" data-csrf="{{ csrf }}" data-back="{{ back }}">
+  <div class="console-bar">
+    <a href="{{ back }}">Terminale</a>
+    <strong>{{ row.target }}</strong>
+    <span class="muted small grow" id="console-status" role="status">Łączę…</span>
+    <button class="btn small" id="console-cad" type="button" disabled>Ctrl+Alt+Del</button>
+    <button class="btn small danger" id="console-end" type="button">Rozłącz</button>
+  </div>
+  <div class="console-screen" id="console-screen"></div>
+</div>
+{% endif %}
+{% endblock %}

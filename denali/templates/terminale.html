@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_makra.html" import console_history %}
+{% block title %}Terminale{% endblock %}
+{% block content %}
+<h1>Terminale</h1>
+<p class="muted">Konsola maszyn z Proxmoxa i gotowe polecenia tylko do odczytu przez agenta. Otwarcie konsoli wymaga potwierdzenia hasłem i kodem,
+  a każda sesja i każde polecenie trafia do <a href="/admin/audyt">audytu</a>.</p>
+
+<section class="card">
+  <h2>Urządzenia</h2>
+  <ul class="list-rows">
+    {% for d in devices %}
+    <li>
+      <a class="grow" href="/terminale/{{ d.id }}">{{ d.name }}</a>
+      {% if d.console %}<span class="small{% if d.console[0].reason %} muted{% endif %}">konsola</span>{% endif %}
+      {% if d.commands %}<span class="small{% if d.commands[0].reason %} muted{% endif %}">polecenia</span>{% endif %}
+      <a class="btn small" href="/terminale/{{ d.id }}">Otwórz</a>
+    </li>
+    {% else %}
+    <li class="muted">Nic nie jest dozwolone. W <a href="/admin/profile">Profilach</a> zaznacz „Konsola (VNC)” (Proxmox) albo „Gotowe polecenia” (agent).</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="card table-wrap">
+  <h2>Ostatnie sesje konsoli</h2>
+  {{ console_history(history) }}
+</section>
+{% endblock %}

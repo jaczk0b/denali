@@ -8,6 +8,7 @@ liście dozwolonych akcji w /etc/denali-agent/config.json (plik roota — panel 
     sudo python3 denali-agent.py install https://denali.example.com KOD-Z-PANELU [--akcje apt_upgrade,reboot]
     sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade     # dopisz akcję do lokalnej listy
     sudo python3 /opt/denali-agent/denali-agent.py pozwol reboot          # restart maszyny z panelu
+    sudo python3 /opt/denali-agent/denali-agent.py pozwol polecenia       # gotowe polecenia z karty Terminale
     sudo python3 /opt/denali-agent/denali-agent.py zabron apt_upgrade     # usuń akcję z listy
     sudo python3 /opt/denali-agent/denali-agent.py uninstall
     python3 /opt/denali-agent/denali-agent.py print        # raport na ekran, bez wysyłania
@@ -35,7 +36,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 USER = "denali-agent"
 CONFIG_PATH = "/etc/denali-agent/config.json"
 INSTALL_DIR = "/opt/denali-agent"
@@ -46,9 +47,22 @@ JOBS_DIR = STATE_DIR + "/zlecenia"         # zapisuje usługa raportu, czyta i u
 RESULTS_DIR = STATE_DIR + "/wyniki"        # zapisuje usługa akcji, usuwa usługa raportu po potwierdzeniu z Denali
 JOB_NAME = re.compile(r"^(\d{1,12})\.json$")
 OUTPUT_MAX = 3000
+RESULT_MAX = 20000          # wyjście gotowego polecenia bywa dłuższe niż wynik apt
 # Akcje, które agent umie wykonać. Wykona tylko te, które są też na lokalnej liście w config.json („actions”).
 ACTIONS = {"apt_upgrade": "apt-get update i apt-get upgrade (bez usuwania pakietów, stare pliki konfiguracji zostają)",
-           "reboot": "restart maszyny za minutę (shutdown -r +1); po aktualizacji z panelu — tylko gdy jest wymagany"}
+           "reboot": "restart maszyny za minutę (shutdown -r +1); po aktualizacji z panelu — tylko gdy jest wymagany",
+           "polecenia": "gotowe polecenia tylko do odczytu z listy COMMANDS (dyski, pamięć, usługi, logi, Docker)"}
+# Panel podaje tylko klucz — treść polecenia jest wyłącznie tutaj. Lista dla ludzi: denali/polecenia.py.
+COMMANDS = {"dyski": ["df", "-h", "-x", "tmpfs", "-x", "devtmpfs"],
+            "urzadzenia": ["lsblk", "-o", "NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL"],
+            "pamiec": ["free", "-h"],
+            "czas_pracy": ["uptime"],
+            "procesy": ["ps", "-eo", "pid,user,pcpu,pmem,comm", "--sort=-pcpu"],
+            "uslugi_bledy": ["systemctl", "--failed", "--no-pager"],
+            "logi_bledy": ["journalctl", "-p", "err", "-n", "50", "--no-pager"],
+            "docker": ["docker", "ps", "-a"],
+            "porty": ["ss", "-tulpn"],
+            "adresy": ["ip", "-br", "address"]}
 REBOOT_DELAY = "+1"         # minuta: wynik zdąży trafić do pliku, a raport zwykle jeszcze przed restartem
 UNIT_DIR = "/etc/systemd/system"
 INTERVAL = 60
@@ -373,8 +387,11 @@ def write_jobs(jobs, jobs_dir=None, tmp_dir=None):
             continue
         try:
             job = {"id": j["id"], "action": j["action"]}
-            if isinstance(j.get("params"), dict) and j["params"].get("if_required") is True:
-                job["params"] = {"if_required": True}      # jedyny parametr, jaki agent przyjmuje
+            params = j["params"] if isinstance(j.get("params"), dict) else {}
+            if params.get("if_required") is True:          # agent przyjmuje tylko te dwa parametry
+                job["params"] = {"if_required": True}
+            elif isinstance(params.get("command"), str) and params["command"] in COMMANDS:
+                job["params"] = {"command": params["command"]}
             # plik tymczasowy w katalogu wyników, żeby w katalogu zleceń pojawił się od razu cały
             _write_json(jobs_dir or JOBS_DIR, "{}.json".format(j["id"]), job, tmp_dir=tmp_dir or RESULTS_DIR)
             log("zlecenie {} z Denali: {}".format(j["id"], j["action"]))
@@ -440,7 +457,15 @@ def reboot_machine(params=None):
     return True, 0, _tail("Restart za minutę (shutdown -r {}).".format(REBOOT_DELAY), so, err)
 
 
-RUNNERS = {"apt_upgrade": apt_upgrade, "reboot": reboot_machine}
+def run_command(params=None):
+    argv = COMMANDS.get((params or {}).get("command"))
+    if not argv:
+        return False, None, "Agent nie zna tego polecenia (zainstaluj nowszą wersję poleceniem z panelu)."
+    rc, so, err = run(argv, timeout=30)
+    return rc == 0, rc, "\n".join(t.strip("\n") for t in (so, err) if t and t.strip())[:RESULT_MAX]
+
+
+RUNNERS = {"apt_upgrade": apt_upgrade, "reboot": reboot_machine, "polecenia": run_command}
 
 
 def do_jobs(cfg, jobs_dir=None, results_dir=None, runners=None):
@@ -481,7 +506,7 @@ def do_jobs(cfg, jobs_dir=None, results_dir=None, runners=None):
         except Exception as e:  # noqa: BLE001
             ok, rc, out = False, None, "{}: {}".format(type(e).__name__, e)
         _write_json(results_dir, name, {"id": jid, "state": "ok" if ok else "blad", "rc": rc,
-                                        "output": out[-OUTPUT_MAX:], "started": started, "finished": time.time()}, 0o644)
+                                        "output": out[-RESULT_MAX:], "started": started, "finished": time.time()}, 0o644)
         log("zlecenie {}: {} — {}".format(jid, action, "ok" if ok else "błąd (kod {})".format(rc)))
 
 

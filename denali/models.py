@@ -391,3 +391,18 @@ action_run = Table(
     Column("finished_at", Float),
     Column("result", Text, nullable=False, default=""),
 )
+
+console_session = Table(
+    "console_session", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("created_at", Float, nullable=False, index=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="SET NULL"), index=True),
+    Column("integration_id", Integer, ForeignKey("integration.id", ondelete="SET NULL")),
+    Column("external_id", String(200), nullable=False),
+    Column("target", String(200), nullable=False, default=""),  # nazwa urządzenia w chwili otwarcia
+    Column("user", String(64), nullable=False),
+    Column("ip", String(64), nullable=False, default=""),
+    Column("opened_at", Float),                                 # puste = jeszcze nie połączona
+    Column("closed_at", Float),
+    Column("close_reason", String(200), nullable=False, default=""),
+)

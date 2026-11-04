@@ -21,7 +21,7 @@ import time
 
 from sqlalchemy import select
 
-from . import auth, profiles
+from . import auth, polecenia, profiles
 from .adapters import AdapterError, registry
 from .db import kv_get, kv_set
 from .models import (action_run, device, external_ref, incident, incident_device, incident_event, integration,
@@ -75,7 +75,7 @@ def save_credentials(conn, box, row, form, user, ip=""):
     values = {}
     for f in cls.action_fields:
         raw = str(form.get(f.key) or "").strip()
-        values[f.key] = raw or (old.get(f.key, "") if f.kind == "secret" else "")
+        values[f.key] = raw or (old.get(f.key, "") if f.kind == "secret" or not f.required else "")
     try:
         cls.validate_action_secrets(values)
     except AdapterError as e:
@@ -152,17 +152,20 @@ def _blocker(conn, o, allowed, on):
                 f"sudo python3 /opt/denali-agent/denali-agent.py pozwol {spec.key}")
     if spec.when and (st["state"] if st else "unknown") not in spec.when:
         return "Nie w tym stanie obiektu."
-    if _busy(conn, row["id"], o["external_id"]):
+    if not spec.terminal and _busy(conn, row["id"], o["external_id"]):
         return "Na tym obiekcie trwa inna akcja."
     return None
 
 
-def for_device(conn, device_id):
-    """Akcje urządzenia do karty: każda z oceną, czy wolno ją teraz zlecić, i dlaczego nie."""
+def for_device(conn, device_id, terminal=False):
+    """Akcje urządzenia do karty: każda z oceną, czy wolno ją teraz zlecić, i dlaczego nie.
+    terminal=True: te z karty Terminale (konsola, gotowe polecenia) zamiast zwykłych."""
     allowed = set(profiles.value(conn, device_id, "actions"))
     on = enabled(conn)
     out = []
     for o in _options(conn, device_id):
+        if o["spec"].terminal != terminal:
+            continue
         o["allowed"] = o["key"] in allowed
         o["reason"] = _blocker(conn, o, allowed, on)
         out.append(o)
@@ -179,8 +182,8 @@ def known_for_device(conn, device_id):
     return out
 
 
-def find(conn, device_id, ref_id, key):
-    o = next((x for x in for_device(conn, device_id) if x["ref_id"] == ref_id and x["key"] == key), None)
+def find(conn, device_id, ref_id, key, terminal=False):
+    o = next((x for x in for_device(conn, device_id, terminal) if x["ref_id"] == ref_id and x["key"] == key), None)
     if not o:
         raise ActionError("Tej akcji nie ma dla tego urządzenia.")
     return o
@@ -220,18 +223,19 @@ def _incident_note(conn, device_id, text, user, now):
         conn.execute(incident_event.insert().values(incident_id=iid, ts=now, kind="akcja", text=text, user=user))
 
 
-def _insert(conn, o, dev, user, ip, params, status, now, after_id=None):
+def _insert(conn, o, dev, user, ip, params, status, now, after_id=None, label=None):
     return conn.execute(action_run.insert().values(
         created_at=now, device_id=dev.id, integration_id=o["integration"]["id"], external_id=o["external_id"],
-        action=o["key"], label=o["spec"].label, target=dev.name, params=params, status=status, after_id=after_id,
+        action=o["key"], label=label or o["spec"].label, target=dev.name, params=params, status=status, after_id=after_id,
         requested_by=user, ip=ip)).inserted_primary_key[0]
 
 
 def request(conn, *, device_id, ref_id, key, user, role, ip="", reauth_ok=False, snapshot_first=False,
-            reboot_after=False, now=None):
+            reboot_after=False, command=None, now=None):
     """Zleca akcję po sprawdzeniu wszystkich zamków. Zwraca id przebiegu, który trzeba wykonać od razu
     (pierwszy w łańcuchu: snapshot albo sama akcja). reboot_after: po udanej aktualizacji przez agenta restart
-    maszyny — tylko gdy jest wymagany (sprawdza agent). Odmowa → ActionError i wpis „action_blocked” w audycie."""
+    maszyny — tylko gdy jest wymagany (sprawdza agent). command: klucz gotowego polecenia z karty Terminale.
+    Odmowa → ActionError i wpis „action_blocked” w audycie."""
     now = now or time.time()
     dev = conn.execute(select(device.c.id, device.c.name).where(device.c.id == device_id)).first()
 
@@ -245,11 +249,16 @@ def request(conn, *, device_id, ref_id, key, user, role, ip="", reauth_ok=False,
     if not dev:
         refuse("Nie ma takiego urządzenia.")
     try:
-        o = find(conn, device_id, ref_id, key)
+        o = find(conn, device_id, ref_id, key, terminal=command is not None)
     except ActionError as e:
         refuse(str(e))
     if o["reason"]:
         refuse(o["reason"])
+    params, label = {}, None
+    if command is not None:
+        if o["key"] != "agent.polecenia" or command not in polecenia.COMMANDS:
+            refuse("Nie ma takiego polecenia.")
+        params, label = {"command": command}, polecenia.COMMANDS[command].label
     if o["spec"].dangerous and not reauth_ok:
         refuse("Ta akcja wymaga potwierdzenia hasłem i kodem 2FA.")
     reboot = None
@@ -268,9 +277,9 @@ def request(conn, *, device_id, ref_id, key, user, role, ip="", reauth_ok=False,
                         "zlecona", now)
         auth.audit(conn, "action_request", user=user, ip=ip, target=dev.name,
                    params={"run": first, "action": snap["key"], "external_id": snap["external_id"]})
-    run_id = _insert(conn, o, dev, user, ip, {}, "czeka" if first else "zlecona", now, after_id=first)
+    run_id = _insert(conn, o, dev, user, ip, params, "czeka" if first else "zlecona", now, after_id=first, label=label)
     auth.audit(conn, "action_request", user=user, ip=ip, target=dev.name,
-               params={"run": run_id, "action": key, "external_id": o["external_id"], "after": first})
+               params={"run": run_id, "action": key, "external_id": o["external_id"], "after": first, **params})
     if reboot:
         last = _insert(conn, reboot, dev, user, ip, {"if_required": True}, "czeka", now, after_id=run_id)
         auth.audit(conn, "action_request", user=user, ip=ip, target=dev.name,
@@ -291,10 +300,10 @@ def _claim(conn, run_id, now):
                         .values(status="trwa", started_at=now)).rowcount == 1
 
 
-def finish(conn, run, ok, text, now=None):
+def finish(conn, run, ok, text, now=None, limit=2000):
     """Wynik akcji: zapis, audyt, przebieg incydentu, kolejny krok łańcucha, szybszy odczyt źródła."""
     now = now or time.time()
-    text = str(text or ("wykonana" if ok else "nie powiodła się"))[:2000]
+    text = str(text or ("wykonana" if ok else "nie powiodła się"))[:limit]
     if not conn.execute(action_run.update().where(action_run.c.id == run["id"], action_run.c.status.in_(ACTIVE))
                         .values(status="ok" if ok else "blad", finished_at=now, result=text)).rowcount:
         return
@@ -465,8 +474,9 @@ def agent_exchange(conn, row, reported, now=None):
             ack.append(run["id"])
             if run["status"] in ACTIVE:
                 out = str(j.get("output") or "").strip()
-                finish(conn, run, state == "ok", (out[-1500:] if out else "") or
-                       ("wykonana" if state == "ok" else f"kod wyjścia {j.get('rc')}"), now)
+                limit = polecenia.OUTPUT_MAX if (run["params"] or {}).get("command") else 1500
+                finish(conn, run, state == "ok", (out[-limit:] if out else "") or
+                       ("wykonana" if state == "ok" else f"kod wyjścia {j.get('rc')}"), now, limit=max(limit, 2000))
     jobs = []
     if enabled(conn):
         for run in conn.execute(select(action_run).where(action_run.c.integration_id == row["id"],
@@ -477,6 +487,8 @@ def agent_exchange(conn, row, reported, now=None):
             job = {"id": run["id"], "action": run["action"].split(".", 1)[1]}
             if (run["params"] or {}).get("if_required"):
                 job["params"] = {"if_required": True}
+            elif (run["params"] or {}).get("command"):
+                job["params"] = {"command": run["params"]["command"]}
             jobs.append(job)
     return jobs, ack
 

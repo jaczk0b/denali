@@ -108,6 +108,7 @@
     <ol>
       <li><strong>Datacenter → Permissions → Roles → Create</strong>: nazwa <code>PanelActions</code>, uprawnienia <code>VM.PowerMgmt</code> i <code>VM.Snapshot</code>.</li>
       <li><strong>API Tokens → Add</strong>: użytkownik <code>denali@pve</code>, Token ID <code>akcje</code>, <em>Privilege Separation</em> zaznaczone. Skopiuj <strong>Secret</strong>.</li>
+      <li>Konsola (karta Terminale) — osobno: rola <code>PanelConsole</code> tylko z <code>VM.Console</code> i token <code>denali@pve!konsola</code> z nią na <code>/vms</code>, wpisane w polach „token do konsoli” powyżej.</li>
       <li><strong>Permissions → Add → API Token Permission</strong>: ścieżka <code>/vms</code> (wszystkie maszyny) albo <code>/vms/107</code> (tylko wybrane), token <code>denali@pve!akcje</code>, rola <code>PanelActions</code>.</li>
       <li>Jeśli akcja dostanie odmowę (403): tę samą rolę na tej samej ścieżce nadaj też użytkownikowi <code>denali@pve</code> — token z oddzielonymi uprawnieniami ma najwyżej to, co jego użytkownik.</li>
     </ol>

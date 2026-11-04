@@ -1,0 +1,160 @@
+"""Karta Terminale (tylko administrator): konsola VM i LXC, gotowe polecenia przez agenta, historia sesji.
+
+O tym, czy wolno, decydują consoles.request i actions.request. WebSocket nie przechodzi przez require_admin, więc
+sprawdza sam: Origin (ciasteczko poszłoby też z obcej strony), sesję i to, czy konsolę zgłosił ten sam użytkownik.
+"""
+import time
+from urllib.parse import urlsplit
+
+from fastapi import APIRouter, Depends, Request, WebSocket
+from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy import select
+
+from .. import actions, auth, consoles, inventory as inv, polecenia
+from ..adapters import AdapterError
+from ..models import action_run
+from ..templating import render
+from .deps import COOKIE, NotFound, Redirect, client_ip, require_admin
+
+router = APIRouter()
+COMMAND_KEY = "agent.polecenia"
+
+
+def _transport(request):
+    return getattr(request.app.state, "adapter_transport", None)   # w testach: nagrane odpowiedzi API
+
+
+def _device_or_404(conn, device_id):
+    d = inv.get_device(conn, device_id)
+    if not d:
+        raise NotFound("Nie ma takiego urządzenia.")
+    return d
+
+
+@router.get("/terminale")
+def terminals(request: Request, sess: dict = Depends(require_admin)):
+    with request.app.state.engine.connect() as conn:
+        rows = consoles.devices(conn, request.app.state.box)
+        history = consoles.recent(conn)
+    return render(request, "terminale.html", {"devices": rows, "history": history})
+
+
+@router.get("/terminale/{device_id:int}")
+def terminal_device(request: Request, device_id: int, sess: dict = Depends(require_admin)):
+    with request.app.state.engine.connect() as conn:
+        d = _device_or_404(conn, device_id)
+        opts = consoles.for_device(conn, request.app.state.box, device_id)
+        runs = conn.execute(select(action_run).where(action_run.c.device_id == device_id, action_run.c.action == COMMAND_KEY)
+                            .order_by(action_run.c.id.desc()).limit(10)).mappings().all()
+        history = consoles.recent(conn, device_id, 10)
+    return render(request, "terminal.html", {
+        "d": d, "console": [o for o in opts if o["key"] == consoles.KEY], "agents": [o for o in opts if o["key"] == COMMAND_KEY],
+        "commands": polecenia.COMMANDS, "runs": runs, "history": history, "fresh": auth.reauth_fresh(sess),
+        "active": any(r["status"] in actions.ACTIVE for r in runs), "labels": actions.STATUS_LABEL})
+
+
+@router.post("/terminale/{device_id:int}/polecenie")
+async def terminal_command(request: Request, device_id: int, sess: dict = Depends(require_admin)):
+    form = await request.form()
+    try:
+        ref_id = int(form.get("ref_id") or 0)
+    except ValueError:
+        ref_id = 0
+    with request.app.state.engine.begin() as conn:
+        _device_or_404(conn, device_id)
+        try:
+            actions.request(conn, device_id=device_id, ref_id=ref_id, key=COMMAND_KEY, user=sess["login"], role=sess["role"],
+                            ip=client_ip(request), command=str(form.get("command") or ""))
+            error = None
+        except actions.ActionError as e:
+            error = str(e)
+    if error:
+        return render(request, "blad.html", {"title": "Polecenie niemożliwe", "text": error,
+                                             "back": f"/terminale/{device_id}"}, 403)
+    return RedirectResponse(f"/terminale/{device_id}", 303)
+
+
+@router.post("/terminale/{device_id:int}/konsola/{ref_id:int}")
+def console_request(request: Request, device_id: int, ref_id: int, sess: dict = Depends(require_admin)):
+    if not auth.reauth_fresh(sess):
+        raise Redirect(f"/potwierdz?next=/terminale/{device_id}")
+    with request.app.state.engine.begin() as conn:
+        try:
+            console_id = consoles.request(conn, request.app.state.box, device_id=device_id, ref_id=ref_id, user=sess["login"],
+                                          role=sess["role"], ip=client_ip(request), reauth_ok=True)
+            error = None
+        except consoles.ConsoleError as e:
+            error = str(e)
+    if error:
+        return render(request, "blad.html", {"title": "Konsola niedostępna", "text": error,
+                                             "back": f"/terminale/{device_id}"}, 403)
+    return RedirectResponse(f"/terminale/konsola/{console_id}", 303)
+
+
+@router.get("/terminale/konsola/{console_id:int}")
+def console_page(request: Request, console_id: int, sess: dict = Depends(require_admin)):
+    with request.app.state.engine.connect() as conn:
+        row = consoles.get(conn, console_id)
+    if not row or row["user"] != sess["login"]:
+        raise NotFound("Nie ma takiej sesji.")
+    return render(request, "konsola.html", {"row": row, "ended": row["opened_at"] is not None or row["closed_at"] is not None})
+
+
+@router.post("/terminale/konsola/{console_id:int}/start")
+async def console_start(request: Request, console_id: int, sess: dict = Depends(require_admin)):
+    app = request.app
+    consoles.forget_unused(app)
+    with app.state.engine.begin() as conn:
+        try:
+            row, integ, data = consoles.claim(conn, console_id, sess["login"])
+        except consoles.ConsoleError as e:
+            return JSONResponse({"error": str(e)}, 409)
+    try:
+        adapter = actions.adapter_for(integ, app.state.box, _transport(request))
+        info = await adapter.console_ticket(row["external_id"], data)
+    except AdapterError as e:
+        with app.state.engine.begin() as conn:
+            consoles.close(conn, row, str(e))
+        return JSONResponse({"error": str(e)}, 502)
+    app.state.console_tickets[console_id] = {"adapter": adapter, "info": info, "at": time.time()}
+    return {"password": info["ticket"]}
+
+
+def _same_origin(ws):
+    origin = urlsplit(ws.headers.get("origin", "")).netloc
+    base = urlsplit(ws.app.state.settings.base_url or "").netloc
+    return bool(origin) and origin in (ws.headers.get("host", ""), base)
+
+
+@router.websocket("/terminale/konsola/{console_id:int}/ws")
+async def console_ws(ws: WebSocket, console_id: int):
+    app = ws.app
+    token, ip = ws.cookies.get(COOKIE, ""), ws.client.host if ws.client else ""
+    with app.state.engine.begin() as conn:
+        sess = auth.load_session(conn, token, ip, touch=False)
+        row = consoles.get(conn, console_id)
+    if (not _same_origin(ws) or not sess or sess["kind"] != "zwykla" or sess["role"] != "admin" or not row
+            or row["user"] != sess["login"] or console_id not in app.state.console_tickets):
+        await ws.close(4403)        # przed accept: przeglądarka widzi odmowę połączenia
+        return
+    pending = app.state.console_tickets.pop(console_id)
+    await ws.accept()
+    try:
+        upstream = await pending["adapter"].console_connect(pending["info"])
+    except AdapterError as e:
+        with app.state.engine.begin() as conn:
+            consoles.close(conn, row, str(e))
+        await ws.close(4502)
+        return
+
+    def check():
+        with app.state.engine.begin() as conn:
+            return consoles.why_stop(conn, row, token, ip)
+
+    reason = await consoles.bridge(ws, upstream, check)
+    with app.state.engine.begin() as conn:
+        consoles.close(conn, row, reason)
+    try:
+        await ws.close(1000)
+    except RuntimeError:            # przeglądarka już się rozłączyła
+        pass

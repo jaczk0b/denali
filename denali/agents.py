@@ -33,7 +33,7 @@ VIRT_KIND = {"kvm": "vm", "qemu": "vm", "vmware": "vm", "microsoft": "vm", "xen"
              "lxc": "lxc", "lxc-libvirt": "lxc", "none": "host"}
 
 
-AGENT_ACTIONS = ("apt_upgrade", "reboot")    # akcje, które agent umie wykonać (jego lokalna lista może zawierać tylko te)
+AGENT_ACTIONS = ("apt_upgrade", "reboot", "polecenia")    # akcje, które agent umie wykonać (jego lokalna lista może zawierać tylko te)
 
 
 class AgentError(ValueError):
@@ -56,6 +56,9 @@ class Agent(Adapter):
                    "Agent zrestartuje system za minutę (shutdown -r +1). Wszystko, co działa na maszynie, przez kilka "
                    "minut nie będzie dostępne. Na VM z Proxmoxa to samo robi „Uruchom ponownie” z Proxmoxa.",
                    ("host",), True),
+        ActionSpec("polecenia", "Gotowe polecenia (tylko odczyt)",
+                   "Agent uruchomi jedno z poleceń z listy w kodzie agenta (dyski, pamięć, usługi, logi). "
+                   "Dowolnego polecenia panel nie może zlecić.", ("host",), terminal=True),
     ]
 
     async def test(self):

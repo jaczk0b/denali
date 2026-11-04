@@ -4,6 +4,9 @@ Akcje (start, wyłączenie, restart, zatrzymanie, snapshot VM i LXC) — osobnym
 (VM.PowerMgmt, VM.Snapshot). Bez tego tokenu panel nie ma czym ich wykonać. Proxmox zwraca zadanie (UPID),
 którego koniec sprawdzamy osobno.
 
+Konsola VM i LXC (karta Terminale) — trzecim tokenem, tylko z VM.Console: vncproxy daje jednorazowy bilet, a panel
+przekazuje połączenie noVNC przez vncwebsocket. Bez hasła do systemu w maszynie konsola kończy się na ekranie logowania.
+
 Zatrzymana maszyna to „off” (wyłączona celowo), chyba że ma startować z hostem (onboot) — wtedy „down”.
 Aktualizacje węzła: lista pakietów z `/nodes/<węzeł>/apt/update` (ta sama co w Proxmoxie: Węzeł → Updates;
 Proxmox odświeża ją sam raz dziennie). PVEAuditor ją widzi (Sys.Audit).
@@ -11,9 +14,10 @@ Proxmox odświeża ją sam raz dziennie). PVEAuditor ją widzi (Sys.Audit).
 import asyncio
 import re
 import time
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
+import websockets
 
 from . import Adapter, ActionResult, ActionSpec, AdapterError, Field, Found, PollResult, State, apt_updates, lan_iface
 from .tls import clean_pem as _clean_pem, ssl_context, validate_pem_field
@@ -70,10 +74,15 @@ class Proxmox(Adapter):
                    RUNNING + ("unknown",)),
         ActionSpec("snapshot", "Zrób snapshot", "Proxmox zapisze snapshot maszyny (dyski, bez pamięci RAM). "
                    "Wrócić do niego można w Proxmoxie (maszyna → Snapshots → Rollback).", GUESTS),
+        ActionSpec("console", "Konsola (VNC)", "Ekran maszyny w przeglądarce: kto ma konsolę, może się zalogować do "
+                   "systemu albo przerwać jego start.", GUESTS, True, RUNNING, terminal=True),
     ]
     action_fields = [
         Field("action_token_id", "Identyfikator tokenu do akcji", help="np. denali@pve!akcje"),
         Field("action_token_secret", "Sekret tokenu do akcji", "secret"),
+        Field("console_token_id", "Identyfikator tokenu do konsoli", required=False,
+              help="np. denali@pve!konsola — osobny token z samym VM.Console na /vms. Puste = bez zmian."),
+        Field("console_token_secret", "Sekret tokenu do konsoli", "secret", required=False),
     ]
 
     @classmethod
@@ -93,10 +102,23 @@ class Proxmox(Adapter):
         tid = str(values.get("action_token_id", "")).strip()
         if "@" not in tid or "!" not in tid:
             raise AdapterError("Identyfikator tokenu ma postać użytkownik@realm!nazwa, np. denali@pve!akcje.")
+        cid, csecret = str(values.get("console_token_id", "")).strip(), str(values.get("console_token_secret", "")).strip()
+        if bool(cid) != bool(csecret) or (cid and ("@" not in cid or "!" not in cid)):
+            raise AdapterError("Token do konsoli: podaj identyfikator użytkownik@realm!nazwa i sekret — oba albo żadne.")
 
-    def _client(self, action=False):
+    @staticmethod
+    def console_ready(action_secrets):
+        return bool(action_secrets.get("console_token_id") and action_secrets.get("console_token_secret"))
+
+    def _console_token(self):
+        return (f"{self.action_secrets['console_token_id'].strip()}="
+                f"{self.action_secrets['console_token_secret'].strip()}")
+
+    def _client(self, action=False, console=False):
         url = str(self.config["url"]).strip().rstrip("/")
-        if action:
+        if console:
+            token = self._console_token()
+        elif action:
             token = f"{self.action_secrets['action_token_id'].strip()}={self.action_secrets['action_token_secret'].strip()}"
         else:
             token = f"{self.config['token_id'].strip()}={self.secrets['token_secret'].strip()}"
@@ -256,12 +278,46 @@ class Proxmox(Adapter):
         except ValueError:
             raise AdapterError("Odpowiedź nie wygląda na API Proxmoxa.") from None
 
-    async def run_action(self, key, external_id, data, params):
+    @staticmethod
+    def _guest_path(external_id, data):
         typ, _, vmid = external_id.partition("/")
         node = (data or {}).get("node")
         if typ not in ("qemu", "lxc") or not vmid.isdigit() or not node:
             raise AdapterError("Nie wiadomo, na którym węźle jest ta maszyna — poczekaj na odczyt Proxmoxa.")
-        base = f"/nodes/{quote(str(node), safe='')}/{typ}/{vmid}"
+        return f"/nodes/{quote(str(node), safe='')}/{typ}/{vmid}"
+
+    async def console_ticket(self, external_id, data):
+        """Bilet na konsolę: {path, port, ticket}. Proxmox czeka na połączenie około 10 sekund."""
+        path = self._guest_path(external_id, data)
+        async with self._client(console=True) as cli:
+            try:
+                res = await self._call(cli, "POST", path + "/vncproxy", {"websocket": 1})
+            except AdapterError as e:
+                if "uprawnień" in str(e):
+                    raise AdapterError("Token do konsoli nie ma uprawnień — nadaj mu rolę z VM.Console na „/vms”.") from None
+                raise
+        if not isinstance(res, dict) or not res.get("port") or not res.get("ticket"):
+            raise AdapterError("Proxmox nie podał biletu na konsolę.")
+        return {"path": path, "port": res["port"], "ticket": res["ticket"]}
+
+    async def console_connect(self, info):
+        """Połączenie WebSocket z konsolą (po bilecie z console_ticket)."""
+        u = urlsplit(str(self.config["url"]).strip().rstrip("/"))
+        query = urlencode({"port": info["port"], "vncticket": info["ticket"]})
+        try:
+            return await websockets.connect(
+                f"wss://{u.netloc}/api2/json{info['path']}/vncwebsocket?{query}", open_timeout=10, max_size=None,
+                subprotocols=["binary"], additional_headers={"Authorization": f"PVEAPIToken={self._console_token()}"},
+                ssl=_ssl_context(self.config.get("ca_pem", ""), bool(self.config.get("verify_tls", True))))
+        except websockets.InvalidStatus as e:
+            raise AdapterError(f"Proxmox odrzucił połączenie z konsolą (HTTP {e.response.status_code}) — token API na "
+                               "tej wersji Proxmoxa może nie obsługiwać vncwebsocket.") from None
+        except (OSError, websockets.InvalidHandshake, TimeoutError):
+            raise AdapterError("Nie udało się połączyć z konsolą w Proxmoxie.") from None
+
+    async def run_action(self, key, external_id, data, params):
+        base = self._guest_path(external_id, data)
+        node = data["node"]
         async with self._client(action=True) as cli:
             if key == "snapshot":
                 name = params.get("snapname") or time.strftime("denali-%Y%m%d-%H%M%S")

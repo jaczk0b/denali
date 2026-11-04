@@ -1,19 +1,19 @@
 # Do zrobienia
 
-Stan na 31.10.2026. Etapy 2 (rdzeń) i 3 (status) odebrane. Etapy 4 (aktualizacje) i 5 (akcje): kod gotowy, czekają
-na wdrożenie i sprawdzenie na serwerach. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
+Stan na 4.11.2026. Etapy 2 (rdzeń) i 3 (status) odebrane. Etapy 4 (aktualizacje) i 5 (akcje): wdrożone, panel za NPM, agent i akcje działają na testowej VM; zostają
+pozostałe punkty 3 i 3a. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
 
 ---
 
 ## 1. Po Twojej stronie — teraz
 
-- [ ] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
+- [x] `git push origin main`, potem *Deploy* stacka `denali` w Komodo (nowe: odświeżanie na żywo, zależność klientów
       od routera/AP, sprawdzenia z internetu, **Etap 4**, zakładki Infrastruktury, **Etap 5** z uzupełnieniami, Pocket ID — migracje bazy 0009–0014
       wykonają się same przy starcie).
-- [ ] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
+- [x] **Nginx Proxy Manager:** proxy host `denali.serwispowers.com` → `http://IP-VM:8000`, certyfikat Let's Encrypt
       (DNS Challenge, Cloudflare), Force SSL + HSTS, Access List tylko LAN + Tailscale (`100.64.0.0/10`).
       Instrukcja: README → Instalacja → krok 4.
-- [ ] Po NPM: w *Environment* stacka **`DENALI_DEV=0`** (teraz jest `1`, bo panel działa po zwykłym HTTP).
+- [x] Po NPM: w *Environment* stacka **`DENALI_DEV=0`** (teraz jest `1`, bo panel działa po zwykłym HTTP).
 - [ ] Po NPM: sprawdź w *Audycie*, czy przy logowaniu jest adres Twojego komputera, a nie NPM
       (jeśli NPM — popraw `DENALI_TRUSTED_PROXIES`).
 - [ ] Rekord DNS `denali` w Cloudflare (szara chmurka) albo wpis w lokalnym DNS.
@@ -53,7 +53,7 @@ Kod sprawdzony testami i przez prawdziwe HTTP (rejestracja i raport), ale **sam 
 
 - [ ] *Aktualizacje*: pakiety węzła pve zgadzają się z Proxmoxem (*pve → Updates*), PBS z PBS (*Administration → Updates*).
 - [ ] *Aktualizacje*: stacki z nowszym obrazem zgadzają się z Komodo (kropka „update available” przy stacku).
-- [ ] Agent na jednej VM z Dockerem: *Integracje → Dodaj: Agent na maszynie*, wklej polecenie. Po minucie: VM
+- [x] Agent na jednej VM z Dockerem: *Integracje → Dodaj: Agent na maszynie*, wklej polecenie. Po minucie: VM
       przypięta (bez kolejki), pakiety na liście = `apt list --upgradable` na tej VM.
 - [ ] Na tej VM: montaż NFS z TrueNAS widoczny na stronie agenta, na karcie VM zależność „dane · wykryta, aktualna”
       od TrueNAS. Po kilkunastu minutach (timer) „dane pod montażem sprawdzone …”.
@@ -67,10 +67,10 @@ Kod sprawdzony testami na nagranych odpowiedziach API (Proxmox, Komodo) i na pli
 była wykonana na prawdziwym Proxmoxie, Komodo ani maszynie** — przy pierwszej próbie wklej wynik z *Akcje → przebieg*.
 Zacznij od maszyny testowej (VM 120 albo inna, której restart niczego nie psuje).
 
-- [ ] Proxmox: rola `PanelActions` (`VM.PowerMgmt`, `VM.Snapshot`) i token `denali@pve!akcje` na `/vms` (instrukcja na
+- [x] Proxmox: rola `PanelActions` (`VM.PowerMgmt`, `VM.Snapshot`) i token `denali@pve!akcje` na `/vms` (instrukcja na
       stronie integracji Proxmox) → *Akcje — osobny token* → zapisz (wymaga hasła i kodu).
-- [ ] *Profile*: w profilu maszyn wirtualnych zaznacz „Proxmox VE: Zrób snapshot” i „Uruchom ponownie”.
-- [ ] Testowa VM: *Akcje → Zrób snapshot* → przebieg „wykonana”, snapshot widać w Proxmoxie (*VM → Snapshots*).
+- [x] *Profile*: w profilu maszyn wirtualnych zaznacz „Proxmox VE: Zrób snapshot” i „Uruchom ponownie”.
+- [x] Testowa VM: *Akcje → Zrób snapshot* → przebieg „wykonana”, snapshot widać w Proxmoxie (*VM → Snapshots*).
       Potem „Wyłącz” i „Uruchom” — stan VM na karcie zmienia się po następnym odczycie (do minuty).
 - [ ] Jeśli Proxmox odpowie 403: tę samą rolę na `/vms` nadaj też użytkownikowi `denali@pve` (token z oddzielonymi
       uprawnieniami ma najwyżej to, co jego użytkownik).
@@ -111,6 +111,22 @@ Zacznij od maszyny testowej (VM 120 albo inna, której restart niczego nie psuje
       z „HTTP 200/302”. Działa tylko, gdy *adres aplikacji* na karcie to publiczna nazwa (np. `https://immich.serwispowers.com`);
       przy adresie z IP w LAN sprawdzenia z internetu nie ma.
 - [x] Akceptacja Etapu 3 (31.10.2026).
+
+## 3b. Etap 6 — sprawdzenie na prawdziwych serwerach
+
+Kod sprawdzony testami, w tym prawdziwym WebSocketem po TLS i noVNC w przeglądarce na udawanym serwerze VNC. **Z prawdziwym
+Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersji Proxmoxa — przy błędzie wklej wersję
+(`pveversion`) i komunikat z paska konsoli albo z *Ostatnich sesji*.
+
+- [ ] *Deploy* (migracja 0015), w NPM **Websockets Support** włączone.
+- [ ] Proxmox: rola `PanelConsole` (`VM.Console`), token `denali@pve!konsola` na `/vms` (README → Terminale),
+      w Denali wpisany przy tokenie do akcji, w profilu „Konsola (VNC)”.
+- [ ] *Terminale* w dolnym pasku pulpitu → testowa VM → *Otwórz konsolę* → potwierdzenie → ekran, klawiatura, *Ctrl+Alt+Del*.
+- [ ] To samo na LXC.
+- [ ] *Akcje → Wyłącz wszystkie akcje* przy otwartej konsoli → rozłącza w ciągu 15 s; w *Ostatnich sesjach* powód.
+- [ ] Agent 1.3 (ponowna instalacja), `pozwol polecenia`, w profilu „Gotowe polecenia” → „Miejsce na dyskach” → wynik po około minucie.
+- [ ] W *Audycie*: `console_open`, `console_close`, `action_request` z kluczem polecenia.
+- [ ] Akceptacja Etapu 6.
 
 ## 4. Braki względem projektu (Etap 3)
 
@@ -181,3 +197,4 @@ Zakładka źródła (Proxmox, TrueNAS, Docker, Sieć) pokazuje się dopiero, gdy
 | Etap | Zakres | Kryterium odbioru |
 |---|---|---|
 | **5. Akcje** — kod gotowy 31.10.2026, do sprawdzenia (punkt 3a) | lista dozwolonych akcji (przez profil), potwierdzenia, audyt; Proxmox (start, wyłącz, restart, zatrzymaj, snapshot), Komodo (start, restart, stop, Deploy), agent (`apt upgrade` z lokalnej białej listy, snapshot przed); router — bez akcji do czasu OpenWrt | każda akcja ma wpis w audycie; akcja spoza listy jest niemożliwa nawet przez API |
+| **6. Terminale** — kod gotowy 4.11.2026, do sprawdzenia (punkt 3b); decyzja 4.11.2026, zmienia zasadę „żadnego shella” (PROJEKT.md, wiersz „Shell”) | osobna karta: gotowe polecenia przez lokalną białą listę agenta; konsola VM i LXC (noVNC) przez API Proxmoxa (osobny token z `VM.Console`, bez kluczy SSH w bazie, bez konsoli hosta); tylko admin, ponowne potwierdzenie przed otwarciem, 2 godziny na sesję | każde otwarcie i zamknięcie sesji ma wpis w audycie; bez potwierdzenia i dla innej roli sesja się nie otworzy, nawet przez API |

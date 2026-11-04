@@ -88,6 +88,7 @@ class ActionSpec:
     targets: tuple              # przedrostki external_id, np. ("qemu/", "lxc/")
     dangerous: bool = False     # wymaga ponownego hasła i kodu 2FA
     when: tuple = ()            # stany obiektu, w których ma sens (puste = zawsze)
+    terminal: bool = False      # tylko z karty Terminale (konsola, gotowe polecenia), nie obok akcji na urządzeniu
 
 
 @dataclass

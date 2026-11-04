@@ -21,7 +21,7 @@ Cel, do którego odnosi się każda decyzja:
 | Sieć | AX23 v1 → OpenWrt (router, pełny adapter); AX10 zostaje na fabrycznym oprogramowaniu (AP, adapter TP-Link tylko do odczytu) |
 | Hasła do urządzeń | Zostają w panelu (skarbiec), tylko dla admina, odsłanianie po haśle/2FA, każde w audycie |
 | Poza zakresem | Asystent AI, panel Start z pogodą/kalendarzem, widok domownika — w [POMYSLY.md](POMYSLY.md) |
-| Shell | Żadnego. Akcje wyłącznie przez API (Proxmox, Komodo, OpenWrt) albo lokalną białą listę agenta |
+| Shell | Do Etapu 5 żadnego: akcje wyłącznie przez API (Proxmox, Komodo, OpenWrt) albo lokalną białą listę agenta. Decyzja 4.11.2026: od Etapu 6 osobna karta z terminalami i VNC, bo panel nie jest wystawiony do internetu. Bez kluczy SSH w bazie |
 | Powiadomienia | **Discord (webhook)** na start |
 | Ustawienia urządzeń | **Minimum ustawień na pojedynczym urządzeniu** — zasada nadrzędna, patrz niżej (warunek akceptacji projektu) |
 
@@ -354,6 +354,7 @@ Migrację można powtórzyć — drugi przebieg niczego nie dubluje.
 | **3. Status** | adaptery Proxmox, PBS, TrueNAS, Komodo, OpenWrt, TP-Link, sprawdzenia (LAN + VPS), analiza przyczyny, incydenty automatyczne, powiadomienia (Discord), strażnik na VPS | wyłączenie testowej VM daje jeden incydent z przyczyną, skutkami i powiadomieniem |
 | **4. Aktualizacje** | agent (apt, reboot-required, NFS), zbiorczy widok aktualizacji | jedna lista ze wszystkich źródeł zgadza się z tym, co pokazują Proxmox/Komodo/OpenWrt |
 | **5. Akcje** | lista dozwolonych, potwierdzenia, audyt, akcje Proxmox/Komodo/OpenWrt/agent | każda akcja ma wpis w audycie; akcja spoza listy jest niemożliwa nawet przez API |
+| **6. Terminale** | osobna karta: gotowe polecenia (biała lista agenta), konsola VM i LXC (noVNC) przez API Proxmoxa; tylko admin, ponowne potwierdzenie, limit czasu sesji | każde otwarcie i zamknięcie sesji ma wpis w audycie; bez potwierdzenia i dla innej roli sesja się nie otworzy, nawet przez API |
 
 ---
 

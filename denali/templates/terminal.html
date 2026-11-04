@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_makra.html" import console_history, run_status %}
+{% block title %}Terminal: {{ d.name }}{% endblock %}
+{% block head %}{% if active %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/terminale">Terminale</a> / {{ d.name }}</p>
+<h1>{{ d.name }}</h1>
+
+<section class="card">
+  <h2>Konsola</h2>
+  {% for o in console %}
+    {% if o.reason %}
+      <p class="muted">{{ o.reason }}</p>
+    {% else %}
+      <p class="muted small">{{ o.spec.effect }} Sesja kończy się po 2 godzinach, a system w maszynie dalej pyta o własne hasło.</p>
+      <form method="post" action="/terminale/{{ d.id }}/konsola/{{ o.ref_id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button class="btn primary" type="submit">{{ "Otwórz konsolę" if fresh else "Otwórz konsolę (potwierdzenie hasłem)" }}</button>
+      </form>
+    {% endif %}
+  {% else %}
+    <p class="muted">To urządzenie nie jest VM ani LXC z Proxmoxa.</p>
+  {% endfor %}
+</section>
+
+<section class="card">
+  <h2>Gotowe polecenia</h2>
+  {% for o in agents %}
+    {% if o.reason %}
+      <p class="muted">{{ o.reason }}</p>
+    {% else %}
+      <p class="muted small">Agent odbiera zlecenia razem z raportem, więc wynik pojawia się po około minucie.</p>
+      <div class="command-grid">
+        {% for key, c in commands.items() %}
+        <form method="post" action="/terminale/{{ d.id }}/polecenie">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="ref_id" value="{{ o.ref_id }}">
+          <input type="hidden" name="command" value="{{ key }}">
+          <button class="btn wide" type="submit" title="{{ c.text }}">{{ c.label }}</button>
+        </form>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% else %}
+    <p class="muted">Na tym urządzeniu nie ma agenta.</p>
+  {% endfor %}
+
+  {% if runs %}
+  <h3 class="mt">Wyniki</h3>
+  <ul class="list-rows">
+    {% for r in runs %}
+    <li class="command-result">
+      <span class="grow">{{ r.label }} <span class="muted small">· {{ r.created_at | dt }}</span></span>
+      {{ run_status(r.status) }}
+      {% if r.result %}<pre class="wrap mono small">{{ r.result }}</pre>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+{% if history %}
+<section class="card table-wrap">
+  <h2>Ostatnie sesje konsoli</h2>
+  {{ console_history(history) }}
+</section>
+{% endif %}
+{% endblock %}

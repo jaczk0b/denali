@@ -51,9 +51,27 @@
 {%- elif name == "incydenty" %}<path d="M10 3l8 14H2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10 8v4M10 14.5v.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
 {%- elif name == "aktualizacje" %}<path d="M16 10a6 6 0 1 1-1.8-4.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M15 2.5v3.5h-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
 {%- elif name == "procedury" %}<path d="M5 2.5h7l3 3v12H5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 9h4M8 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+{%- elif name == "terminale" %}<rect x="2.5" y="3.5" width="15" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 8l2.5 2L6 12M10.5 12.5H14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
 {%- endif -%}
 </svg>
 {%- endmacro %}
+
+{# sesje konsoli na karcie Terminale #}
+{% macro console_history(rows) %}
+<table>
+  <thead><tr><th>Kiedy</th><th>Na czym</th><th>Kto</th><th>Koniec</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td>{{ r.opened_at | dt }}</td>
+      <td>{% if r.device_id %}<a href="/terminale/{{ r.device_id }}">{{ r.target }}</a>{% else %}{{ r.target }}{% endif %}</td>
+      <td>{{ r.user }} <span class="muted small mono">{{ r.ip }}</span></td>
+      <td class="small">{% if r.closed_at %}{{ r.closed_at | dt }} · {{ r.close_reason }}{% else %}nie zamknięta{% endif %}</td></tr>
+  {% else %}
+    <tr><td colspan="4" class="muted">Jeszcze żadnej sesji.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
 
 {# menu konta: login, admin, liczniki — bez JavaScriptu (details) #}
 {% macro account_menu(sess, counts, csrf) %}

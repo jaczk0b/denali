@@ -4,7 +4,7 @@
 {% block content %}
 <form class="card narrow" method="post" action="/potwierdz">
   <h1>Potwierdź, że to Ty</h1>
-  <p class="muted">Pokazanie hasła ze skarbca, akcja niebezpieczna i zmiana tego, jakie akcje są dozwolone, wymagają ponownego potwierdzenia. Ważne przez 5 minut.</p>
+  <p class="muted">Pokazanie hasła ze skarbca, konsola maszyny, akcja niebezpieczna i zmiana tego, jakie akcje są dozwolone, wymagają ponownego potwierdzenia. Ważne przez 5 minut.</p>
   {{ alerts(error) }}
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <input type="hidden" name="next" value="{{ next }}">

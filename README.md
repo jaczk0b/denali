@@ -22,6 +22,7 @@ Spis treści:
 [Pierwsze kroki](#pierwsze-kroki) ·
 [Agent i aktualizacje](#agent-i-aktualizacje) ·
 [Akcje](#akcje) ·
+[Terminale](#terminale) ·
 [Migracja z HLC](#migracja-z-hlc) ·
 [Kopia zapasowa](#kopia-zapasowa) ·
 [Odtworzenie](#odtworzenie) ·
@@ -121,7 +122,7 @@ W NPM: *Hosts → Proxy Hosts → Add Proxy Host*:
 | Domain Names | `denali.serwispowers.com` |
 | Scheme / Forward Hostname / Port | `http` / IP tej VM / `8000` |
 | Block Common Exploits | włączone |
-| Websockets Support | może zostać włączone (odświeżanie na żywo to SSE — zwykłe HTTP; panel sam wyłącza buforowanie nagłówkiem `X-Accel-Buffering: no`) |
+| Websockets Support | **włączone** — bez tego nie połączy się konsola na karcie Terminale (odświeżanie na żywo to SSE, zwykłe HTTP; panel sam wyłącza buforowanie nagłówkiem `X-Accel-Buffering: no`) |
 | Access List | lista „tylko LAN + Tailscale”: *allow* `192.168.0.0/16` (Twoja podsieć) i `100.64.0.0/10`, *deny* `all` |
 | SSL | *Request a new SSL Certificate* → *Use a DNS Challenge* → Cloudflare (token „Edit zone DNS” tylko dla `serwispowers.com`), *Force SSL* i *HSTS* włączone |
 
@@ -271,6 +272,34 @@ aktualizacja = bez restartu. Na VM z Proxmoxa restart „z zewnątrz” to dalej
 Panel nie ma akcji na samym sobie ani na routerze.
 
 ---
+
+## Terminale
+
+Karta tylko dla administratora (dolny pasek na pulpicie, górne menu na pozostałych stronach). Dwa narzędzia, oba
+z zamkami z sekcji [Akcje](#akcje): wyłącznik akcji i lista „Dozwolone akcje” w *Profilach*. „Wyłącz wszystkie akcje”
+zamyka też otwarte konsole (w ciągu 15 sekund).
+
+**Konsola (VNC)** — ekran VM albo LXC z Proxmoxa w przeglądarce (noVNC), przez panel, bez kluczy SSH w bazie.
+Jednorazowo w Proxmoxie:
+
+1. *Datacenter → Permissions → Roles → Create*: `PanelConsole`, uprawnienie `VM.Console`.
+2. *API Tokens → Add*: użytkownik `denali@pve`, token `konsola`, z oddzielonymi uprawnieniami.
+3. *Permissions → Add → API Token Permission*: `/vms`, `denali@pve!konsola`, rola `PanelConsole`. Przy błędzie 403 tę
+   samą rolę nadaj też użytkownikowi `denali@pve`.
+4. W Denali: *Integracje → Proxmox → Akcje — osobny token*: wpisz identyfikator tokenu do akcji i oba pola tokenu
+   do konsoli (sekret tokenu do akcji zostaw pusty, zostanie bez zmian).
+5. *Profile*: zaznacz „Proxmox VE: Konsola (VNC)”.
+6. W Nginx Proxy Manager włącz *Websockets Support*.
+
+Otwarcie wymaga hasła i kodu, a sesja kończy się po 2 godzinach albo po wylogowaniu. System w maszynie dalej pyta
+o własne hasło. Treści sesji panel nie zapisuje, w *Audycie* są otwarcie, odmowa i koniec (`console_open`,
+`console_blocked`, `console_close`). Konsoli hosta Proxmoxa tu nie ma — token API wymagałby do niej `Sys.Console` i
+hasła konta na hoście; hosta obsługujesz z panelu Proxmoxa.
+
+**Gotowe polecenia** — stała lista tylko do odczytu (dyski, pamięć, procesy, usługi z błędem, logi, Docker, porty,
+adresy), przez agenta 1.3 lub nowszego. Panel wysyła tylko klucz polecenia, a treść jest w kodzie agenta, więc dowolnego
+polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/denali-agent.py pozwol polecenia`, w
+*Profilach*: „Agent na maszynie: Gotowe polecenia”. Wynik pojawia się po około minucie, z kolejnym raportem agenta.
 
 ## Migracja z HLC
 
