@@ -66,6 +66,11 @@ def tab_network(request: Request, sess: dict = Depends(require_user)):
     return _page(request, "infra_siec.html", "siec", build)
 
 
+@router.get("/infrastruktura/vps")
+def tab_vps(request: Request, sess: dict = Depends(require_user)):
+    return _page(request, "infra_vps.html", "vps", lambda c: {"accounts": views.vps(c)})
+
+
 @router.get("/infrastruktura/adresy")
 def tab_addresses(request: Request, sess: dict = Depends(require_user)):
     return _page(request, "infra_adresy.html", "adresy", lambda c: {"nets": views.addresses(c)})

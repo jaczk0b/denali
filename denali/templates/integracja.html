@@ -152,6 +152,17 @@
     <p class="muted small">Podłączone urządzenia trafią do „Do zatwierdzenia” (nowe urządzenie w sieci). Znane dopasują się po MAC.
       Telefony i laptopy dostają profil „Komputery i telefony” — bez pingu i powiadomień.</p>
   </section>
+  {% elif cls.type == "ovh" %}
+  <section class="card md">
+    <h2>Jak założyć klucze OVH</h2>
+    <ol>
+      <li>Otwórz <a href="https://eu.api.ovh.com/createToken/?GET=/vps&amp;GET=/vps/*&amp;GET=/me/bill&amp;GET=/me/bill/*&amp;GET=/me/debtAccount" target="_blank" rel="noopener">formularz tokenu OVH ↗</a> — uprawnienia są już wpisane (same odczyty). Region CA i US ma ten formularz pod własnym adresem API.</li>
+      <li>Zaloguj się kontem OVH, nazwij aplikację <code>denali</code>, ważność ustaw na <strong>Unlimited</strong>.</li>
+      <li>Skopiuj tutaj Application Key, Application Secret i Consumer Key. Sekret widać tylko raz.</li>
+    </ol>
+    <p class="muted small">VPS-y trafią do „Do zatwierdzenia”. Po zatwierdzeniu VPS ma terminal SSH i zwykłe sprawdzenia z adresu.
+      Bez uprawnień do <code>/me</code> zakładka VPS działa dalej, tylko bez zaległości i faktur. Public Cloud nie jest obsługiwany.</p>
+  </section>
   {% endif %}
 
   {% if row %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_makra.html" import infra_nav, st %}
+{% block title %}VPS · Infrastruktura{% endblock %}
+{% block content %}
+<h1>Infrastruktura</h1>
+{{ infra_nav(tabs, "vps") }}
+{% for a in accounts %}
+<div class="row-between">
+  <p class="muted">{{ a.row.name }} · API OVH tylko do odczytu
+    {%- if a.row.last_ok_at %} · {{ a.row.last_ok_at | hm }}{% endif %}</p>
+  <div class="actions">
+    {% if a.manager %}<a class="btn" href="{{ a.manager }}" target="_blank" rel="noopener">Otwórz panel OVH ↗</a>{% endif %}
+  </div>
+</div>
+{% if a.row.last_error %}
+<div class="alert error">{{ st("down", 16) }} <strong>API OVH nie odpowiada:</strong> {{ a.row.last_error }}
+  {% if a["items"] %}Poniżej ostatni znany stan — może być nieaktualny.{% endif %}</div>
+{% endif %}
+
+<section class="tiles" aria-label="VPS-y">
+  {% for v in a["items"] %}
+  {% set d = v.data %}
+  <div class="tile{% if v.state == 'down' %} down{% elif v.state == 'warn' %} warn{% endif %}">
+    <div class="tile-head"><span>{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(v.state, "unknown"), 15) }} {{ v.name }}</span>
+      <small>{{ d.state_text or "stan nieznany" }}</small></div>
+    <dl class="facts">
+      <dt>Opłata</dt><dd>{% if d.payment_state in ("warn", "down") %}<span class="pill {{ d.payment_state }}">{{ d.payment }}</span>{% else %}{{ d.payment or "—" }}{% endif %}</dd>
+      {% if d.engaged_to %}<dt>Umowa do</dt><dd>{{ d.engaged_to }}</dd>{% endif %}
+      <dt>Plan</dt><dd>{{ d.offer or d.plan or "—" }}</dd>
+      <dt>Zasoby</dt><dd>{% if d.vcore %}{{ d.vcore }} vCPU{% endif %}{% if d.memory_mb %} · {{ (d.memory_mb / 1024) | round(1) }} GB RAM{% endif %}{% if d.disk_gb %} · {{ d.disk_gb }} GB dysk{% endif %}</dd>
+      {% if d.location %}<dt>Lokalizacja</dt><dd>{{ d.location }}</dd>{% endif %}
+      <dt>Adresy</dt><dd class="mono">{% for ip in d.ips %}{{ ip }}{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</dd>
+      <dt>Kopia</dt><dd>{% if d.backup %}automatyczna{% if d.backup_at %} ({{ d.backup_at }}){% endif %}{% else %}brak automatycznej{% endif %}</dd>
+      <dt>Snapshot</dt><dd>{{ d.snapshot_at or "brak" }}</dd>
+      {% if d.locked %}<dt>Blokada</dt><dd><span class="pill warn">{{ d.locked }}</span></dd>{% endif %}
+    </dl>
+    <div class="actions">
+      {% if v.device_id %}
+      <a class="btn small" href="/terminale/{{ v.device_id }}">Terminal SSH</a>
+      <a class="btn small" href="/urzadzenia/{{ v.device_id }}">Karta urządzenia</a>
+      {% elif v.waiting %}
+      <a class="btn small" href="/zatwierdz">Zatwierdź, by mieć terminal</a>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="tile"><p class="muted">OVH nie podał jeszcze żadnego VPS-a.</p></div>
+  {% endfor %}
+</section>
+
+<section class="card">
+  <h2>Rachunki</h2>
+  {% if a.account %}
+  {% set acc = a.account.data %}
+  <p>{% if acc.due_value %}<span class="pill warn">Zaległość: {{ acc.due }}</span>{% else %}Bez zaległości na koncie.{% endif %}</p>
+  {% if acc.bills %}
+  <ul class="list-rows">
+    {% for b in acc.bills %}
+    <li><span class="mono small">{{ b.id }}</span><span class="grow muted small">{{ b.date }}</span><span>{{ b.amount }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted small">Brak faktur z ostatnich miesięcy.</p>{% endif %}
+  {% else %}<p class="muted small">Token nie ma uprawnień do rachunków. Załóż nowy z instrukcji w ustawieniach integracji.</p>{% endif %}
+</section>
+{% endfor %}
+{% endblock %}

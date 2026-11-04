@@ -140,6 +140,8 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
 - [x] **Odświeżanie na żywo (SSE)** — pulpit, listy urządzeń i incydentów oraz karta incydentu podmieniają treść
       przy zmianie stanu (do ~5 s po zapisie workera); nie w trakcie pisania. Do sprawdzenia na tablecie i przez NPM.
 - [ ] **OpenWrt** — odłożone (POMYSLY.md); router działa przez nieoficjalną bibliotekę TP-Link.
+- [ ] **OVHcloud (VPS)** — kod gotowy, testy na nagranym API. Do sprawdzenia na prawdziwym koncie: założyć klucze,
+      zatwierdzić VPS, porównać termin opłaty i faktury z panelem OVH, otworzyć terminal SSH z zakładki VPS.
 - [ ] Z migracji HLC **nie przeniesione**: sprawdzenia, kanały powiadomień, konta (z założenia — wracają w nowej postaci).
 
 ## 5. Rzeczy niesprawdzone albo do decyzji

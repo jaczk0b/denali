@@ -171,7 +171,7 @@ device_override = Table(
 integration = Table(
     "integration", metadata,
     Column("id", Integer, primary_key=True),
-    Column("type", String(32), nullable=False),                  # proxmox | pbs | truenas | komodo | openwrt | tplink | agent | checks
+    Column("type", String(32), nullable=False),                  # proxmox | pbs | truenas | komodo | openwrt | tplink | ovh | agent | checks
     Column("name", String(100), nullable=False, unique=True),
     Column("config", JSON, nullable=False, default=dict),        # bez sekretów
     Column("secret_ct", Text),                                   # sekrety, zaszyfrowane

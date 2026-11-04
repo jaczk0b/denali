@@ -1,4 +1,4 @@
-"""Zakładki działu Infrastruktura: Proxmox, TrueNAS, Docker, Sieć, Adresy IP.
+"""Zakładki działu Infrastruktura: Proxmox, TrueNAS, Docker, Sieć, VPS, Adresy IP.
 
 Tylko odczyt — z tego, co integracje już zapisały (observed_state) i z dokumentacji. Nic tu nie pyta serwerów:
 strona pokazuje stan z ostatniego odczytu workera, a przy błędzie źródła mówi, że dane mogą być nieaktualne.
@@ -7,15 +7,17 @@ import ipaddress
 
 from sqlalchemy import select
 
+from .adapters.ovh import MANAGER as OVH_MANAGER
 from .adapters.tplink import BAND
 from .models import dependency, device, device_address, external_ref, integration, observed_state, update_item
 
 TABS = [("mapa", "Mapa", "/infrastruktura/mapa"), ("lista", "Lista", "/urzadzenia"),
         ("proxmox", "Proxmox", "/infrastruktura/proxmox"), ("truenas", "TrueNAS", "/infrastruktura/truenas"),
         ("docker", "Docker", "/infrastruktura/docker"), ("siec", "Sieć", "/infrastruktura/siec"),
-        ("adresy", "Adresy IP", "/infrastruktura/adresy"), ("szafa", "Szafa", "/infrastruktura/szafa")]
+        ("vps", "VPS", "/infrastruktura/vps"), ("adresy", "Adresy IP", "/infrastruktura/adresy"), ("szafa", "Szafa", "/infrastruktura/szafa")]
 # Zakładka źródła jest widoczna dopiero, gdy jest podłączona integracja tego typu — bez pustych zakładek.
-TAB_SOURCES = {"proxmox": ("proxmox",), "truenas": ("truenas",), "docker": ("komodo",), "siec": ("tplink", "openwrt")}
+TAB_SOURCES = {"proxmox": ("proxmox",), "truenas": ("truenas",), "docker": ("komodo",), "siec": ("tplink", "openwrt"),
+               "vps": ("ovh",)}
 WORST = ("down", "warn", "unknown", "off", "ok")
 
 
@@ -241,6 +243,24 @@ def _ip_key(ip):
         return (0, int(ipaddress.ip_address(ip)))
     except ValueError:
         return (1, 0)
+
+
+# ───────────────────────── VPS ─────────────────────────
+def vps(conn):
+    out = []
+    for src in sources(conn, "ovh"):
+        items = []
+        for eid, s in src["states"].items():
+            if not eid.startswith("vps/"):
+                continue
+            ref = src["refs"].get(eid)
+            items.append({"name": _name(src, eid) or eid, "state": s["state"], "data": s["data"] or {},
+                          "device_id": _device_of(src, eid), "waiting": bool(ref) and ref["status"] == "nowy"})
+        items.sort(key=lambda v: (WORST.index(v["state"]) if v["state"] in WORST else len(WORST), v["name"].lower()))
+        region = (src["row"]["config"] or {}).get("endpoint") or "ovh-eu"
+        out.append({"row": src["row"], "items": items, "account": src["states"].get("konto"),
+                    "manager": OVH_MANAGER.get(region)})
+    return out
 
 
 # ───────────────────────── Adresy IP ─────────────────────────

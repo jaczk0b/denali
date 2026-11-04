@@ -176,8 +176,9 @@ class Adapter:
 def registry() -> dict:
     from ..agents import Agent
     from .komodo import Komodo
+    from .ovh import Ovh
     from .pbs import Pbs
     from .proxmox import Proxmox
     from .tplink import Tplink
     from .truenas import Truenas
-    return {a.type: a for a in (Proxmox, Komodo, Pbs, Truenas, Tplink, Agent)}
+    return {a.type: a for a in (Proxmox, Komodo, Pbs, Truenas, Tplink, Ovh, Agent)}

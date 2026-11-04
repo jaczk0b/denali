@@ -8,10 +8,10 @@ Dokumenty: [PROJEKT.md](PROJEKT.md) (projekt i decyzje), [AUDYT.md](AUDYT.md) (a
 
 **Stan: Etap 5 (akcje) — kod gotowy, czeka na sprawdzenie na serwerach** (Etap 4 też jeszcze nie odebrany). Jest: logowanie z 2FA, urządzenia,
 zależności i kable, profile, kolejka „do zatwierdzenia”, analiza przyczyny, incydenty, procedury, runbooki, pliki,
-skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo i router TP-Link,
+skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo, router TP-Link i OVHcloud (VPS),
 sprawdzenia z LAN i z internetu, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS,
 odświeżanie na żywo (SSE); jedna lista aktualizacji (Proxmox, PBS, Komodo, agent) i agent na maszynach (apt,
-wymagany restart, NFS); dział Infrastruktura z zakładkami Mapa (rysowana sama), Proxmox, TrueNAS, Docker, Sieć,
+wymagany restart, NFS); dział Infrastruktura z zakładkami Mapa (rysowana sama), Proxmox, TrueNAS, Docker, Sieć, VPS,
 Adresy IP (zajęte i wolne, konflikty) i Szafa (co na której wysokości); akcje z listy dozwolonych (Proxmox: start,
 wyłączenie, restart, snapshot; Komodo: start, restart, stop, Deploy; agent: apt upgrade po snapshocie i restart
 maszyny, gdy jest wymagany) z potwierdzeniem i audytem — z karty urządzenia i z zakładek Proxmox i Docker; TrueNAS:
@@ -209,6 +209,11 @@ TrueNAS za to pokazuje na swojej zakładce wszystkie powiadomienia z dzwonka (od
 dyski: pula, temperatura i ostatni test SMART. „Uwaga” na karcie TrueNAS dają tylko błędy i poważniejsze alerty,
 nieudany test SMART i za gorący dysk (HDD od 55 °C, SSD od 70 °C). Testy SMART planujesz w TrueNAS
 (*Data Protection → S.M.A.R.T. Tests*) — Denali tylko czyta wyniki.
+
+**OVHcloud (VPS)** dodajesz w Integracjach; instrukcja założenia kluczy tylko do odczytu jest na stronie integracji.
+Zakładka VPS pokazuje stan maszyny, termin opłaty, plan, adresy, kopie, zaległości i ostatnie faktury, a po zatwierdzeniu
+VPS-a w kolejce także przycisk terminala SSH. Przy odnowieniu ręcznym „uwaga” pojawia się 14 dni przed terminem. „Uwaga”
+nie wysyła powiadomienia na Discord; awaria (VPS wyłączony albo wygasły) już tak. Public Cloud nie jest obsługiwany.
 
 **Agent** instaluj tylko tam, gdzie API nie wystarcza — zwykle VM-ki z Dockerem i usługami. Na Proxmoxie, PBS i TrueNAS
 nie. *Integracje → Dodaj: Agent na maszynie → Wygeneruj polecenie* i wklej je na maszynie (Debian/Ubuntu z systemd,
