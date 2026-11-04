@@ -1,6 +1,7 @@
 """Mapa infrastruktury rysowana sama z dokumentacji — bez ręcznego układania (zasada „minimum ustawień”).
 
-Układ jak w makiecie: od lewej internet → sieć → serwery fizyczne jako ramki z maszynami w środku (VM, LXC, NAS)
+Układ jak w makiecie: od lewej internet → sieć (łańcuch: brama → router → switch → AP, każdy poziom zależności
+to kolejna kolumna) → serwery fizyczne jako ramki z maszynami w środku (VM, LXC, NAS)
 → aplikacje (stacki, usługi) obok maszyny, na której działają. To, co w czymś działa, stoi w ramce — bez linii
 do serwera. Linie:
 - szara: sieć i kable (do ramki serwera, nie do każdej maszyny),
@@ -42,6 +43,7 @@ def build(conn, live, marks, with_clients=False):
                           .where(device_address.c.kind == "ip").order_by(device_address.c.is_primary)):
         ips[r.device_id] = r.value
     edges = [(r.device_id, r.depends_on_id, r.type, bool(r.hard)) for r in conn.execute(select(dependency))]
+    dep_edges = list(edges)                         # kable nie mają kierunku — poziomy sieci tylko z zależności
     edges += [(r.b_device_id, r.a_device_id, "kabel", True) for r in conn.execute(select(cable))]
 
     def kind(d):
@@ -64,16 +66,30 @@ def build(conn, live, marks, with_clients=False):
                       "sub": sub or ips.get(d["id"]) or "", "kind": kind(d), "state": s, "label": STATE_LABEL.get(s, s)})
 
     columns, x = [], LEFT
-    # 1–2: internet i sieć (z klientami pod spodem, gdy włączeni)
-    for label, kinds in (("Internet", INTERNET), ("Sieć", NETWORK)):
-        col = [d for d in devs.values() if kind(d) in kinds]
-        if label == "Sieć" and with_clients:
-            col += [d for d in devs.values() if kind(d) in CLIENTS]
-        if not col:
-            continue
-        columns.append({"x": x, "label": label})
+    # 1: internet
+    col = [d for d in devs.values() if kind(d) in INTERNET]
+    if col:
+        columns.append({"x": x, "label": "Internet"})
         for j, d in enumerate(col):
             node(d, x, TOP + j * (H + GAP_Y))
+        x += W + GAP_X
+    # 2: sieć jako łańcuch — urządzenie zależne od innego sieciowego (router za bramą, switch za routerem, AP za
+    #    switchem) stoi kolumnę dalej, na wysokości tego, od którego zależy; klienci (gdy włączeni) pod ostatnią
+    levels = _network_levels([d for d in devs.values() if kind(d) in NETWORK], dep_edges)
+    clients = [d for d in devs.values() if kind(d) in CLIENTS] if with_clients else []
+    if clients and not levels:
+        levels = [[]]
+    for depth, level in enumerate(levels):
+        columns.append({"x": x, "label": "Sieć" if depth == 0 else ""})
+        y = TOP
+        for d, up in sorted(level, key=lambda p: (rect[p[1]][1] if p[1] in rect else 0, p[0]["name"].lower())):
+            y = max(y, rect[up][1] if up in rect else TOP)
+            node(d, x, y)
+            y += H + GAP_Y
+        if depth == len(levels) - 1:
+            for d in clients:
+                node(d, x, y)
+                y += H + GAP_Y
         x += W + GAP_X
     # 3: serwery jako ramki z maszynami; maszyny bez serwera pod ramkami
     boxes, y = [], TOP
@@ -146,6 +162,30 @@ def build(conn, live, marks, with_clients=False):
     hidden = sum(1 for d in devs.values() if kind(d) in CLIENTS)
     return {"nodes": nodes, "boxes": boxes, "lines": lines, "columns": columns, "width": max(x - GAP_X + LEFT + 60, 300),
             "height": height, "w": W, "h": H, "hidden_clients": hidden}
+
+
+def _network_levels(net, edges):
+    """[[(urządzenie, id tego, od którego zależy, albo None)], …] — poziom = najdłuższy łańcuch zależności sieciowych."""
+    ids = {d["id"] for d in net}
+    ups = {}
+    for a, b, _typ, _hard in edges:
+        if a in ids and b in ids and a != b:
+            ups.setdefault(a, set()).add(b)
+    depth = {}
+
+    def level(i, path=frozenset()):
+        if i not in depth:
+            depth[i] = max((level(u, path | {i}) + 1 for u in ups.get(i, ()) if u not in path), default=0)
+        return depth[i]
+
+    out = []
+    for d in net:
+        k = level(d["id"])
+        up = max((u for u in ups.get(d["id"], ()) if depth.get(u) == k - 1), default=None)
+        while len(out) <= k:
+            out.append([])
+        out[k].append((d, up))
+    return out
 
 
 def _short(text, n):

@@ -212,6 +212,27 @@ def test_mapa_kolumny_i_zaleznosci(conn):
     assert phone in {n["id"] for n in mapview.build(conn, {}, {}, with_clients=True)["nodes"]}
 
 
+def test_mapa_siec_jako_lancuch(conn):
+    """Router za bramą, switch za routerem, AP za switchem — każdy kolumnę dalej, na wysokości poprzedniego."""
+    brama = inv.create_device(conn, "FUTRO", "router")
+    router = inv.create_device(conn, "Router Main", "router")
+    switch = inv.create_device(conn, "switch", "switch")
+    ap = inv.create_device(conn, "AP salon", "ap")
+    osobny = inv.create_device(conn, "AP garaż", "ap")            # bez zależności — zostaje w pierwszej kolumnie
+    inv.add_dependency(conn, router, brama)
+    inv.add_dependency(conn, switch, router)
+    inv.add_dependency(conn, ap, switch)
+    m = mapview.build(conn, {}, {})
+    pos = {n["id"]: (n["x"], n["y"]) for n in m["nodes"]}
+    assert [c["label"] for c in m["columns"]] == ["Sieć", "", "", ""]
+    assert pos[brama][0] < pos[router][0] < pos[switch][0] < pos[ap][0]
+    assert pos[brama][1] == pos[router][1] == pos[switch][1] == pos[ap][1]
+    assert pos[osobny][0] == pos[brama][0] and pos[osobny][1] != pos[brama][1]
+    assert all(e["d"].count("C") == 1 and " C " in e["d"] for e in m["lines"])
+    phone = inv.create_device(conn, "telefon", "telefon")
+    assert {n["id"]: n["x"] for n in mapview.build(conn, {}, {}, with_clients=True)["nodes"]}[phone] == pos[ap][0]
+
+
 def test_stary_adres_po_dhcp_to_nie_konflikt(full):
     """Telefon dostał z DHCP adres, który w dokumentacji ma jeszcze inne urządzenie — router mówi, kto ma go teraz."""
     with full.state.engine.begin() as c:
