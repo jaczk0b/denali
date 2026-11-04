@@ -595,7 +595,7 @@ pre.wrap { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6
 :root[data-theme="zorza"] .top { background: linear-gradient(180deg, #0d1230, var(--bg)); }
 :root[data-theme="zorza"] .nav a[aria-current="page"] { background: linear-gradient(135deg, #1f2850, #213a52); box-shadow: inset 0 -2px 0 var(--accent); }
 :root[data-theme="zorza"] .brand-mark { background: linear-gradient(135deg, #5eead4, #a78bfa); }
-:root[data-theme="zorza"] .desk {
+:root[data-theme="zorza"] .desk, :root[data-theme="zorza"] body.wall-body:not(.alarm) {
   background-color: var(--desk);
   background-image:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 260' preserveAspectRatio='none'%3E%3Cpath d='M0 260V170l120-50 90 40 140-95 110 70 90-30 160-110 70 45 60-30 120 90 110-40 150 80 90-35 140 60V260z' fill='%23111838'/%3E%3Cpath d='M0 260v-55l160-35 140 45 200-90 120 60 150-25 130 50 160-40 170 45 210-30V260z' fill='%230c1129'/%3E%3Cpath d='M720 40l-38 25 18-4 20 14 16-12 22 7z' fill='%23dfe6ff' opacity='.35'/%3E%3C/svg%3E"),
@@ -644,3 +644,82 @@ pre.wrap { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6
 .meter i { display: block; height: 100%; background: var(--accent); }
 .meter i.hi { background: var(--warn); }
 .down-text { color: var(--down-text); }
+
+/* PIN tabletu w panelu */
+.pin-form { display: flex; gap: 6px; margin-top: 6px; }
+.pin-form input { width: 120px; min-height: 32px; }
+
+/* ───────── tablet przy szafie (sciana.html) ───────── */
+body.wall-body { background: var(--desk); }
+.wall { min-height: 100vh; max-width: 1600px; margin: 0 auto; padding: 18px 22px 28px; display: flex; flex-direction: column; gap: 16px;
+  transition: opacity .4s, filter .4s; }
+.wall-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.wall-clock { display: flex; align-items: baseline; gap: 14px; }
+.wall-clock .clock { font-size: 52px; }
+.wall-stats { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 17px; font-variant-numeric: tabular-nums; }
+.wall-stats span { display: inline-flex; align-items: center; gap: 6px; }
+.wall-stats .down { color: var(--down-text); font-weight: 600; }
+.wall-stats .warn { color: var(--warn-text); }
+.wall-lock { display: flex; align-items: center; gap: 12px; }
+.wall-lock form { margin: 0; }
+.wall-lock .btn { min-height: 48px; padding: 0 22px; font-size: 16px; }
+.wall-verdict { padding: 26px 28px; }
+.wall-verdict .verdict-head { font-size: 34px; }
+.wall-verdict .verdict-sub { font-size: 18px; }
+.wall-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.wall-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.wall .layer { min-height: 58px; }
+.wall .spark svg { height: 90px; }
+.wall-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.wall-tools a { display: flex; flex-direction: column; gap: 4px; min-height: 104px; padding: 16px; border-radius: 16px; text-decoration: none;
+  color: var(--text); background: var(--surface-2); border: 1px solid var(--border-strong); }
+.wall-tools a:active, .wall-tools a:hover { border-color: var(--accent); color: var(--text); }
+.wall-tools svg { width: 26px; height: 26px; color: var(--accent); }
+.wall-tools b { font-size: 18px; font-weight: 600; }
+.wall-tools span { font-size: 13px; color: var(--muted); }
+.wall-settings { margin-top: auto; }
+.wall-settings-form { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
+.wall-settings-form fieldset { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+@media (max-width: 1000px) { .wall-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px) { .wall-grid { grid-template-columns: 1fr; } .wall-verdict .verdict-head { font-size: 26px; } }
+
+/* alarm: cały ekran mówi, że coś leży */
+body.wall-body.alarm { background: #1c0b0d; }
+body.wall-body.alarm .wall { box-shadow: inset 0 0 0 6px var(--down); }
+body.wall-body.alarm .wall-verdict { animation: alarm-pulse 2s ease-in-out infinite; }
+@keyframes alarm-pulse { 50% { box-shadow: 0 0 0 6px #ff6b6b55; } }
+@media (prefers-reduced-motion: reduce) { body.wall-body.alarm .wall-verdict { animation: none; } }
+
+/* przyciemniony: zegar i werdykt; przy alarmie, uwadze albo dotknięciu — pełny ekran */
+body.wall-ciemny:not(.alarm):not(.attention):not(.awake):not(.unlocked) .wall { justify-content: center; }
+body.wall-ciemny:not(.alarm):not(.attention):not(.awake):not(.unlocked) :is(.wall-stats, .wall-grid, .wall-settings, .wall-lock) { display: none; }
+body.wall-ciemny:not(.alarm):not(.attention):not(.awake):not(.unlocked) .wall-head { justify-content: center; }
+body.wall-ciemny:not(.alarm):not(.attention):not(.awake):not(.unlocked) .wall-clock { flex-direction: column; align-items: center; }
+body.wall-ciemny:not(.alarm):not(.attention):not(.awake):not(.unlocked) .wall-clock .clock { font-size: 120px; }
+body.wall-ciemny:not(.alarm):not(.attention):not(.awake):not(.unlocked) .wall-verdict { background: none; border-color: transparent;
+  justify-content: center; text-align: center; opacity: .75; }
+body.wall-ciemny:not(.alarm):not(.attention):not(.awake):not(.unlocked) .wall-verdict svg { display: none; }
+/* noc (godziny ciszy): przyciemnienie także trybu z pełnymi statystykami */
+body.wall-body.night:not(.alarm):not(.awake) .wall { filter: brightness(.45); }
+
+/* klawiatura PIN — pokazuje się pod adresem #odblokuj */
+.pinpad { display: none; position: fixed; inset: 0; z-index: 90; background: #05070ae6; align-items: center; justify-content: center; padding: 16px; }
+.pinpad:target { display: flex; }
+.pinpad-panel { width: min(360px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 20px;
+  background: var(--surface); border: 1px solid var(--border-strong); }
+.pinpad-panel h2 { margin: 0; text-align: center; font-size: 20px; }
+.pinpad-panel input { height: 56px; text-align: center; font-size: 28px; letter-spacing: .3em; background: var(--field);
+  border: 1px solid var(--border-strong); border-radius: 12px; color: var(--text); }
+.pinpad-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pinpad-keys .key { height: 64px; border-radius: 14px; border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
+  font: inherit; font-size: 24px; font-weight: 500; cursor: pointer; touch-action: manipulation; }
+.pinpad-keys .key:active { background: var(--surface-3); }
+.pinpad-keys .key.ok { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-size: 18px; font-weight: 600; }
+.pinpad-error { margin: 0; color: var(--down-text); text-align: center; }
+.pinpad-close { text-align: center; }
+
+/* odblokowany tablet: pasek na każdej stronie panelu */
+.unlock-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; padding: 8px 16px;
+  background: var(--warn-bg); border-bottom: 1px solid var(--warn-border); color: var(--warn-text); font-size: 14px; }
+.unlock-bar form { margin: 0; }
+.wall-body .unlock-bar { display: none; }

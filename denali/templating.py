@@ -20,7 +20,7 @@ STATIC_V = hashlib.sha256(b"".join((Path(__file__).resolve().parent / "static" /
 # Markdown bez surowego HTML; markdown-it sam odrzuca linki javascript: i data:
 # Strony odświeżane na żywo (SSE). Tylko widoki do patrzenia — nie strona po wysłaniu formularza (błąd albo
 # odsłonięte hasło zniknęłyby przy podmianie) ani karta urządzenia ze skarbcem.
-LIVE_TEMPLATES = {"pulpit.html", "restart_hosta.html", "urzadzenia.html", "incydenty.html", "incydent.html", "infra_proxmox.html",
+LIVE_TEMPLATES = {"pulpit.html", "sciana.html", "restart_hosta.html", "urzadzenia.html", "incydenty.html", "incydent.html", "infra_proxmox.html",
                   "infra_truenas.html", "infra_docker.html", "infra_siec.html", "infra_vps.html", "infra_adresy.html",
                   "infra_mapa.html"}
 _md = MarkdownIt("commonmark", {"html": False}).enable("table").enable("strikethrough")

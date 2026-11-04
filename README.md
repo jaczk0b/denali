@@ -24,6 +24,7 @@ Spis treści:
 [Akcje](#akcje) ·
 [Terminale](#terminale) ·
 [Monitorowanie](#monitorowanie) ·
+[Tablet](#tablet-przy-szafie) ·
 [Migracja z HLC](#migracja-z-hlc) ·
 [Kopia zapasowa](#kopia-zapasowa) ·
 [Odtworzenie](#odtworzenie) ·
@@ -375,6 +376,30 @@ polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/dena
         - name: Denali otwarte incydenty
           value_template: "{{ value_json.incidents | length }}"
   ```
+
+## Tablet przy szafie
+
+Zamiast monitora z KVM: na ścianie podgląd i alarmy, a gdy go zdejmiesz — po PIN-ie SSH, konsole VNC i akcje.
+
+1. *Tablet na ścianie → Utwórz kod*, na tablecie otwórz `https://denali.serwispowers.com/tablet` i wpisz kod.
+   Tablet działa tylko z adresu, z którego się połączył — daj mu stały adres w DHCP.
+2. W tym samym miejscu przy tablecie: **Ustaw PIN** (6–12 cyfr, panel poprosi o hasło i kod 2FA).
+3. Na tablecie *Odblokuj* → PIN → tablet działa jako Twoje konto administratora: kafle SSH, Konsole, Akcje,
+   bezpieczny restart serwera. Po 10 minutach bez dotyku (najpóźniej po godzinie) sam wraca na ścianę, a otwarte
+   konsole się zamykają. 5 złych prób kasuje PIN i wysyła powiadomienie.
+4. *Ustawienia tego tabletu* (na dole ekranu): pełne statystyki albo tryb przyciemniony (zegar i werdykt; rozświetla się
+   przy alarmie albo dotknięciu) oraz godziny ciszy — wtedy bez dźwięku i z przygaszonym ekranem.
+
+Alarm: nowy incydent → czerwony ekran, wybudzenie ekranu i krótki dźwięk (poza ciszą).
+**Fully Kiosk Browser** (Android), ustawienia:
+
+| Gdzie | Co |
+|---|---|
+| Web Content Settings | *Autoplay Audio* — dźwięk alarmu bez wcześniejszego dotknięcia |
+| Advanced Web Settings | *Enable JavaScript Interface* — panel sam wybudza ekran przy alarmie |
+| Device Management | *Keep Screen On* wyłączone, *Screen Off Timer* np. 5 min — ekran gaśnie, alarm go budzi |
+| Motion Detection | opcjonalnie: wybudzanie ekranu, gdy podejdziesz |
+| Kiosk Mode | blokada wyjścia z przeglądarki |
 
 ## Migracja z HLC
 

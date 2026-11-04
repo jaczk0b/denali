@@ -11,9 +11,10 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from sqlalchemy import func, or_, select
 
 from .. import (actions, auth, checks, configs, discovery, docs, files, forecast, history, incidents, infra_views, integrations,
-               inventory as inv, live, maintenance, profiles, racks, status, upcoming, updates, vault)
+               inventory as inv, live, maintenance, profiles, racks, status, tablet, upcoming, updates, vault)
+from ..db import kv_get
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
-                      procedure_step, runbook)
+                      procedure_step, runbook, setting)
 from ..templating import render
 from .deps import NotFound, client_ip, require_admin, require_fresh, require_user
 
@@ -62,7 +63,34 @@ def pulpit(request: Request, sess: dict = Depends(require_user)):
         }
     now = datetime.now()
     ctx.update(clock=now.strftime("%H:%M"), date=f"{DAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]}")
+    if sess["kind"] == "kiosk":
+        with request.app.state.engine.begin() as conn:
+            ctx.update(_wall(request, conn, sess, devices, states, open_inc))
+        return render(request, "sciana.html", ctx)
     return render(request, "pulpit.html", ctx)
+
+
+def _wall(request, conn, sess, devices, states, open_inc):
+    """Tablet na ścianie: statystyki, wykres pingu do sieci, ustawienia tego tabletu i — po PIN-ie — narzędzia."""
+    flash_key = f"tablet.flash.{sess['public_id']}"
+    flash = kv_get(conn, flash_key)
+    if flash:
+        conn.execute(setting.delete().where(setting.c.key == flash_key))
+    counts = {s: sum(1 for v in states.values() if v["state"] == s) for s in ("ok", "warn", "down", "off")}
+    spark = None
+    for d in sorted((d for d in devices if d["kind"] in ("modem", "router", "firewall")), key=lambda d: d["kind"]):
+        rows = history.response_times(conn, d["id"], "ping", 24)
+        if rows:
+            now = time.time()
+            spark = {"name": d["name"], **history.sparkline(rows, now - 86400, now, width=600, height=70)}
+            break
+    return {
+        "prefs": tablet.prefs(request.cookies.get(tablet.PREFS_COOKIE)), "flash": flash, "spark": spark,
+        "stats": {**counts, "total": len(devices), "incidents": len(open_inc)},
+        "alarm_ids": " ".join(str(i["id"]) for i in open_inc if i["status"] == "trwa"),
+        "has_pin": bool(tablet.pin_info(conn, sess["public_id"])),
+        "hosts": [d for d in devices if d["kind"] == "host"],
+    }
 
 
 @router.post("/urzadzenia/{device_id}/na-pulpit")

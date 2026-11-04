@@ -7,7 +7,7 @@ from urllib.parse import quote
 from fastapi import Request
 from sqlalchemy import delete
 
-from .. import auth
+from .. import auth, tablet
 from ..db import kv_get, kv_set
 from ..models import setting
 
@@ -58,7 +58,7 @@ def get_session(request: Request) -> dict | None:
     token = request.cookies.get(COOKIE, "")
     touch = request.url.path != LIVE_PATH and request.headers.get(LIVE_HEADER) != "1"
     with request.app.state.engine.begin() as conn:
-        sess = auth.load_session(conn, token, client_ip(request), touch=touch)
+        sess = tablet.resolve(conn, auth.load_session(conn, token, client_ip(request), touch=touch), touch=touch)
     if sess:
         sess["token"] = token
     request.state.sess = sess
@@ -79,7 +79,8 @@ async def require_user(request: Request) -> dict:
     if not sess or sess["kind"] == "pending":
         raise Redirect(f"/login?next={quote(request.url.path)}")
     # Po zalogowaniu przez Pocket ID drugim składnikiem jest klucz dostępu u dostawcy — 2FA Denali nie jest wymagane.
-    if (sess["role"] == "admin" and not sess["totp_ct"] and sess["method"] != "oidc"
+    # Odblokowany tablet ma rolę administratora z PIN-u — 2FA jest na koncie, które PIN ustawiło.
+    if (sess["role"] == "admin" and not sess["totp_ct"] and sess["method"] != "oidc" and not sess.get("elevated")
             and request.url.path not in PATHS_WITHOUT_2FA):
         raise Redirect("/konto/2fa")
     if request.method not in ("GET", "HEAD"):

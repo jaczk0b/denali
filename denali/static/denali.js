@@ -295,3 +295,114 @@ document.addEventListener("click", async (e) => {
   window.addEventListener("hashchange", function () { var t = fromHash(); if (t) { show(t); } });
   show(fromHash() || saved());
 })();
+
+// Tablet przy szafie (sciana.html) i odblokowany tablet na każdej stronie:
+// - alarm: nowy incydent → wybudzenie ekranu (Fully Kiosk) i krótki dźwięk, poza godzinami ciszy,
+// - przyciemnienie: dotknięcie rozświetla na minutę; w godzinach ciszy ekran przygasa,
+// - klawiatura PIN,
+// - odblokowanie: dotyk przedłuża je na serwerze, a po czasie tablet sam wraca na ścianę.
+(function () {
+  "use strict";
+  var body = document.body;
+  var SEEN = "denali.alarmy";
+  var audio = null;
+
+  function fully() { return window.fully && typeof window.fully.turnScreenOn === "function" ? window.fully : null; }
+
+  function wall() { return document.querySelector(".wall"); }
+
+  function quietNow(el) {
+    var from = parseInt(el.dataset.quietFrom, 10), to = parseInt(el.dataset.quietTo, 10);
+    if (isNaN(from) || isNaN(to) || from === to) { return false; }
+    var h = new Date().getHours();
+    return from < to ? (h >= from && h < to) : (h >= from || h < to);
+  }
+
+  // Dźwięk bez pliku: trzy krótkie tony z Web Audio. Przeglądarka pozwala grać dopiero po pierwszym dotknięciu
+  // (w Fully Kiosk: Web Content Settings → Autoplay Audio, wtedy od razu).
+  function beep() {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === "suspended") { audio.resume(); }
+      [0, 0.28, 0.56].forEach(function (t, i) {
+        var o = audio.createOscillator(), g = audio.createGain();
+        o.type = "sine";
+        o.frequency.value = i === 2 ? 660 : 880;
+        g.gain.setValueAtTime(0.0001, audio.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.4, audio.currentTime + t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + t + 0.22);
+        o.connect(g); g.connect(audio.destination);
+        o.start(audio.currentTime + t); o.stop(audio.currentTime + t + 0.25);
+      });
+    } catch (e) { /* bez dźwięku */ }
+  }
+
+  function seen() {
+    try { return (localStorage.getItem(SEEN) || "").split(" ").filter(Boolean); } catch (e) { return []; }
+  }
+
+  function checkAlarm() {
+    var el = wall();
+    if (!el) { return; }
+    body.classList.toggle("night", quietNow(el));
+    var now = (el.dataset.alarm || "").split(" ").filter(Boolean);
+    var old = seen();
+    var fresh = now.filter(function (id) { return old.indexOf(id) < 0; });
+    try { localStorage.setItem(SEEN, now.join(" ")); } catch (e) { /* prywatne okno */ }
+    if (!fresh.length) { return; }
+    var f = fully();
+    if (f) { f.turnScreenOn(); }
+    if (!quietNow(el)) { beep(); }
+  }
+
+  var awakeTimer = null;
+  function wake() {
+    if (!wall()) { return; }
+    body.classList.add("awake");
+    clearTimeout(awakeTimer);
+    awakeTimer = setTimeout(function () { body.classList.remove("awake"); }, 60 * 1000);
+  }
+
+  // Odblokowanie: dotyk co najwyżej raz na 30 s mówi serwerowi „ktoś tu jest”; gdy minie czas — z powrotem na ścianę.
+  var lastPing = 0;
+  function untilEl() { return document.querySelector("[data-unlock-until]"); }
+  function activity() {
+    if (!untilEl() || Date.now() - lastPing < 30 * 1000) { return; }
+    lastPing = Date.now();
+    fetch("/tablet/aktywny", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var el = untilEl();
+        if (d && d.until && el) { el.dataset.unlockUntil = String(Math.floor(d.until)); }
+        if (d && !d.until) { location.href = "/"; }
+      })
+      .catch(function () {});
+  }
+  setInterval(function () {
+    var el = untilEl();
+    if (el && Date.now() / 1000 > parseInt(el.dataset.unlockUntil, 10) + 2) { location.href = "/"; }
+  }, 15 * 1000);
+
+  ["pointerdown", "keydown"].forEach(function (t) {
+    document.addEventListener(t, function () {
+      wake();
+      activity();
+      if (audio && audio.state === "suspended") { audio.resume(); }
+    }, { passive: true });
+  });
+
+  document.addEventListener("click", function (e) {
+    var k = e.target.closest("[data-key]");
+    if (k) {
+      var input = document.getElementById("pin");
+      if (!input) { return; }
+      input.value = k.dataset.key === "⌫" ? input.value.slice(0, -1) : (input.value + k.dataset.key).slice(0, 12);
+      return;
+    }
+    if (e.target.closest("[data-test-sound]")) { beep(); }
+  });
+
+  document.addEventListener("denali:odswiezone", checkAlarm);
+  checkAlarm();
+  setInterval(function () { var el = wall(); if (el) { body.classList.toggle("night", quietNow(el)); } }, 60 * 1000);
+})();

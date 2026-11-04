@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import delete, select
 
-from .. import actions, auth, consoles, inventory as inv, polecenia, ssh, status, vault
+from .. import actions, auth, consoles, inventory as inv, polecenia, ssh, status, tablet, vault
 from ..adapters import AdapterError
 from ..db import kv_get
 from ..models import action_run, setting
@@ -268,9 +268,10 @@ async def console_ws(ws: WebSocket, console_id: int):
     app = ws.app
     token, ip = ws.cookies.get(COOKIE, ""), ws.client.host if ws.client else ""
     with app.state.engine.begin() as conn:
-        sess = auth.load_session(conn, token, ip, touch=False)
+        sess = tablet.resolve(conn, auth.load_session(conn, token, ip, touch=False))
         row = consoles.get(conn, console_id)
-    if (not _same_origin(ws) or not sess or sess["kind"] != "zwykla" or sess["role"] != "admin" or not row
+    if (not _same_origin(ws) or not sess or not (sess["kind"] == "zwykla" or sess.get("elevated"))
+            or sess["role"] != "admin" or not row
             or row["user"] != sess["login"] or console_id not in app.state.console_tickets):
         log.warning("Odrzucony WebSocket konsoli %s: origin=%r host=%r sesja=%s", console_id, ws.headers.get("origin"),
                     ws.headers.get("host"), bool(sess))

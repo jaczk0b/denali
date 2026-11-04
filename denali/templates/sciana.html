@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st, nav_icon %}
+{% block title %}Tablet{% endblock %}
+{% block body_class %}wall-body wall-{{ prefs.mode }}{% if verdict.state == "down" %} alarm{% elif verdict.state == "warn" %} attention{% endif %}{% if sess.elevated %} unlocked{% endif %}{% endblock %}
+{% block chrome %}
+{#- Tablet przy szafie: na ścianie podgląd i alarmy, w ręku (po PIN-ie) SSH, VNC i akcje. Zachowanie (przyciemnianie,
+    dźwięk, wybudzanie ekranu w Fully Kiosk) w static/denali.js — tu tylko dane w atrybutach. -#}
+<main class="wall" data-alarm="{{ alarm_ids }}" data-quiet-from="{{ prefs.quiet_from }}" data-quiet-to="{{ prefs.quiet_to }}"
+      {% if sess.elevated %}data-unlock-until="{{ sess.unlock_until | int }}"{% endif %}>
+
+  <header class="wall-head">
+    <div class="wall-clock"><span class="clock">{{ clock }}</span><span class="muted">{{ date }}</span></div>
+    <div class="wall-stats" aria-label="Urządzenia">
+      <span>{{ st("ok", 14) }} {{ stats.ok }}</span>
+      {% if stats.warn %}<span class="warn">{{ st("warn", 14) }} {{ stats.warn }}</span>{% endif %}
+      {% if stats.down %}<span class="down">{{ st("down", 14) }} {{ stats.down }}</span>{% endif %}
+      <span class="muted">z {{ stats.total }}</span>
+      {% if counts.updates %}<span class="muted">· aktualizacje: {{ counts.updates }}</span>{% endif %}
+    </div>
+    <div class="wall-lock">
+      {% if sess.elevated %}
+      <span class="small">Odblokowany · <b>{{ sess.login }}</b> · do <span data-unlock-left>{{ sess.unlock_until | hm }}</span></span>
+      <form method="post" action="/tablet/zablokuj"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn" type="submit">Zablokuj</button></form>
+      {% elif has_pin %}<a class="btn primary" href="#odblokuj">Odblokuj</a>
+      {% else %}<span class="muted small">Bez PIN-u — tylko podgląd</span>{% endif %}
+    </div>
+  </header>
+
+  {% set v = verdict %}
+  <section class="verdict wall-verdict {{ v.state }}" aria-live="assertive">
+    {{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(v.state, "unknown"), 48) }}
+    <div class="verdict-text">
+      {% if v.link %}<a class="verdict-head" href="{{ v.link }}">{{ v.headline }}</a>{% else %}<span class="verdict-head">{{ v.headline }}</span>{% endif %}
+      <span class="verdict-sub">{% if v.since %}od {{ v.since | hm }}{% if v.sub %} · {% endif %}{% endif %}{{ v.sub }}</span>
+      {% for i in v["items"] %}<a class="verdict-more" href="{{ i.link }}">+ {{ i.title }} · od {{ i.since | hm }}</a>{% endfor %}
+      {% for p in v.pauses %}<span class="verdict-pause">{{ st("warn", 14) }} Planowana przerwa: {{ p }}</span>{% endfor %}
+    </div>
+  </section>
+
+  {% if sess.elevated %}
+  <nav class="wall-tools" aria-label="Narzędzia">
+    <a href="/terminale">{{ nav_icon("terminale") }}<b>SSH</b><span>terminale maszyn</span></a>
+    <a href="/terminale/vnc">{{ nav_icon("infra") }}<b>Konsole</b><span>ekran VM i LXC</span></a>
+    <a href="/incydenty">{{ nav_icon("incydenty") }}<b>Incydenty</b><span>{{ stats.incidents }} otwartych</span></a>
+    <a href="/infrastruktura/mapa">{{ nav_icon("pulpit") }}<b>Mapa</b><span>i „co jeśli”</span></a>
+    <a href="/akcje">{{ nav_icon("aktualizacje") }}<b>Akcje</b><span>restart, aktualizacje</span></a>
+    {% for h in hosts %}<a href="/urzadzenia/{{ h.id }}/restart-hosta">{{ nav_icon("aktualizacje") }}<b>Restart {{ h.name }}</b><span>w kolejności</span></a>{% endfor %}
+  </nav>
+  {% endif %}
+
+  <div class="wall-grid">
+    <section class="widget" aria-labelledby="w-warstwy">
+      <h2 id="w-warstwy">Gdzie jest problem</h2>
+      <ol class="layers">
+        {% for l in layers %}
+        <li><a class="layer {{ l.state }}" href="{{ '/urzadzenia/%d' % l.link.id if l.link else '/infrastruktura/mapa' }}">
+          {{ st({"down": "down", "effect": "effect", "ok": "ok", "warn": "warn"}.get(l.state, "unknown"), 20) }}
+          <span class="layer-text"><b>{{ l.title }}</b><span>{{ l.text }}</span></span></a></li>
+        {% endfor %}
+      </ol>
+    </section>
+
+    <div class="wall-col">
+      {% if spark %}
+      <section class="widget spark" aria-labelledby="w-ping">
+        <div class="avail-head"><h2 id="w-ping">Ping do {{ spark.name }}, 24 h</h2>
+          <span class="muted small mono">{% if spark.avg is not none %}śr. {{ spark.avg }} ms{% endif %}{% if spark.fails %} · przerwy: {{ spark.fails | length }}{% endif %}</span></div>
+        <svg viewBox="0 0 {{ spark.w }} {{ spark.h + 6 }}" preserveAspectRatio="none" role="img" aria-label="Czas odpowiedzi routera">
+          <path d="{{ spark.d }}" fill="none" stroke="#6aa8ff" stroke-width="2" vector-effect="non-scaling-stroke"/>
+          {% for x in spark.fails %}<rect x="{{ x }}" y="{{ spark.h + 1 }}" width="3" height="5" fill="#ff6b6b"/>{% endfor %}
+        </svg>
+      </section>
+      {% endif %}
+      <section class="widget" aria-labelledby="w-nadchodzace">
+        <h2 id="w-nadchodzace">Nadchodzące</h2>
+        {% if upcoming %}<ul class="upcoming">
+          {% for u in upcoming %}<li class="{{ u.level }}">{{ st(u.level, 14) }}<a href="{{ u.link }}">{{ u.text }}</a></li>{% endfor %}
+        </ul>{% else %}<p class="muted small">Nic w najbliższych tygodniach.</p>{% endif %}
+      </section>
+    </div>
+
+    <section class="widget" aria-labelledby="w-ostatnio">
+      <h2 id="w-ostatnio">Ostatnio</h2>
+      {% if recent %}<ol class="recent">
+        {% for e in recent %}<li><span class="when">{{ e.ts | hm }}</span><a href="/incydenty/{{ e.incident_id }}">{{ e.text }}</a></li>{% endfor %}
+      </ol>{% else %}<p class="muted small">Nic się nie działo.</p>{% endif %}
+    </section>
+  </div>
+
+  <details class="wall-settings">
+    <summary>Ustawienia tego tabletu</summary>
+    <form method="post" action="/tablet/ustawienia" class="wall-settings-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <fieldset><legend>Gdy nic się nie dzieje</legend>
+        <label class="check"><input type="radio" name="mode" value="panel"{% if prefs.mode == "panel" %} checked{% endif %}> pełne statystyki</label>
+        <label class="check"><input type="radio" name="mode" value="ciemny"{% if prefs.mode == "ciemny" %} checked{% endif %}> przyciemniony (zegar i werdykt, rozświetla się przy alarmie albo dotknięciu)</label>
+      </fieldset>
+      <fieldset><legend>Cisza nocna — bez dźwięku alarmu, ekran przyciemniony</legend>
+        <label>od <select name="quiet_from">{% for h in range(24) %}<option value="{{ h }}"{% if h == prefs.quiet_from %} selected{% endif %}>{{ "%02d:00" % h }}</option>{% endfor %}</select></label>
+        <label>do <select name="quiet_to">{% for h in range(24) %}<option value="{{ h }}"{% if h == prefs.quiet_to %} selected{% endif %}>{{ "%02d:00" % h }}</option>{% endfor %}</select></label>
+        <span class="muted small">Te same godziny „od” i „do” = bez ciszy.</span>
+      </fieldset>
+      <div class="actions"><button class="btn primary" type="submit">Zapisz</button>
+        <button class="btn" type="button" data-test-sound>Sprawdź dźwięk</button></div>
+    </form>
+  </details>
+
+  {% if has_pin and not sess.elevated %}
+  <section id="odblokuj" class="pinpad" aria-label="Odblokuj tablet">
+    <form method="post" action="/tablet/odblokuj" class="pinpad-panel" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <h2>Odblokuj</h2>
+      {% if flash %}<p class="pinpad-error">{{ flash }}</p>{% endif %}
+      <label class="sr" for="pin">PIN</label>
+      <input id="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="off" required>
+      <div class="pinpad-keys">
+        {% for k in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"] %}
+        {% if k == "OK" %}<button class="key ok" type="submit">OK</button>
+        {% else %}<button class="key" type="button" data-key="{{ k }}">{{ k }}</button>{% endif %}
+        {% endfor %}
+      </div>
+      <a class="pinpad-close" href="#">Anuluj</a>
+    </form>
+  </section>
+  {% elif flash %}<p class="alert error">{{ flash }}</p>{% endif %}
+</main>
+{% endblock %}

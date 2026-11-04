@@ -1,4 +1,4 @@
-"""Ponowne potwierdzenie hasłem (skarbiec), parowanie tabletu (kiosk), profile."""
+"""Ponowne potwierdzenie hasłem (skarbiec), parowanie tabletu (kiosk), PIN i odblokowanie tabletu, profile."""
 import hashlib
 import hmac
 import secrets
@@ -6,16 +6,16 @@ import time
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import delete, select
 
-from .. import actions, auth, profiles
+from .. import actions, auth, notify, profiles, tablet
 from ..db import kv_get, kv_set
 from ..models import app_user, device, profile, session
 from ..templating import render
 from .auth_routes import _secure
-from .deps import (COOKIE, PRELOGIN_COOKIE, RESUME_PATH, Redirect, client_ip, get_session, require_admin, require_user,
-                   safe_next, set_cookie, take_pending)
+from .deps import (COOKIE, PRELOGIN_COOKIE, RESUME_PATH, Forbidden, Redirect, client_ip, get_session, require_admin,
+                   require_fresh, require_user, safe_next, set_cookie, take_pending)
 from .infra_routes import EDIT_SETTINGS, parse_setting
 
 router = APIRouter()
@@ -93,14 +93,17 @@ def _kiosk_user(conn):
     return auth.create_user(conn, KIOSK_LOGIN, secrets.token_urlsafe(32), "podglad")
 
 
-def _tablet_admin_page(request, conn, code=None):
+def _tablet_admin_page(request, conn, code=None, error=None, message=None):
     kiosks = conn.execute(select(session.c.public_id, session.c.ip, session.c.user_agent, session.c.created_at,
                                  session.c.last_seen_at, session.c.expires_at)
                           .where(session.c.kind == "kiosk").order_by(session.c.created_at)).mappings().all()
     pending = kv_get(conn, "kiosk.pair")
     active = pending and pending.get("expires", 0) > time.time()
-    return render(request, "admin_tablet.html", {"code": code, "kiosks": kiosks,
-                                                 "pending_until": pending["expires"] if active else None})
+    return render(request, "admin_tablet.html", {"code": code, "kiosks": kiosks, "error": error, "message": message,
+                                                 "pins": {k["public_id"]: tablet.pin_info(conn, k["public_id"])
+                                                          for k in kiosks},
+                                                 "pending_until": pending["expires"] if active else None,
+                                                 "max_fails": tablet.MAX_FAILS})
 
 
 @router.get("/admin/tablet")
@@ -124,6 +127,82 @@ def tablet_revoke(request: Request, public_id: str, sess: dict = Depends(require
         conn.execute(delete(session).where(session.c.kind == "kiosk", session.c.public_id == public_id))
         auth.audit(conn, "kiosk_revoke", user=sess["login"], ip=client_ip(request), target=public_id)
     return RedirectResponse("/admin/tablet", 303)
+
+
+@router.post("/admin/tablet/{public_id}/pin")
+async def tablet_pin(request: Request, public_id: str, pin: str = Form(""), sess: dict = Depends(require_admin)):
+    """PIN odblokowuje na tablecie pełny dostęp (SSH, VNC, akcje) — ustawienie wymaga świeżego hasła i kodu."""
+    if sess.get("elevated"):
+        raise Forbidden()                      # z odblokowanego tabletu nie zmienia się jego własnego PIN-u
+    await require_fresh(request, sess)
+    with request.app.state.engine.begin() as conn:
+        try:
+            tablet.set_pin(conn, public_id, pin, sess["login"])
+        except tablet.TabletError as e:
+            return _tablet_admin_page(request, conn, error=str(e))
+        auth.audit(conn, "tablet_pin_set", user=sess["login"], ip=client_ip(request), target=public_id)
+        return _tablet_admin_page(request, conn, message="PIN ustawiony. Na tablecie: przycisk „Odblokuj”.")
+
+
+@router.post("/admin/tablet/{public_id}/pin/usun")
+def tablet_pin_clear(request: Request, public_id: str, sess: dict = Depends(require_admin)):
+    with request.app.state.engine.begin() as conn:
+        tablet.clear_pin(conn, public_id)
+        auth.audit(conn, "tablet_pin_clear", user=sess["login"], ip=client_ip(request), target=public_id)
+    return RedirectResponse("/admin/tablet", 303)
+
+
+# ───────────────────────── na tablecie: odblokuj, zablokuj, ustawienia ─────────────────────────
+def _kiosk(sess):
+    if sess["kind"] != "kiosk":
+        raise Forbidden()
+    return sess
+
+
+@router.post("/tablet/odblokuj")
+async def tablet_unlock(request: Request, pin: str = Form(""), sess: dict = Depends(require_user)):
+    _kiosk(sess)
+    ip = client_ip(request)
+    with request.app.state.engine.begin() as conn:
+        try:
+            tablet.unlock(conn, sess, pin, ip)
+        except tablet.TabletError as e:
+            kv_set(conn, f"tablet.flash.{sess['public_id']}", str(e))
+            if getattr(e, "wiped", False):
+                await notify.deliver(conn, request.app.state.box, {
+                    "username": "Denali", "allowed_mentions": {"parse": []},
+                    "embeds": [{"title": "Tablet: PIN skasowany po złych próbach",
+                                "description": f"{tablet.MAX_FAILS} razy wpisano zły PIN na tablecie ({ip}). "
+                                               "Ustaw nowy w panelu: Tablet na ścianie.",
+                                "color": notify.COLORS["ostrzezenie"]}]}, "ostrzezenie",
+                    getattr(request.app.state, "notify_transport", None))
+            return RedirectResponse("/#odblokuj", 303)
+    return RedirectResponse("/", 303)
+
+
+@router.post("/tablet/zablokuj")
+def tablet_lock(request: Request, sess: dict = Depends(require_user)):
+    _kiosk(sess)
+    with request.app.state.engine.begin() as conn:
+        tablet.lock(conn, sess, client_ip(request))
+    return RedirectResponse("/", 303)
+
+
+@router.get("/tablet/aktywny")
+def tablet_active(request: Request, sess: dict = Depends(require_user)):
+    """Dotyk na odblokowanym tablecie przedłuża odblokowanie (samo żądanie to robi); zwraca, do kiedy."""
+    _kiosk(sess)
+    return JSONResponse({"until": sess.get("unlock_until")})
+
+
+@router.post("/tablet/ustawienia")
+def tablet_prefs(request: Request, mode: str = Form("panel"), quiet_from: str = Form("22"), quiet_to: str = Form("7"),
+                 sess: dict = Depends(require_user)):
+    _kiosk(sess)
+    resp = RedirectResponse("/", 303)
+    set_cookie(resp, tablet.PREFS_COOKIE, tablet.prefs_value(mode, quiet_from, quiet_to), auth.KIOSK_AGE,
+               _secure(request))
+    return resp
 
 
 def _tablet_page(request, error=None, status_code=200):

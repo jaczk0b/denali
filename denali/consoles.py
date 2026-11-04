@@ -16,7 +16,7 @@ import time
 
 from sqlalchemy import select
 
-from . import actions, auth, ssh
+from . import actions, auth, ssh, tablet
 from .adapters import registry
 from .db import kv_get, kv_set
 from .models import console_session, device, device_address, integration, observed_state
@@ -191,9 +191,9 @@ def close(conn, row, reason, now=None):
 def why_stop(conn, row, token, ip, now=None):
     """Powód zamknięcia działającej sesji albo None. Otwarta konsola to aktywność, więc logowanie się nie przedawnia."""
     now = now or time.time()
-    sess = auth.load_session(conn, token, ip)
-    if not sess or sess["kind"] != "zwykla" or sess["role"] != "admin":
-        return "Logowanie wygasło albo zostało cofnięte."
+    sess = tablet.resolve(conn, auth.load_session(conn, token, ip))
+    if not sess or not (sess["kind"] == "zwykla" or sess.get("elevated")) or sess["role"] != "admin":
+        return "Logowanie wygasło, zostało cofnięte albo tablet się zablokował."
     if not actions.enabled(conn):
         return "Akcje wyłączono."
     if not row["device_id"]:
