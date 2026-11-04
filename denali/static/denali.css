@@ -469,8 +469,10 @@ pre[data-command] { word-break: normal; overflow-wrap: anywhere; }
 .term-text { min-width: 0; }
 .term-text b { display: block; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .term-text span { display: block; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-.term-tools { display: flex; justify-content: space-between; align-items: center; padding: 0 14px 10px 74px; font-size: 13px; }
-.term-tools .link { font-size: 13px; }
+.term-tools { display: flex; justify-content: flex-end; align-items: center; gap: 6px; padding: 2px 12px 12px; }
+.term-tools a, .term-tools .link { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 13px; text-decoration: none; cursor: pointer; }
+.term-tools a:hover, .term-tools .link:hover { border-color: var(--border-strong); background: var(--surface-3); color: var(--text); text-decoration: none; }
 .command-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .command-result pre { width: 100%; margin: 0; max-height: 360px; overflow: auto; user-select: text; }
 .console-page { position: fixed; inset: 0; display: flex; flex-direction: column; background: #07090b; }
