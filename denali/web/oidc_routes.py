@@ -2,6 +2,7 @@
 
 Start to zwykły link (GET), nie formularz: CSP „form-action 'self'” zablokowałaby przekierowanie formularza do dostawcy.
 """
+import logging
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
@@ -15,11 +16,17 @@ from .auth_routes import _account_page, _login_page, _secure, _signed_in
 from .deps import COOKIE, NotFound, client_ip, get_session, require_user, safe_next, set_cookie
 
 router = APIRouter()
+log = logging.getLogger("denali.oidc")
 STATE_COOKIE = "denali_oidc"
 
 
 def _error(request: Request, text: str, status: int = 400):
     return render(request, "blad.html", {"title": "Pocket ID", "text": text}, status)
+
+
+def _reauth_failed(nxt: str):
+    """Pocket ID nie potwierdził: panel przechodzi na drugi sposób, a kliknięte działanie dalej czeka."""
+    return RedirectResponse(f"/potwierdz?inna=1&blad=1&next={quote(nxt, safe='')}", 303)
 
 
 def _enabled(request: Request):
@@ -48,7 +55,7 @@ def start(request: Request, cel: str = "login", next: str = ""):
     except oidc.OIDCError as e:
         if cel == "login":
             return _login_page(request, str(e), safe_next(next), 502)
-        return _error(request, str(e), 502)
+        return _reauth_failed(safe_next(next)) if cel == "reauth" else _error(request, str(e), 502)
     resp = RedirectResponse(url, 303)
     set_cookie(resp, STATE_COOKIE, state, oidc.STATE_TTL, _secure(request))
     return resp
@@ -98,7 +105,11 @@ def callback(request: Request):
                 raise oidc.OIDCError("W Pocket ID potwierdziło się inne konto niż to, które jest połączone.")
             resp = RedirectResponse((nxt or "/") if purpose == "reauth" else "/konto", 303)
     except oidc.OIDCError as e:
-        resp = _login_page(request, str(e), nxt, 400) if purpose == "login" else _error(request, str(e))
+        if purpose == "reauth":
+            log.warning("Potwierdzenie w Pocket ID nieudane: %s", e)
+            resp = _reauth_failed(nxt)
+        else:
+            resp = _login_page(request, str(e), nxt, 400) if purpose == "login" else _error(request, str(e))
     resp.delete_cookie(STATE_COOKIE, path="/")
     return resp
 

@@ -23,6 +23,7 @@ log = logging.getLogger("denali.consoles")
 KEY = "proxmox.console"
 START_WITHIN = 60       # tyle po zgłoszeniu strona może zacząć połączenie
 TICKET_VALID = 15       # bilet Proxmoxa jest ważny krótko: bez połączenia przeglądarki sesja się kończy
+NO_WEBSOCKET = "Połączenie WebSocket nie dotarło do panelu: włącz Websockets Support w Nginx Proxy Manager."
 MAX_LIFE = 2 * 3600     # dłużej nie ma sesji bez ponownego potwierdzenia
 CHECK_EVERY = 15
 
@@ -153,7 +154,7 @@ def forget_unused(app, now=None):
             del app.state.console_tickets[cid]
             with app.state.engine.begin() as conn:
                 if row := get(conn, cid):
-                    close(conn, row, "Przeglądarka nie połączyła się z konsolą.", now)
+                    close(conn, row, NO_WEBSOCKET, now)
 
 
 async def bridge(ws, upstream, check):
@@ -161,7 +162,8 @@ async def bridge(ws, upstream, check):
     async def to_browser():
         async for m in upstream:
             await (ws.send_bytes(m) if isinstance(m, bytes) else ws.send_text(m))
-        return "Proxmox zakończył konsolę."
+        code, why = getattr(upstream, "close_code", None), getattr(upstream, "close_reason", "")
+        return "Proxmox zakończył konsolę" + (f" (kod {code}{': ' + why if why else ''})." if code not in (None, 1000) else ".")
 
     async def to_upstream():
         while True:
@@ -188,6 +190,7 @@ async def bridge(ws, upstream, check):
     except Exception:       # połączenie już padło — zostaje podać powód
         log.debug("Zamknięcie konsoli w Proxmoxie nie powiodło się", exc_info=True)
     finished = next(iter(done))
-    if finished.exception():
-        return "Połączenie przerwane."
+    if e := finished.exception():
+        log.warning("Konsola przerwana: %r", e)
+        return f"Połączenie przerwane ({e.__class__.__name__}: {e})"[:200]
     return finished.result()

@@ -256,7 +256,52 @@ def test_bilet_bez_przegladarki_konczy_sesje(app, pve, console, admin):
     app.state.console_tickets[cid]["at"] -= consoles.TICKET_VALID + 1
     consoles.forget_unused(app)
     assert cid not in app.state.console_tickets
-    assert "nie połączyła" in session_row(app, cid)["close_reason"]
+    assert "Websockets Support" in session_row(app, cid)["close_reason"]
+
+
+def test_koniec_sesji_podaje_powod(app, pve, console, admin, monkeypatch):
+    # przeglądarka zgłasza koniec, zanim WebSocket dotarł do panelu (NPM bez Websockets Support)
+    cid, csrf = open_page(app, admin, pve)
+    start(admin, cid, csrf)
+    assert "Websockets Support" in admin.get(f"/terminale/konsola/{cid}/koniec").json()["reason"]
+    assert cid not in app.state.console_tickets
+
+    async def refused(self, info):
+        raise AdapterError("Proxmox odrzucił połączenie z konsolą (HTTP 401)")
+    monkeypatch.setattr(Proxmox, "console_connect", refused)
+    cid, csrf = open_page(app, admin, pve)
+    start(admin, cid, csrf)
+    with pytest.raises(WebSocketDisconnect):
+        with admin.websocket_connect(f"wss://testserver/terminale/konsola/{cid}/ws", **ws_args(admin)) as ws:
+            ws.receive_bytes()
+    assert "HTTP 401" in admin.get(f"/terminale/konsola/{cid}/koniec").json()["reason"]
+
+
+def test_nieoczekiwany_blad_polaczenia_zostaje_w_historii(app, pve, console, admin, monkeypatch):
+    async def broken(self, info):
+        raise ValueError("zły adres")
+    monkeypatch.setattr(Proxmox, "console_connect", broken)
+    cid, csrf = open_page(app, admin, pve)
+    start(admin, cid, csrf)
+    with pytest.raises(WebSocketDisconnect):
+        with admin.websocket_connect(f"wss://testserver/terminale/konsola/{cid}/ws", **ws_args(admin)) as ws:
+            ws.receive_bytes()
+    assert "ValueError: zły adres" in session_row(app, cid)["close_reason"]
+
+
+def test_most_podaje_kod_zamkniecia_proxmoxa():
+    class Browser:
+        async def receive(self):
+            await asyncio.Event().wait()
+
+    fake = FakeConsole()
+    fake.close_code, fake.close_reason = 1011, "vnc"
+
+    async def scenario():
+        fake.finish = asyncio.Event()
+        fake.finish.set()
+        return await consoles.bridge(Browser(), fake, lambda: None)
+    assert run(scenario()) == "Proxmox zakończył konsolę (kod 1011: vnc)."
 
 
 def test_proxmox_vncproxy_jednym_tokenem():

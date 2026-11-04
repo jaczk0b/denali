@@ -3,6 +3,7 @@
 O tym, czy wolno, decydują consoles.request i actions.request. WebSocket nie przechodzi przez require_admin, więc
 sprawdza sam: Origin (ciasteczko poszłoby też z obcej strony), sesję i to, czy konsolę zgłosił ten sam użytkownik.
 """
+import logging
 import time
 from urllib.parse import urlsplit
 
@@ -17,6 +18,7 @@ from ..templating import render
 from .deps import COOKIE, NotFound, client_ip, require_admin, require_fresh
 
 router = APIRouter()
+log = logging.getLogger("denali.consoles")
 COMMAND_KEY = "agent.polecenia"
 
 
@@ -120,6 +122,20 @@ async def console_start(request: Request, console_id: int, sess: dict = Depends(
     return {"password": info["ticket"]}
 
 
+@router.get("/terminale/konsola/{console_id:int}/koniec")
+def console_end(request: Request, console_id: int, sess: dict = Depends(require_admin)):
+    """Dlaczego sesja się skończyła — przeglądarka widzi tylko, że połączenie padło."""
+    app = request.app
+    with app.state.engine.begin() as conn:
+        row = consoles.get(conn, console_id)
+        if not row or row["user"] != sess["login"]:
+            raise NotFound("Nie ma takiej sesji.")
+        if app.state.console_tickets.pop(console_id, None):     # bilet czeka, a przeglądarka już zgłasza koniec
+            consoles.close(conn, row, consoles.NO_WEBSOCKET)
+        row = consoles.get(conn, console_id)
+    return {"reason": row["close_reason"]}
+
+
 def _same_origin(ws):
     origin = urlsplit(ws.headers.get("origin", "")).netloc
     base = urlsplit(ws.app.state.settings.base_url or "").netloc
@@ -135,15 +151,19 @@ async def console_ws(ws: WebSocket, console_id: int):
         row = consoles.get(conn, console_id)
     if (not _same_origin(ws) or not sess or sess["kind"] != "zwykla" or sess["role"] != "admin" or not row
             or row["user"] != sess["login"] or console_id not in app.state.console_tickets):
+        log.warning("Odrzucony WebSocket konsoli %s: origin=%r host=%r sesja=%s", console_id, ws.headers.get("origin"),
+                    ws.headers.get("host"), bool(sess))
         await ws.close(4403)        # przed accept: przeglądarka widzi odmowę połączenia
         return
     pending = app.state.console_tickets.pop(console_id)
     await ws.accept()
     try:
         upstream = await pending["adapter"].console_connect(pending["info"])
-    except AdapterError as e:
+    except Exception as e:          # każdy błąd ma zostać w historii sesji, a nie zniknąć razem z połączeniem
+        if not isinstance(e, AdapterError):
+            log.exception("Połączenie z konsolą w Proxmoxie nie powiodło się")
         with app.state.engine.begin() as conn:
-            consoles.close(conn, row, str(e))
+            consoles.close(conn, row, str(e) if isinstance(e, AdapterError) else f"Błąd połączenia: {e.__class__.__name__}: {e}")
         await ws.close(4502)
         return
 

@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import secrets
 import time
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -28,9 +29,13 @@ def _hash(code):
 
 
 # ───────────────────────── ponowne potwierdzenie ─────────────────────────
-def _reauth_page(request: Request, sess: dict, nxt: str, error: str | None = None, status: int = 200):
+def _user(request: Request, sess: dict):
     with request.app.state.engine.connect() as conn:
-        user = conn.execute(select(app_user).where(app_user.c.id == sess["user_id"])).mappings().first()
+        return conn.execute(select(app_user).where(app_user.c.id == sess["user_id"])).mappings().first()
+
+
+def _reauth_page(request: Request, sess: dict, nxt: str, error: str | None = None, status: int = 200):
+    user = _user(request, sess)
     oidc_on = request.app.state.settings.oidc_enabled and bool(user["oidc_sub"])
     return render(request, "potwierdz.html", {"next": nxt, "error": error, "has_password": auth.has_password(user),
                                               "oidc_label": request.app.state.settings.oidc_label if oidc_on else ""},
@@ -38,8 +43,12 @@ def _reauth_page(request: Request, sess: dict, nxt: str, error: str | None = Non
 
 
 @router.get("/potwierdz")
-def reauth_form(request: Request, next: str = "", sess: dict = Depends(require_user)):
-    return _reauth_page(request, sess, safe_next(next))
+def reauth_form(request: Request, next: str = "", inna: str = "", blad: str = "", sess: dict = Depends(require_user)):
+    nxt, user = safe_next(next), _user(request, sess)
+    prefers_oidc = user["reauth_method"] == "oidc" or not auth.has_password(user)
+    if not inna and prefers_oidc and user["oidc_sub"] and request.app.state.settings.oidc_enabled:
+        return RedirectResponse(f"/login/oidc?cel=reauth&next={quote(nxt, safe='')}", 303)
+    return _reauth_page(request, sess, nxt, "Pocket ID nie potwierdził. Potwierdź inaczej." if blad else None)
 
 
 @router.post("/potwierdz")

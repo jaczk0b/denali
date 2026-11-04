@@ -20,6 +20,15 @@ function finished(text) {
   rfb = null;
 }
 
+// noVNC wie tylko, że połączenie padło. Powód zna panel; chwila na to, żeby zdążył go zapisać.
+async function finishedWithReason(text) {
+  finished(text);
+  await new Promise(function (ok) { setTimeout(ok, 700); });
+  var res = await fetch(page.dataset.end).catch(function () { return null; });
+  var body = res && res.ok ? await res.json().catch(function () { return {}; }) : {};
+  if (body.reason && body.reason !== "Rozłączono.") { say(body.reason); }
+}
+
 async function start() {
   var res = await fetch(page.dataset.start, { method: "POST", headers: { "X-CSRF-Token": page.dataset.csrf } });
   var body = await res.json().catch(function () { return {}; });
@@ -36,11 +45,12 @@ async function start() {
     cad.disabled = false;
     rfb.focus();
   });
-  rfb.addEventListener("disconnect", function (e) {
-    finished(e.detail.clean ? "Rozłączono" : "Połączenie przerwane");
+  var rejected = "";
+  rfb.addEventListener("securityfailure", function (e) {
+    rejected = "Proxmox odrzucił bilet konsoli" + (e.detail.reason ? ": " + e.detail.reason : "");
   });
-  rfb.addEventListener("securityfailure", function () {
-    finished("Proxmox odrzucił bilet konsoli");
+  rfb.addEventListener("disconnect", function (e) {
+    if (rejected) { finished(rejected); } else { finishedWithReason(e.detail.clean ? "Rozłączono" : "Połączenie przerwane"); }
   });
 }
 

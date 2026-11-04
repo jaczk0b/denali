@@ -45,6 +45,15 @@
   {% if oidc_linked %}
   <p>Konto jest połączone z Pocket ID — możesz logować się kluczem dostępu{% if has_password %} albo jak dotąd hasłem i kodem{% endif %}.</p>
   {% if has_password %}
+  {% if has_password %}
+  <form method="post" action="/konto/potwierdzanie" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <p>Gdy panel prosi o potwierdzenie, najpierw:</p>
+    <label class="check"><input type="radio" name="sposob" value="oidc" {% if reauth_method == "oidc" %}checked{% endif %}> Pocket ID <span class="muted small">hasło pojawi się tylko, gdy Pocket ID nie zadziała</span></label>
+    <label class="check"><input type="radio" name="sposob" value="haslo" {% if reauth_method != "oidc" %}checked{% endif %}> Hasło i kod</label>
+    <button class="btn small mt" type="submit">Zapisz</button>
+  </form>
+  {% endif %}
   <form method="post" action="/konto/oidc/rozlacz" class="mt">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <button class="btn" type="submit">Rozłącz</button>

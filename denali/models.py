@@ -31,6 +31,7 @@ app_user = Table(
     Column("disabled", Boolean, nullable=False, default=False),
     Column("created_at", Float, nullable=False),
     Column("pw_changed_at", Float, nullable=False),
+    Column("reauth_method", String(16), nullable=False, default="haslo"),  # haslo | oidc — którym potwierdzać najpierw
     Column("oidc_sub", String(300), unique=True),                # „issuer|sub” z Pocket ID; NULL = niepołączone
 )
 

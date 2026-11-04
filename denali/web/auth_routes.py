@@ -131,12 +131,23 @@ def _account_page(request: Request, sess: dict, message: str | None = None, erro
         user = conn.execute(select(app_user).where(app_user.c.id == sess["user_id"])).mappings().first()
     return render(request, "konto.html", {"sessions": sessions, "current": sess["public_id"],
                                           "has_password": auth.has_password(user), "oidc_linked": bool(user["oidc_sub"]),
-                                          "oidc_on": settings.oidc_enabled, "message": message, "error": error}, status)
+                                          "oidc_on": settings.oidc_enabled, "reauth_method": user["reauth_method"],
+                                          "message": message, "error": error}, status)
 
 
 @router.get("/konto")
 def account(request: Request, sess: dict = Depends(require_user)):
     return _account_page(request, sess)
+
+
+@router.post("/konto/potwierdzanie")
+def reauth_method(request: Request, sposob: str = Form(""), sess: dict = Depends(require_user)):
+    if sposob not in ("haslo", "oidc"):
+        return _account_page(request, sess, error="Nie ma takiego sposobu.", status=400)
+    with request.app.state.engine.begin() as conn:
+        conn.execute(app_user.update().where(app_user.c.id == sess["user_id"]).values(reauth_method=sposob))
+        auth.audit(conn, "reauth_method", user=sess["login"], ip=client_ip(request), params={"sposob": sposob})
+    return _account_page(request, sess, message="Zapisano.")
 
 
 @router.post("/konto/haslo")

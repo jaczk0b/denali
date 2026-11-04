@@ -293,7 +293,7 @@ Jednorazowo w Proxmoxie:
 
 Zakres dotyczy wszystkich VM i LXC tego Proxmoxa.
 
-Otwarcie wymaga hasła i kodu, a sesja kończy się po 2 godzinach albo po wylogowaniu. System w maszynie dalej pyta
+Gdy konsola się nie połączy, pasek konsoli i *Ostatnie sesje konsoli* podają powód. Otwarcie wymaga hasła i kodu, a sesja kończy się po 2 godzinach albo po wylogowaniu. System w maszynie dalej pyta
 o własne hasło. Treści sesji panel nie zapisuje, w *Audycie* są otwarcie, odmowa i koniec (`console_open`,
 `console_blocked`, `console_close`). Konsoli hosta Proxmoxa tu nie ma — token API wymagałby do niej `Sys.Console` i
 hasła konta na hoście; hosta obsługujesz z panelu Proxmoxa.

@@ -232,18 +232,41 @@ def test_tozsamosc_polaczona_z_innym_kontem(app, provider):
 def test_potwierdzenie_przez_pocket_id(app_groups, provider):
     with new_client(app_groups) as c:
         oidc_round(c, provider, groups=["denali-admins"])
-        page = c.get("/potwierdz?next=/akcje").text
+        # konto bez hasła: od razu do Pocket ID, bez strony pośredniej
+        r = c.get("/potwierdz?next=/akcje")
+        assert r.status_code == 303 and r.headers["location"] == "/login/oidc?cel=reauth&next=%2Fakcje"
+        page = c.get("/potwierdz?next=/akcje&inna=1").text
         assert "Potwierdź w Pocket ID" in page and 'name="password"' not in page
         r = oidc_round(c, provider, start="/login/oidc?cel=reauth&next=/akcje", groups=["denali-admins"],
                        auth_time=time.time() - 3600)   # dostawca nie zapytał ponownie
-        assert r.status_code == 400 and "nie poprosił" in r.text
+        assert r.status_code == 303 and r.headers["location"] == "/potwierdz?inna=1&blad=1&next=%2Fakcje"
         r = oidc_round(c, provider, start="/login/oidc?cel=reauth&next=/akcje", groups=["denali-admins"],
                        auth_time=time.time())
         assert r.status_code == 303 and r.headers["location"] == "/akcje"
         r = oidc_round(c, provider, start="/login/oidc?cel=reauth", sub="ktos-inny", groups=["denali-admins"],
                        auth_time=time.time())
-        assert "inne konto" in r.text
+        assert r.headers["location"].startswith("/potwierdz?inna=1")
+        assert "Pocket ID nie potwierdził" in c.get(r.headers["location"]).text
     assert audits(app_groups).count("reauth") == 1
+
+
+def test_preferowane_potwierdzanie_i_haslo_gdy_pocket_id_zawiedzie(app, provider):
+    with new_client(app) as c:
+        _password_user(app, c)
+        _reauth(c)
+        oidc_round(c, provider, start="/login/oidc?cel=link")
+        page = c.get("/konto").text
+        assert 'name="sposob"' in page
+        assert 'password' in c.get("/potwierdz?next=/konto&inna=1").text
+        # domyślnie hasło, Pocket ID jako druga możliwość
+        assert 'name="password"' in c.get("/potwierdz?next=/akcje").text
+        c.post("/konto/potwierdzanie", data={"csrf_token": csrf_from(page), "sposob": "oidc"})
+        assert user_row(app, "jan")["reauth_method"] == "oidc"
+        assert c.get("/potwierdz?next=/akcje").headers["location"].startswith("/login/oidc?cel=reauth")
+        r = oidc_round(c, provider, start="/login/oidc?cel=reauth&next=/akcje", auth_time=time.time() - 3600)
+        fallback = c.get(r.headers["location"]).text
+        assert 'name="password"' in fallback and "Pocket ID nie potwierdził" in fallback
+        assert c.post("/konto/potwierdzanie", data={"csrf_token": csrf_from(page), "sposob": "zly"}).status_code == 400
 
 
 def test_rozlaczenie(app, provider):

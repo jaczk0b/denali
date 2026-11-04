@@ -14,7 +14,8 @@
 </main>
 {% else %}
 <div class="console-page" id="konsola" data-start="/terminale/konsola/{{ row.id }}/start"
-     data-ws="/terminale/konsola/{{ row.id }}/ws" data-csrf="{{ csrf }}" data-back="{{ back }}">
+     data-ws="/terminale/konsola/{{ row.id }}/ws" data-end="/terminale/konsola/{{ row.id }}/koniec"
+     data-csrf="{{ csrf }}" data-back="{{ back }}">
   <div class="console-bar">
     <a href="{{ back }}">Terminale</a>
     <strong>{{ row.target }}</strong>
