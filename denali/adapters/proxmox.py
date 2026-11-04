@@ -62,7 +62,7 @@ class Proxmox(Adapter):
     label = "Proxmox VE"
     default_poll = 60
     fields = [
-        Field("url", "Adres", "url", help="np. https://192.168.1.2:8006 — bez ścieżki"),
+        Field("url", "Adres", "url", help="bezpośrednio do węzła, np. https://192.168.1.2:8006 — bez ścieżki i bez proxy"),
         Field("token_id", "Identyfikator tokenu", help="użytkownik@realm!nazwa", default=DEFAULT_TOKEN),
         Field("token_secret", "Sekret tokenu", "secret"),
         Field("ca_pem", "Certyfikat CA Proxmoxa (pve-root-ca.pem)", "textarea", required=False,
@@ -321,7 +321,8 @@ class Proxmox(Adapter):
             res = await self._call(cli, "POST", path + "/vncproxy", {"websocket": 1})
         if not isinstance(res, dict) or not res.get("port") or not res.get("ticket"):
             raise AdapterError("Proxmox nie podał biletu na konsolę.")
-        return {"path": path, "port": res["port"], "ticket": res["ticket"]}
+        # przy websocket=1 bilet to „hasło:bilet”; hasło VNC Proxmox podaje też osobno
+        return {"path": path, "port": res["port"], "ticket": res["ticket"], "password": res.get("password") or res["ticket"]}
 
     async def console_connect(self, info):
         """Połączenie WebSocket z konsolą (po bilecie z console_ticket)."""
@@ -333,8 +334,11 @@ class Proxmox(Adapter):
                 subprotocols=["binary"], additional_headers={"Authorization": f"PVEAPIToken={self._token()}"},
                 ssl=_ssl_context(self.config.get("ca_pem", ""), bool(self.config.get("verify_tls", True))))
         except websockets.InvalidStatus as e:
-            raise AdapterError(f"Proxmox odrzucił połączenie z konsolą (HTTP {e.response.status_code}) — token API na "
-                               "tej wersji Proxmoxa może nie obsługiwać vncwebsocket.") from None
+            server = ", ".join(e.response.headers.get_all("Server")) or "?"
+            if e.response.status_code == 200:   # Proxmox przyjął token i bilet, ale nie dostał nagłówka Upgrade
+                raise AdapterError("Coś między panelem a Proxmoxem nie przepuszcza WebSocket (nagłówek Upgrade): w adresie "
+                                   f"integracji wpisz bezpośrednio https://IP-węzła:8006 (odpowiedział: {server}).") from None
+            raise AdapterError(f"Proxmox odrzucił połączenie z konsolą (HTTP {e.response.status_code}, {server}).") from None
         except (OSError, websockets.InvalidHandshake, TimeoutError):
             raise AdapterError("Nie udało się połączyć z konsolą w Proxmoxie.") from None
 

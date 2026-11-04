@@ -119,7 +119,7 @@ async def console_start(request: Request, console_id: int, sess: dict = Depends(
             consoles.close(conn, row, str(e))
         return JSONResponse({"error": str(e)}, 502)
     app.state.console_tickets[console_id] = {"adapter": adapter, "info": info, "at": time.time()}
-    return {"password": info["ticket"]}
+    return {"password": info["password"]}
 
 
 @router.get("/terminale/konsola/{console_id:int}/koniec")

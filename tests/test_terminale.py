@@ -34,7 +34,8 @@ def ticket_api(seen=None, deny=False):
         assert request.url.path.endswith("/vncproxy")
         if deny:
             return httpx.Response(403, json={"data": None})
-        return httpx.Response(200, json={"data": {"port": "5900", "ticket": "PVEVNC:bilet", "upid": "UPID:x"}})
+        return httpx.Response(200, json={"data": {"port": "5900", "ticket": "haslo123:PVEVNC:bilet", "password": "haslo123",
+                                                  "upid": "UPID:x"}})
     return httpx.MockTransport(handler)
 
 
@@ -110,7 +111,7 @@ def test_konsola_od_formularza_do_zakonczenia(app, pve, console, admin):
     cid, csrf = open_page(app, admin, pve)
     assert 'data-ws="/terminale/konsola/%d/ws"' % cid in admin.get(f"/terminale/konsola/{cid}").text
     r = start(admin, cid, csrf)
-    assert r.json() == {"password": "PVEVNC:bilet"}
+    assert r.json() == {"password": "haslo123"}
     with admin.websocket_connect(f"wss://testserver/terminale/konsola/{cid}/ws", **ws_args(admin)) as ws:
         assert ws.receive_bytes() == b"RFB 003.008\n"       # z Proxmoxa do przeglądarki
         ws.send_bytes(b"z przegladarki")
@@ -118,7 +119,8 @@ def test_konsola_od_formularza_do_zakonczenia(app, pve, console, admin):
         with pytest.raises(WebSocketDisconnect):
             ws.receive_bytes()
     assert console.sent == [b"z przegladarki", b"koniec"] and console.closed
-    assert console.info == {"path": "/nodes/pve/qemu/107", "port": "5900", "ticket": "PVEVNC:bilet"}
+    assert console.info == {"path": "/nodes/pve/qemu/107", "port": "5900", "ticket": "haslo123:PVEVNC:bilet",
+                            "password": "haslo123"}
     row = session_row(app, cid)
     assert row["closed_at"] and row["close_reason"] == "Proxmox zakończył konsolę."
     with app.state.engine.connect() as conn:
@@ -316,7 +318,7 @@ def test_proxmox_vncproxy_jednym_tokenem():
     seen = []
     a = Proxmox(CONFIG, SECRETS, transport=ticket_api(seen))
     info = run(a.console_ticket("lxc/105", {"node": "pve"}))
-    assert info == {"path": "/nodes/pve/lxc/105", "port": "5900", "ticket": "PVEVNC:bilet"}
+    assert info == {"path": "/nodes/pve/lxc/105", "port": "5900", "ticket": "haslo123:PVEVNC:bilet", "password": "haslo123"}
     assert seen[0].headers["authorization"] == f"PVEAPIToken={CONFIG['token_id']}={SECRETS['token_secret']}"
     assert seen[0].content == b"websocket=1"
     with pytest.raises(AdapterError, match="węźle"):
@@ -367,16 +369,17 @@ def test_polaczenie_z_vncwebsocket_po_tls(tmp_path):
     assert seen["got"] == b"odpowiedz"
 
 
-def test_odmowa_vncwebsocket_ma_czytelny_blad(tmp_path):
+@pytest.mark.parametrize("status, text", [(401, "HTTP 401"), (200, "IP-węzła:8006")])
+def test_odmowa_vncwebsocket_ma_czytelny_blad(tmp_path, status, text):
     async def scenario():
         def refuse(_conn, _request):
-            return websockets.Response(401, "Unauthorized", websockets.Headers(), b"")
+            return websockets.Response(status, "x", websockets.Headers({"Server": "openresty"}), b"")
 
         async with websockets.serve(lambda ws: None, "127.0.0.1", 0, ssl=tls_server_context(tmp_path),
                                     process_request=refuse) as srv:
             port = srv.sockets[0].getsockname()[1]
             a = Proxmox({**CONFIG, "url": f"https://127.0.0.1:{port}", "verify_tls": False}, SECRETS)
-            with pytest.raises(AdapterError, match="HTTP 401"):
+            with pytest.raises(AdapterError, match=text):
                 await a.console_connect({"path": "/nodes/pve/qemu/107", "port": "5900", "ticket": "x"})
 
     run(scenario())
