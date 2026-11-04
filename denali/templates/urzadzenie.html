@@ -47,6 +47,7 @@
   <a href="#pliki">Pliki</a>
   {% if admin %}<a href="#skarbiec">Hasła</a>{% endif %}
   {% if admin and (dev_actions or action_runs) %}<a href="#akcje">Akcje</a>{% endif %}
+  {% if admin and config_backups %}<a href="#kopie">Kopie konfiguracji</a>{% endif %}
   <a href="#ustawienia">Ustawienia</a>
 </nav>
 
@@ -308,6 +309,22 @@
       {% for r in action_runs %}<li><a class="grow" href="/akcje/{{ r.id }}">{{ r.label }}</a><span class="muted small">{{ r.created_at | dt }} · {{ r.requested_by }}</span> {{ run_status(r.status) }}</li>{% endfor %}
     </ul>
     {% endif %}
+  </section>
+  {% endif %}
+
+  {% if admin and config_backups %}
+  <section class="card" aria-labelledby="kopie">
+    <h2 id="kopie">Kopie konfiguracji</h2>
+    <ul class="list-rows">
+      {% for b in config_backups %}
+      <li><span class="grow">{{ b.taken_at | dt }} <span class="muted small">· {{ b.size | size }} · {{ b.source }}{% if b.taken_by %} · {{ b.taken_by }}{% endif %}
+        {%- if b.checked_at - b.taken_at > 60 %} · bez zmian do {{ b.checked_at | dt }}{% endif %}</span></span>
+        <form method="post" action="/urzadzenia/{{ d.id }}/kopie/{{ b.id }}/pobierz"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <button class="btn small" type="submit">Pobierz</button></form></li>
+      {% endfor %}
+    </ul>
+    <p class="muted small">Archiwum zawiera hasła Wi-Fi i kont routera — pobranie wymaga hasła i trafia do audytu.
+      Przywracasz je w LuCI: <em>System → Backup / Flash Firmware → Restore backup</em>.</p>
   </section>
   {% endif %}
 

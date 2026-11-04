@@ -22,7 +22,7 @@ import time
 
 from sqlalchemy import select
 
-from . import auth, polecenia, profiles
+from . import auth, configs, polecenia, profiles
 from .adapters import AdapterError, registry
 from .db import kv_get, kv_set
 from .models import (action_run, device, external_ref, incident, incident_device, incident_event, integration,
@@ -382,6 +382,11 @@ async def execute(engine, box, run_id, transport=None, wait=QUICK_WAIT):
         run = get(conn, run_id)
         if res is None:
             return finish(conn, run, False, error)
+        if res.ok and res.file and run["device_id"]:
+            _, new = configs.store(conn, box, run["device_id"], res.file.get("name"), res.file["data"],
+                                   source=row["name"], user=run["requested_by"])
+            res.text = (res.text or "wykonana") + (" — zapisana na karcie urządzenia" if new
+                                                   else " — bez zmian od poprzedniej kopii")
         if not res.ok or not res.task:
             return finish(conn, run, res.ok, res.text)
         conn.execute(action_run.update().where(action_run.c.id == run_id).values(task=res.task, result=res.text))

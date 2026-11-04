@@ -152,6 +152,24 @@
     <p class="muted small">Podłączone urządzenia trafią do „Do zatwierdzenia” (nowe urządzenie w sieci). Znane dopasują się po MAC.
       Telefony i laptopy dostają profil „Komputery i telefony” — bez pingu i powiadomień.</p>
   </section>
+  {% elif cls.type == "openwrt" %}
+  <section class="card md">
+    <h2>Jak założyć konta na routerze</h2>
+    <ol>
+      <li>Zaloguj się na router przez SSH (<code>ssh root@192.168.1.1</code>).</li>
+      <li>Skopiuj skrypt niżej, <strong>wpisz dwa różne hasła</strong> w pierwszych liniach i wklej całość w SSH.
+        Skrypt zakłada dwa konta rpcd (nie są kontami systemu i nie mają powłoki):
+        <code>denali</code> — tylko odczyt stanu, <code>denali-kopia</code> — tylko kopia konfiguracji.</li>
+      <li>Tutaj wpisz adres routera i hasło konta <code>denali</code>. Konto <code>denali-kopia</code> wpisz
+        w sekcji „Akcje” po zapisaniu — bez niego panel nie zrobi kopii.</li>
+    </ol>
+    <pre class="small">{{ cls.setup_script }}</pre>
+    <div class="actions"><button class="btn small" type="button" data-copy="{{ cls.setup_script }}">Kopiuj skrypt</button></div>
+    <p class="muted small">Klienci trafią do „Do zatwierdzenia”, znane dopasują się po MAC. Lista pakietów do aktualizacji
+      odświeża się na routerze raz na dobę (cron ze skryptu) i trafia do Aktualizacji. Aktualizacji firmware'u
+      Denali nie sprawdza — to <code>owut</code> albo LuCI <em>Attended Sysupgrade</em>. Router działający jako AP dodaj
+      osobno i zaznacz „punkt dostępowy”. Wymaga LuCI (albo <code>uhttpd-mod-ubus</code> i <code>cgi-io</code>).</p>
+  </section>
   {% elif cls.type == "ovh" %}
   <section class="card md">
     <h2>Jak założyć klucze OVH</h2>

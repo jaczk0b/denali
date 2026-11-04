@@ -108,6 +108,8 @@ class ActionResult:
     ok: bool
     text: str = ""
     task: dict | None = None    # zadanie jeszcze trwa w źródle — dokończy je check_task
+    # plik z akcji (kopia konfiguracji routera): {"name", "data": bytes} — rdzeń zapisze go zaszyfrowany przy urządzeniu
+    file: dict | None = None
 
 
 @dataclass
@@ -176,9 +178,10 @@ class Adapter:
 def registry() -> dict:
     from ..agents import Agent
     from .komodo import Komodo
+    from .openwrt import Openwrt
     from .ovh import Ovh
     from .pbs import Pbs
     from .proxmox import Proxmox
     from .tplink import Tplink
     from .truenas import Truenas
-    return {a.type: a for a in (Proxmox, Komodo, Pbs, Truenas, Tplink, Ovh, Agent)}
+    return {a.type: a for a in (Proxmox, Komodo, Pbs, Truenas, Openwrt, Tplink, Ovh, Agent)}

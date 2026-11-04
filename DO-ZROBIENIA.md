@@ -139,7 +139,10 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
       w domu aplikacja działa). Gdy padnie internet w domu: „nie da się sprawdzić”, a powiadomi strażnik (decyzja 31.10).
 - [x] **Odświeżanie na żywo (SSE)** — pulpit, listy urządzeń i incydentów oraz karta incydentu podmieniają treść
       przy zmianie stanu (do ~5 s po zapisie workera); nie w trakcie pisania. Do sprawdzenia na tablecie i przez NPM.
-- [ ] **OpenWrt** — odłożone (POMYSLY.md); router działa przez nieoficjalną bibliotekę TP-Link.
+- [ ] **OpenWrt** — kod gotowy (4.11.2026), testy na nagranym API rpcd. Do sprawdzenia na routerze: skrypt ze strony
+      integracji (konta `denali` i `denali-kopia`, ACL), czy rpcd przepuszcza `file exec` z argumentami z ACL
+      (`ip -4 neigh show`, `opkg list-upgradable`; jeśli nie — klienci tylko z DHCP i Wi-Fi, bez aktualizacji), porty
+      i prędkości na DSA, klienci za AP, kopia konfiguracji i jej przywrócenie w LuCI.
 - [ ] **OVHcloud (VPS)** — kod gotowy, testy na nagranym API. Do sprawdzenia na prawdziwym koncie: założyć klucze,
       zatwierdzić VPS, porównać termin opłaty i faktury z panelem OVH, otworzyć terminal SSH z zakładki VPS.
 - [ ] **Klucz panelu** — kod gotowy, testy na lokalnym serwerze SSH. Do sprawdzenia: pierwsze logowanie hasłem na prawdziwej
@@ -157,15 +160,16 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
 
 ## 6. Etap 4 — czego nie ma (świadomie)
 
-- [ ] **Router TP-Link**: brak aktualizacji firmware'u na liście — nieoficjalne API tego nie podaje (wróci z OpenWrt).
+- [ ] **Router TP-Link**: brak aktualizacji firmware'u na liście — nieoficjalne API tego nie podaje. OpenWrt podaje
+      pakiety; firmware'u OpenWrt też nie (świadomie — `owut` / Attended Sysupgrade).
 - [ ] **TrueNAS**: aktualizacje systemu jeszcze nie na liście (do dopisania w adapterze).
 - [ ] **Powiadomienia o aktualizacjach** (np. raz dziennie o nowych poprawkach bezpieczeństwa) — ustawienie profilu
       „powiadom” na razie tylko liczy urządzenie w liczniku.
 
 ## 6a. Etap 5 — czego nie ma (świadomie)
 
-- [ ] **Router**: brak akcji. Jedyna planowana (kopia konfiguracji, `sysupgrade -b`) wymaga OpenWrt — biblioteka
-      TP-Linka jej nie ma.
+- [x] **Router OpenWrt**: kopia konfiguracji (4.11.2026), osobnym kontem rpcd; TP-Link dalej bez akcji (biblioteka
+      jej nie ma). Kopia automatyczna (np. co tydzień) — jeszcze nie, tylko z karty urządzenia.
 - [ ] **TrueNAS, PBS**: bez akcji (nie było ich w projekcie).
 - [x] **Restart maszyny przez agenta** po aktualizacji („wymagany restart”) — agent 1.2: akcja `reboot` i opcja
       „potem uruchom ponownie, jeśli wymagany” przy aktualizacji (2.11.2026).
@@ -197,7 +201,8 @@ Zakładka źródła (Proxmox, TrueNAS, Docker, Sieć) pokazuje się dopiero, gdy
 - [x] Dyski i SMART w TrueNAS (pula, temperatura, ostatni test), wszystkie powiadomienia TrueNAS na zakładce;
       wersje obrazów w Docker = tag z compose (numeru nowszej wersji Komodo nie podaje — tylko „pod tym tagiem jest
       nowszy obraz”) (2.11.2026).
-- [ ] Później: porty i prędkość łącza w Sieci (dopiero z OpenWrt), DHCP: która pula jest rozdawana.
+- [x] Porty i prędkość łącza w Sieci — z OpenWrt (4.11.2026).
+- [ ] Później: DHCP — która pula jest rozdawana.
 
 ## 8. Następne etapy
 

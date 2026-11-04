@@ -8,14 +8,14 @@ Dokumenty: [PROJEKT.md](PROJEKT.md) (projekt i decyzje), [AUDYT.md](AUDYT.md) (a
 
 **Stan: Etap 5 (akcje) — kod gotowy, czeka na sprawdzenie na serwerach** (Etap 4 też jeszcze nie odebrany). Jest: logowanie z 2FA, urządzenia,
 zależności i kable, profile, kolejka „do zatwierdzenia”, analiza przyczyny, incydenty, procedury, runbooki, pliki,
-skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo, router TP-Link i OVHcloud (VPS),
+skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo, router OpenWrt, router TP-Link i OVHcloud (VPS),
 sprawdzenia z LAN i z internetu, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS,
-odświeżanie na żywo (SSE); jedna lista aktualizacji (Proxmox, PBS, Komodo, agent) i agent na maszynach (apt,
+odświeżanie na żywo (SSE); jedna lista aktualizacji (Proxmox, PBS, Komodo, OpenWrt, agent) i agent na maszynach (apt,
 wymagany restart, NFS); dział Infrastruktura z zakładkami Mapa (rysowana sama), Proxmox, TrueNAS, Docker, Sieć, VPS,
 Adresy IP (zajęte i wolne, konflikty) i Szafa (co na której wysokości); akcje z listy dozwolonych (Proxmox: start,
 wyłączenie, restart, snapshot; Komodo: start, restart, stop, Deploy; agent: apt upgrade po snapshocie i restart
-maszyny, gdy jest wymagany) z potwierdzeniem i audytem — z karty urządzenia i z zakładek Proxmox i Docker; TrueNAS:
-wszystkie powiadomienia (dzwonek), dyski z temperaturą i testami SMART. Nie ma: OpenWrt (odłożone), więc też akcji na routerze (kopia konfiguracji).
+maszyny, gdy jest wymagany; OpenWrt: kopia konfiguracji) z potwierdzeniem i audytem — z karty urządzenia i z zakładek Proxmox i Docker; TrueNAS:
+wszystkie powiadomienia (dzwonek), dyski z temperaturą i testami SMART. OpenWrt — kod gotowy, testy na nagranym API rpcd, nie sprawdzony na routerze.
 
 Spis treści:
 [Instalacja](#instalacja) ·
@@ -202,6 +202,7 @@ Zasady:
 | Proxmox VE | pakiety węzła (jak *Węzeł → Updates*) | nic — token PVEAuditor już to widzi |
 | PBS | pakiety serwera (jak *Administration → Updates*) | nic — rola Audit |
 | Komodo | usługi stacków z nowszym obrazem | w stacku włączone *Poll for updates* |
+| OpenWrt | pakiety (`opkg list-upgradable`, na 25.x `apk list --upgradable`) | skrypt ze strony integracji (konto, ACL, cron `opkg update` raz na dobę) |
 | Agent | pakiety apt (z poprawkami bezpieczeństwa), wymagany restart, montaże NFS | instalacja na maszynie (niżej) |
 
 TrueNAS i router TP-Link na razie nie podają aktualizacji (TrueNAS — później; TP-Link nie ma tego w API).
@@ -209,6 +210,13 @@ TrueNAS za to pokazuje na swojej zakładce wszystkie powiadomienia z dzwonka (od
 dyski: pula, temperatura i ostatni test SMART. „Uwaga” na karcie TrueNAS dają tylko błędy i poważniejsze alerty,
 nieudany test SMART i za gorący dysk (HDD od 55 °C, SSD od 70 °C). Testy SMART planujesz w TrueNAS
 (*Data Protection → S.M.A.R.T. Tests*) — Denali tylko czyta wyniki.
+
+**Router OpenWrt** dodajesz w Integracjach: na stronie integracji jest skrypt do wklejenia w SSH routera. Zakłada dwa
+konta rpcd (nie systemowe): `denali` czyta stan (model, wersja, WAN, porty, Wi-Fi, klienci z DHCP, tablicy ARP i Wi-Fi,
+pakiety), `denali-kopia` może tylko zrobić kopię konfiguracji. ACL daje dokładnie te obiekty ubus i pliki, których panel
+używa. Klienci trafiają do kolejki jak przy TP-Linku, a zakładka *Sieć* pokazuje dodatkowo WAN, porty z prędkością
+i sieci Wi-Fi. Gdy WAN nie działa, router ma „uwagę”. Aktualizacji firmware'u panel nie sprawdza (to `owut` albo LuCI
+*Attended Sysupgrade*). Wymaga LuCI albo pakietów `uhttpd-mod-ubus` i `cgi-io`.
 
 **OVHcloud (VPS)** dodajesz w Integracjach; instrukcja założenia kluczy tylko do odczytu jest na stronie integracji.
 Zakładka VPS pokazuje stan maszyny, termin opłaty, plan, adresy, kopie, zaległości i ostatnie faktury, a po zatwierdzeniu
@@ -277,6 +285,7 @@ historia w *Akcjach*, a przy trwającym incydencie urządzenia — w jego przebi
 |---|---|---|
 | Proxmox VE | Uruchom, Wyłącz, Uruchom ponownie, Zatrzymaj natychmiast, Zrób snapshot (VM i LXC) | jeden token integracji, zakres „Akcje” (`VM.PowerMgmt`, `VM.Snapshot`), polecenie układa panel |
 | Komodo | Uruchom, Uruchom ponownie, Zatrzymaj, Aktualizuj (Deploy) — na stackach | klucz osobnego użytkownika z prawem **Execute** tylko na wybranych stackach |
+| OpenWrt | Kopia konfiguracji (to samo co `sysupgrade -b` / LuCI *Generate archive*) — na routerze nic się nie zmienia | osobne konto rpcd `denali-kopia` z prawem tylko do kopii (`cgi-io backup`) |
 | Agent | Zainstaluj aktualizacje (`apt-get update` + `apt-get upgrade`, bez usuwania pakietów), Uruchom ponownie maszynę (`shutdown -r +1`) | lokalna lista na maszynie (`pozwol apt_upgrade`, `pozwol reboot`; restart od agenta 1.2) |
 
 `apt upgrade` na VM z Proxmoxa: w oknie potwierdzenia „Najpierw snapshot w Proxmoxie” (gdy snapshot tej VM jest
@@ -284,7 +293,12 @@ dozwolony i Proxmox ma token do akcji) — aktualizacja ruszy dopiero po udanym 
 wstrzymuje. „Potem uruchom ponownie, jeśli jest wymagany restart” (gdy restart przez agenta jest dozwolony): po udanej
 aktualizacji agent sprawdza `/run/reboot-required` i nowsze jądro i tylko wtedy restartuje maszynę za minutę; nieudana
 aktualizacja = bez restartu. Na VM z Proxmoxa restart „z zewnątrz” to dalej „Uruchom ponownie” z Proxmoxa.
-Panel nie ma akcji na samym sobie ani na routerze.
+Panel nie ma akcji na samym sobie, a na routerze tylko kopię konfiguracji.
+
+**Kopia konfiguracji OpenWrt** trafia na kartę urządzenia (*Kopie konfiguracji*), zaszyfrowana w bazie — archiwum
+zawiera hasła Wi-Fi i skróty haseł kont. Listę widzi tylko administrator, pobranie wymaga hasła i kodu i trafia do
+audytu. Kopia identyczna z poprzednią nie tworzy nowego wpisu; panel trzyma 10 różnych kopii na router. Kopie są w bazie,
+więc wchodzą do kopii zapasowej panelu. Przywracasz je w LuCI: *System → Backup / Flash Firmware → Restore backup*.
 
 ---
 

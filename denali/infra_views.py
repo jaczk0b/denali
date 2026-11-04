@@ -206,11 +206,12 @@ def network(conn):
                             "device_id": did, "device": names.get(did), "status": ref["status"] if ref else "nowy",
                             "ref_id": ref["id"] if ref else None, "state": s["state"],
                             "connection": BAND.get(d.get("connection") or "", d.get("connection") or "—"),
-                            "signal": d.get("signal"),
+                            "signal": d.get("signal"), "ssid": d.get("ssid") or "",
                             "wired": (d.get("connection") or "") == "WIRED"})
         clients.sort(key=lambda c: (c["status"] != "nowy", _ip_key(c["ip"]), c["name"].lower()))
         rdata = (router["data"] or {}) if router else {}
-        out.append({"row": src["row"], "router": router, "data": rdata, "device_id": _device_of(src, "router"),
+        out.append({"row": src["row"], "type": src["row"]["type"], "router": router, "data": rdata,
+                    "device_id": _device_of(src, "router"),
                     "as_ap": bool((src["row"]["config"] or {}).get("as_ap")), "clients": clients,
                     "count": {"all": len(clients), "new": sum(1 for c in clients if c["status"] == "nowy"),
                               "wifi": sum(1 for c in clients if not c["wired"]),

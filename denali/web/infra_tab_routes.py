@@ -62,7 +62,7 @@ def tab_docker(request: Request, sess: dict = Depends(require_user)):
 def tab_network(request: Request, sess: dict = Depends(require_user)):
     def build(conn):
         nets = views.network(conn)
-        return {"nets": nets, "clients": views.all_clients(nets), "weak_signal": views.WEAK_SIGNAL}
+        return {"nets": nets, "clients": views.all_clients(nets), "weak_signal": views.WEAK_SIGNAL, "bands": views.BAND}
     return _page(request, "infra_siec.html", "siec", build)
 
 

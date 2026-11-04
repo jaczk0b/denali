@@ -9,11 +9,16 @@
   <div class="tile{% if n.row.last_error %} down{% endif %}">
     <div class="tile-head"><span>{{ st("down" if n.row.last_error else {"ok": "ok", "warn": "warn"}.get(n.router.state if n.router else "", "unknown"), 15) }}
       {% if n.device_id %}<a href="/urzadzenia/{{ n.device_id }}">{{ n.row.name }}</a>{% else %}{{ n.row.name }}{% endif %}</span>
-      <span class="pill">{{ "AP" if n.as_ap else "router" }} · tylko odczyt</span></div>
+      <span class="pill">{{ "AP" if n.as_ap else "router" }} · {{ "OpenWrt" if n.type == "openwrt" else "tylko odczyt" }}</span></div>
     {% if n.row.last_error %}<p class="small">{{ n.row.last_error }}</p>{% endif %}
     <dl class="facts">
       {% if n.data.model %}<dt>Model</dt><dd>{{ n.data.model }}</dd>{% endif %}
-      {% if n.data.firmware %}<dt>Firmware</dt><dd>{{ n.data.firmware }} <span class="muted small">· nowszą sprawdzasz w panelu TP-Link</span></dd>{% endif %}
+      {% if n.data.firmware %}<dt>Firmware</dt><dd>{{ n.data.firmware }}
+        {%- if n.type == "openwrt" %}{% if n.data.updates %} · <a href="/aktualizacje">pakiety do aktualizacji: {{ n.data.updates }}</a>{% elif n.data.updates == 0 %} <span class="muted small">· pakiety aktualne</span>{% endif %}
+        {%- else %} <span class="muted small">· nowszą sprawdzasz w panelu TP-Link</span>{% endif %}</dd>{% endif %}
+      {% if n.data.wan %}<dt>WAN</dt><dd>{% if n.data.wan.up %}{{ n.data.wan.ip or n.data.wan.proto }}{% if n.data.wan.uptime %} <span class="muted small">· działa {{ n.data.wan.uptime | uptime }}</span>{% endif %}{% else %}<span class="pill warn">nie działa</span>{% endif %}</dd>{% endif %}
+      {% if n.data.ports %}<dt>Porty</dt><dd class="small">{% for p in n.data.ports %}<span class="{{ '' if p.up else 'muted' }}">{{ p.name }} {{ p.speed if p.up else "—" }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</dd>{% endif %}
+      {% if n.data.wifi %}<dt>Wi-Fi</dt><dd class="small">{% for w in n.data.wifi %}„{{ w.ssid }}” {{ bands.get(w.band, "") }}{% if w.channel %} kan. {{ w.channel }}{% endif %} ({{ w.clients }}){% if not loop.last %}<br>{% endif %}{% endfor %}</dd>{% endif %}
       <dt>Klienci</dt><dd>{{ n.count.all }}{% if n.count.all %} <span class="muted">(Wi-Fi {{ n.count.wifi }}, kabel {{ n.count.wired }})</span>{% endif %}</dd>
       {% if n.router %}<dt>Stan</dt><dd class="small">{{ n.router.summary }}</dd>{% endif %}
     </dl>
@@ -43,7 +48,7 @@
       <tr{% if c.status == "nowy" %} class="is-new"{% endif %}>
         <td>{% if c.device_id %}<a href="/urzadzenia/{{ c.device_id }}">{{ c.device }}</a>{% else %}<strong>{{ c.name }}</strong>{% endif %}</td>
         <td class="mono small">{{ c.ip or "—" }} · {{ c.mac }}</td>
-        <td>{{ c.connection }} <span class="muted small">· {{ c.via }}</span></td>
+        <td>{{ c.connection }}{% if c.ssid %} „{{ c.ssid }}”{% endif %} <span class="muted small">· {{ c.via }}</span></td>
         <td>{% if c.signal is number %}<span{% if c.signal < weak_signal %} class="pill warn"{% endif %}>{{ c.signal }} dBm</span>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if c.status == "nowy" %}<a class="btn small" href="/zatwierdz">Dodaj albo pomiń</a>
           {% elif c.status == "ignorowany" %}<span class="muted small">pominięte</span>

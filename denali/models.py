@@ -269,6 +269,22 @@ file = Table(
     Column("uploaded_by", String(64), nullable=False, default=""),
 )
 
+# Kopia konfiguracji routera (OpenWrt): archiwum zaszyfrowane w bazie, bo zawiera hasła Wi-Fi i skróty haseł kont.
+# Kopia bez zmian względem ostatniej nie tworzy nowego wpisu — przesuwa tylko „sprawdzono”.
+config_backup = Table(
+    "config_backup", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("source", String(100), nullable=False, default=""),     # nazwa integracji
+    Column("name", String(200), nullable=False),
+    Column("taken_at", Float, nullable=False),
+    Column("checked_at", Float, nullable=False),
+    Column("size", Integer, nullable=False),
+    Column("sha256", String(64), nullable=False),
+    Column("data_ct", Text, nullable=False),
+    Column("taken_by", String(64), nullable=False, default=""),
+)
+
 # Skarbiec: tylko admin; hasło zaszyfrowane, odsłonięcie po ponownym potwierdzeniu i z wpisem w audycie.
 vault_secret = Table(
     "vault_secret", metadata,

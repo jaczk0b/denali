@@ -138,7 +138,7 @@ network_client        mac, ip, hostname, vendor, via (router | ap: device_id), b
                       first_seen, last_seen, device_id, status (nowy | przypisany | ignorowany)
 check                 id, device_id, type (http | tcp | ping | tls | dns), target, from (lan | vps),
                       interval, state, fails, last_ms, last_error, cert_expires_at
-config_backup         device_id, taken_at, sha256, path, size                (kopie konfiguracji OpenWrt)
+config_backup         device_id, source, name, taken_at, checked_at, sha256, size, data_ct (zaszyfrowane)  (kopie konfiguracji OpenWrt)
 
 -- akcje i bezpieczeństwo ----------------------------------------------------
 action_allowed        device_id, action_key                                (jawna lista per urządzenie)
@@ -290,7 +290,10 @@ Doprecyzowane przy kodzie (31.10.2026):
 - Agent: zlecenie przychodzi w odpowiedzi na raport; usługa raportu (bez uprawnień) zapisuje je do pliku, wykonuje
   osobna usługa root uruchamiana przez `systemd.path` — po sprawdzeniu lokalnej listy w pliku roota.
 - Snapshot przed `apt upgrade` to osobna akcja Proxmoxa w łańcuchu (też musi być dozwolona); nieudany wstrzymuje aktualizację.
-- Router TP-Link: bez akcji — biblioteka nie ma kopii konfiguracji (wróci z OpenWrt).
+- Router TP-Link: bez akcji — biblioteka nie ma kopii konfiguracji.
+- OpenWrt (4.11.2026): dwa konta rpcd — `denali` (odczyt) i `denali-kopia` (tylko `cgi-io backup`), zamiast tokenu do
+  akcji. Kopia konfiguracji zaszyfrowana w bazie (`config_backup`, zawiera hasła Wi-Fi), nie w plikach urządzenia;
+  pobranie tylko admin po potwierdzeniu hasłem, z audytem; 10 różnych kopii na urządzenie.
 
 ---
 

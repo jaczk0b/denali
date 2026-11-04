@@ -6,11 +6,11 @@ import time
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy import func, or_, select
 
-from .. import (actions, auth, checks, discovery, docs, files, incidents, infra_views, integrations, inventory as inv, live,
-               profiles, racks, status, updates, vault)
+from .. import (actions, auth, checks, configs, discovery, docs, files, incidents, infra_views, integrations,
+               inventory as inv, live, profiles, racks, status, updates, vault)
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook)
 from ..templating import render
@@ -119,6 +119,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "incidents": incidents.list_incidents(conn, device_id=device_id, limit=20),
         "files": files.for_device(conn, device_id),
         "secrets": vault.list_secrets(conn, role="admin", device_id=device_id) if is_admin else [],
+        "config_backups": configs.for_device(conn, device_id) if is_admin else [],
         "marks": (marks := status.device_marks(conn)), "mark": marks.get(device_id),
         "sources": integrations.states_for_device(conn, device_id),
         "checks": checks.for_device(conn, device_id), "now": time.time(),
@@ -342,6 +343,24 @@ def file_remove(request: Request, device_id: int, file_id: int, sess: dict = Dep
         if found and found[0]["device_id"] == device_id:
             files.remove(c, request.app.state.settings.data_dir, file_id)
     return _card_change(request, device_id, rm, "file_remove", sess)
+
+
+# ───────────────────────── kopie konfiguracji ─────────────────────────
+@router.post("/urzadzenia/{device_id}/kopie/{backup_id}/pobierz")
+async def config_backup_download(request: Request, device_id: int, backup_id: int,
+                                 sess: dict = Depends(require_admin)):
+    await require_fresh(request, sess)      # archiwum zawiera hasła Wi-Fi
+    with request.app.state.engine.begin() as conn:
+        try:
+            name, data = configs.download(conn, request.app.state.box, device_id, backup_id, role=sess["role"],
+                                          reauth_fresh=auth.reauth_fresh(sess), user=sess["login"],
+                                          ip=client_ip(request))
+        except LookupError as e:
+            raise NotFound(str(e)) from None
+        except PermissionError as e:
+            return _card(request, conn, device_id, error=str(e), status_code=403)
+    return Response(data, media_type="application/gzip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
 # ───────────────────────── skarbiec ─────────────────────────
