@@ -1,6 +1,6 @@
-"""Karta Terminale (tylko administrator): konsola VM i LXC, gotowe polecenia przez agenta, historia sesji.
+"""Karta Terminale (tylko administrator): terminal SSH, ekran VM i LXC, gotowe polecenia przez agenta, historia sesji.
 
-O tym, czy wolno, decydują consoles.request i actions.request. WebSocket nie przechodzi przez require_admin, więc
+O tym, czy wolno, decydują consoles.request, consoles.request_ssh i actions.request. WebSocket nie przechodzi przez require_admin, więc
 sprawdza sam: Origin (ciasteczko poszłoby też z obcej strony), sesję i to, czy konsolę zgłosił ten sam użytkownik.
 """
 import logging
@@ -9,13 +9,14 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from .. import actions, auth, consoles, inventory as inv, polecenia
+from .. import actions, auth, consoles, inventory as inv, polecenia, ssh, vault
 from ..adapters import AdapterError
-from ..models import action_run
+from ..db import kv_get
+from ..models import action_run, setting
 from ..templating import render
-from .deps import COOKIE, NotFound, client_ip, require_admin, require_fresh
+from .deps import COOKIE, CSP_XTERM, NotFound, client_ip, require_admin, require_fresh
 
 router = APIRouter()
 log = logging.getLogger("denali.consoles")
@@ -39,7 +40,18 @@ def terminals(request: Request, sess: dict = Depends(require_admin)):
         rows = consoles.devices(conn)
         history = consoles.recent(conn)
         scopes = consoles.scopes(conn)
-    return render(request, "terminale.html", {"devices": rows, "history": history, "scopes": scopes})
+        custom = polecenia.custom_text(conn)
+    return render(request, "terminale.html", {"devices": rows, "history": history, "scopes": scopes, "custom": custom})
+
+
+@router.post("/terminale/polecenia")
+async def terminal_presets(request: Request, sess: dict = Depends(require_admin)):
+    form = await request.form()
+    with request.app.state.engine.begin() as conn:
+        polecenia.save_custom(conn, form.get("presets"))
+        auth.audit(conn, "terminal_presets", user=sess["login"], ip=client_ip(request),
+                   params={"ile": len(polecenia.custom(conn))})
+    return RedirectResponse("/terminale", 303)
 
 
 @router.get("/terminale/{device_id:int}")
@@ -50,7 +62,11 @@ def terminal_device(request: Request, device_id: int, sess: dict = Depends(requi
         runs = conn.execute(select(action_run).where(action_run.c.device_id == device_id, action_run.c.action == COMMAND_KEY)
                             .order_by(action_run.c.id.desc()).limit(10)).mappings().all()
         history = consoles.recent(conn, device_id, 10)
+        hosts = consoles.addresses(conn, device_id) if d["kind"] in consoles.SSH_KINDS else []
+        known = [h for h in hosts if kv_get(conn, ssh.key_name(h, 22))]
+        secrets = vault.list_secrets(conn, role=sess["role"], device_id=device_id)
     return render(request, "terminal.html", {
+        "hosts": hosts, "known": known, "secrets": secrets,
         "d": d, "console": [o for o in opts if o["key"] == consoles.KEY], "agents": [o for o in opts if o["key"] == COMMAND_KEY],
         "commands": polecenia.COMMANDS, "runs": runs, "history": history,
         "active": any(r["status"] in actions.ACTIVE for r in runs), "labels": actions.STATUS_LABEL})
@@ -77,6 +93,57 @@ async def terminal_command(request: Request, device_id: int, sess: dict = Depend
     return RedirectResponse(f"/terminale/{device_id}", 303)
 
 
+@router.post("/terminale/{device_id:int}/ssh")
+async def ssh_open(request: Request, device_id: int, sess: dict = Depends(require_admin)):
+    await require_fresh(request, sess)
+    form = await request.form()
+    app, ip = request.app, client_ip(request)
+    consoles.forget_unused(app)
+    host, login = str(form.get("host") or ""), str(form.get("login") or "").strip()
+    secret = str(form.get("key") or "") or str(form.get("password") or "")
+    try:
+        port = int(form.get("port") or 22)
+    except ValueError:
+        port = 0
+    with app.state.engine.begin() as conn:
+        try:
+            if form.get("secret_id"):
+                row = next((s for s in vault.list_secrets(conn, role=sess["role"], device_id=device_id)
+                            if str(s["id"]) == form.get("secret_id")), None)
+                if not row:
+                    raise consoles.ConsoleError("Tego wpisu nie ma w Skarbcu tego urządzenia.")
+                login = login or row["username"]
+                secret = vault.reveal(conn, app.state.box, row["id"], role=sess["role"], reauth_at=sess["reauth_at"],
+                                      user=sess["login"], ip=ip)
+            if not secret:
+                raise consoles.ConsoleError("Podaj hasło albo wybierz wpis ze Skarbca.")
+            console_id = consoles.request_ssh(conn, device_id=device_id, host=host, port=port, login=login, user=sess["login"],
+                                              role=sess["role"], ip=ip, reauth_ok=True)
+            error = None
+        except (consoles.ConsoleError, vault.VaultError, ValueError) as e:
+            error = str(e)
+    if error:
+        return render(request, "blad.html", {"title": "Terminal niedostępny", "text": error,
+                                             "back": f"/terminale/{device_id}"}, 403)
+    app.state.console_tickets[console_id] = {"adapter": ssh.target(app.state.engine, host, port, login, secret),
+                                             "info": None, "at": time.time()}
+    return RedirectResponse(f"/terminale/konsola/{console_id}", 303)
+
+
+@router.post("/terminale/{device_id:int}/ssh/zapomnij")
+async def ssh_forget_key(request: Request, device_id: int, sess: dict = Depends(require_admin)):
+    await require_fresh(request, sess)
+    form = await request.form()
+    host = str(form.get("host") or "")
+    with request.app.state.engine.begin() as conn:
+        d = _device_or_404(conn, device_id)
+        if host not in consoles.addresses(conn, device_id):
+            raise NotFound("Tego adresu nie ma na karcie urządzenia.")
+        conn.execute(delete(setting).where(setting.c.key == ssh.key_name(host, 22)))
+        auth.audit(conn, "ssh_key_forget", user=sess["login"], ip=client_ip(request), target=d["name"], params={"host": host})
+    return RedirectResponse(f"/terminale/{device_id}", 303)
+
+
 @router.post("/terminale/{device_id:int}/konsola/{ref_id:int}")
 async def console_request(request: Request, device_id: int, ref_id: int, sess: dict = Depends(require_admin)):
     await require_fresh(request, sess)
@@ -97,9 +164,15 @@ async def console_request(request: Request, device_id: int, ref_id: int, sess: d
 def console_page(request: Request, console_id: int, sess: dict = Depends(require_admin)):
     with request.app.state.engine.connect() as conn:
         row = consoles.get(conn, console_id)
+        presets = polecenia.presets(conn)
     if not row or row["user"] != sess["login"]:
         raise NotFound("Nie ma takiej sesji.")
-    return render(request, "konsola.html", {"row": row, "ended": row["opened_at"] is not None or row["closed_at"] is not None})
+    if row["external_id"] == ssh.EXTERNAL_ID and not row["closed_at"] and console_id in request.app.state.console_tickets:
+        resp = render(request, "ssh.html", {"row": row, "presets": presets})
+        resp.headers["Content-Security-Policy"] = CSP_XTERM
+        return resp
+    ended = row["opened_at"] is not None or row["closed_at"] is not None
+    return render(request, "konsola.html", {"row": row, "ended": ended})
 
 
 @router.post("/terminale/konsola/{console_id:int}/start")

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Terminal: {{ row.target }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/xterm/xterm.css?v={{ STATIC_V }}">
+<script type="module" src="/static/ssh.js?v={{ STATIC_V }}"></script>
+{% endblock %}
+{% block chrome %}
+{% set back = "/terminale/%d" % row.device_id if row.device_id else "/terminale" %}
+<div class="console-page" id="ssh" data-ws="/terminale/konsola/{{ row.id }}/ws" data-end="/terminale/konsola/{{ row.id }}/koniec" data-back="{{ back }}">
+  <div class="console-bar">
+    <a href="{{ back }}">Terminale</a>
+    <strong>{{ row.target }}</strong>
+    <span class="muted small grow" id="console-status" role="status">Łączę…</span>
+    <span class="muted small">Ctrl+C kopiuje zaznaczenie, Ctrl+V wkleja</span>
+    <button class="btn small danger" id="console-end" type="button">Rozłącz</button>
+  </div>
+  <div class="ssh-body">
+    <div class="ssh-screen" id="ssh-screen"></div>
+    <aside class="ssh-presets" aria-label="Gotowe polecenia">
+      <h2>Polecenia</h2>
+      <p class="muted small">Klik wkleja do terminala. Uruchamiasz Enterem.</p>
+      {% for p in presets %}
+      <button class="btn small wide" type="button" data-preset="{{ p.text }}" title="{{ p.text }}">{{ p.label }}</button>
+      {% endfor %}
+    </aside>
+  </div>
+</div>
+{% endblock %}

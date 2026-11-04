@@ -15,7 +15,7 @@ from .db import kv_get, make_engine
 from .templating import render
 from .web import (action_routes, admin_routes, agent_routes, auth_routes, docs_routes, infra_routes, infra_tab_routes,
                   integration_routes, live_routes, notify_routes, oidc_routes, terminal_routes)
-from .web.deps import CsrfError, Forbidden, NotFound, Redirect
+from .web.deps import CSP, CsrfError, Forbidden, NotFound, Redirect
 
 WORKER_LATE_AFTER = 120  # s bez sygnału życia = worker nie działa
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -40,8 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         h.setdefault("X-Content-Type-Options", "nosniff")
         h.setdefault("X-Frame-Options", "DENY")
         h.setdefault("Referrer-Policy", "same-origin")
-        h.setdefault("Content-Security-Policy",
-                     "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        h.setdefault("Content-Security-Policy", CSP)
         if not request.url.path.startswith("/static/"):
             h.setdefault("Cache-Control", "no-store")
         return resp

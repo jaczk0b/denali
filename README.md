@@ -285,7 +285,14 @@ Karta tylko dla administratora (dolny pasek na pulpicie, górne menu na pozosta�
 bez *Profili*: zgodą jest zakres w integracji albo lokalna lista agenta, a kartę wyłącza też wyłącznik akcji. „Wyłącz wszystkie akcje”
 zamyka też otwarte konsole (w ciągu 15 sekund).
 
-**Konsola (VNC)** — ekran VM albo LXC z Proxmoxa w przeglądarce (noVNC), przez panel, bez kluczy SSH w bazie.
+**Terminal** — prawdziwa powłoka po SSH w przeglądarce (xterm.js), dla każdego urządzenia z adresem na karcie: VM, LXC,
+hosta Proxmoxa, NAS-a. Działa jak cmd: Ctrl+C kopiuje zaznaczenie (bez zaznaczenia przerywa program), Ctrl+V wkleja, prawy
+przycisk robi jedno albo drugie, okno dopasowuje się do ekranu. Z boku są gotowe polecenia: klik wkleja, Enter uruchamia.
+Własne dopiszesz w *Terminale → Moje polecenia*. Login i hasło podajesz przy otwarciu albo wybierasz wpis ze Skarbca
+urządzenia; panel ich nie zapisuje. Klucz serwera zapamiętuje przy pierwszym połączeniu i przy zmianie odmawia. Root po
+haśle zwykle jest wyłączony (`PermitRootLogin`): zaloguj się zwykłym użytkownikiem albo użyj klucza prywatnego.
+
+**Ekran (VNC)** — ekran VM albo LXC z Proxmoxa w przeglądarce (noVNC), przez panel, bez kluczy SSH w bazie.
 Jednorazowo w Proxmoxie:
 
 1. *Integracje → Proxmox*, sekcja *Uprawnienia*: zaznacz „Konsola”, wklej pokazane polecenie w Shell węzła, *Zapisz i sprawdź* na dole formularza.

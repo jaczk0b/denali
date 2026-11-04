@@ -3,7 +3,7 @@
 {% block title %}Terminale{% endblock %}
 {% block content %}
 <h1>Terminale</h1>
-<p class="muted">Konsola maszyn z Proxmoxa i gotowe polecenia tylko do odczytu przez agenta. Otwarcie konsoli wymaga potwierdzenia hasłem i kodem,
+<p class="muted">Terminal SSH, ekran maszyn z Proxmoxa i gotowe polecenia tylko do odczytu przez agenta. Otwarcie sesji wymaga potwierdzenia hasłem i kodem,
   a każda sesja i każde polecenie trafia do <a href="/admin/audyt">audytu</a>.</p>
 
 <section class="card">
@@ -12,7 +12,8 @@
     {% for d in devices %}
     <li>
       <a class="grow" href="/terminale/{{ d.id }}">{{ d.name }}</a>
-      {% if d.console %}<span class="small{% if d.console[0].reason %} muted{% endif %}">konsola</span>{% endif %}
+      {% if d.terminal %}<span class="small">terminal</span>{% endif %}
+      {% if d.console %}<span class="small{% if d.console[0].reason %} muted{% endif %}">ekran</span>{% endif %}
       {% if d.commands %}<span class="small{% if d.commands[0].reason %} muted{% endif %}">polecenia</span>{% endif %}
       <a class="btn small" href="/terminale/{{ d.id }}">Otwórz</a>
     </li>
@@ -28,8 +29,18 @@
   </ul>
 </section>
 
+<section class="card">
+  <h2>Moje polecenia</h2>
+  <p class="muted small">Pojawią się z boku terminala. Każde w osobnej linii: <code>Nazwa | polecenie</code></p>
+  <form method="post" action="/terminale/polecenia">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <textarea name="presets" rows="5" class="mono" spellcheck="false" aria-label="Moje polecenia">{{ custom }}</textarea>
+    <button class="btn mt" type="submit">Zapisz polecenia</button>
+  </form>
+</section>
+
 <section class="card table-wrap">
-  <h2>Ostatnie sesje konsoli</h2>
+  <h2>Ostatnie sesje</h2>
   {{ console_history(history) }}
 </section>
 {% endblock %}

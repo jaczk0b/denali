@@ -1,4 +1,4 @@
-"""Konsola maszyny z karty Terminale (Etap 6): ekran VM i LXC przez API Proxmoxa, bez kluczy SSH w bazie.
+"""Sesje z karty Terminale (Etap 6): ekran VM i LXC przez API Proxmoxa oraz terminal SSH (ssh.py), bez kluczy w bazie.
 
 Otwarcie przechodzi przez zamki akcji (actions.for_device z terminal=True): wyłącznik akcji, zakres „Konsola”
 integracji, stan maszyny — a do tego świeże potwierdzenie hasłem i kodem. Profile nie mają tu nic do powiedzenia:
@@ -11,16 +11,19 @@ Treści sesji nie zapisujemy — to obraz, a przez niego idzie też hasło do ma
 """
 import asyncio
 import logging
+import re
 import time
 
 from sqlalchemy import select
 
-from . import actions, auth
+from . import actions, auth, ssh
 from .adapters import registry
-from .models import console_session, device, external_ref, integration, observed_state
+from .models import console_session, device, device_address, integration, observed_state
 
 log = logging.getLogger("denali.consoles")
 KEY = "proxmox.console"
+SSH_KINDS = ("host", "vm", "lxc", "vps", "nas", "komputer")     # tam zwykle jest SSH
+LOGIN = re.compile(r"^[\w.@-]{1,64}$")
 START_WITHIN = 60       # tyle po zgłoszeniu strona może zacząć połączenie
 TICKET_VALID = 15       # bilet Proxmoxa jest ważny krótko: bez połączenia przeglądarki sesja się kończy
 NO_WEBSOCKET = "Połączenie WebSocket nie dotarło do panelu: włącz Websockets Support w Nginx Proxy Manager."
@@ -39,17 +42,24 @@ def _switched_on(o):
 
 
 def devices(conn):
-    """Urządzenia, na których konsola albo polecenia są włączone (lista na karcie Terminale). Wyłączona maszyna też tu
-    jest — jej strona powie, dlaczego teraz się nie da."""
-    rows = conn.execute(select(device.c.id, device.c.name).where(device.c.id.in_(
-        select(external_ref.c.device_id).where(external_ref.c.status == "zatwierdzony"))).order_by(device.c.name)).all()
+    """Urządzenia z terminalem, konsolą albo poleceniami (lista na karcie Terminale). Wyłączona maszyna też tu jest —
+    jej strona powie, dlaczego teraz się nie da."""
     out = []
-    for r in rows:
+    for r in conn.execute(select(device.c.id, device.c.name, device.c.kind).order_by(device.c.name)).all():
         opts = [o for o in actions.for_device(conn, r.id, terminal=True) if _switched_on(o)]
-        if opts:
-            out.append({"id": r.id, "name": r.name, "console": [o for o in opts if o["key"] == KEY],
+        terminal = r.kind in SSH_KINDS and bool(addresses(conn, r.id))
+        if opts or terminal:
+            out.append({"id": r.id, "name": r.name, "terminal": terminal, "console": [o for o in opts if o["key"] == KEY],
                         "commands": [o for o in opts if o["key"] != KEY]})
     return out
+
+
+def addresses(conn, device_id):
+    """Adresy, na które wolno otworzyć SSH — tylko z karty urządzenia, panel nie łączy się pod dowolny adres."""
+    return [r.value for r in conn.execute(
+        select(device_address.c.value).where(device_address.c.device_id == device_id,
+                                             device_address.c.kind.in_(("ip", "hostname")))
+        .order_by(device_address.c.is_primary.desc(), device_address.c.id))]
 
 
 def scopes(conn):
@@ -99,6 +109,38 @@ def request(conn, *, device_id, ref_id, user, role, ip="", reauth_ok=False, now=
         target=dev.name, user=user, ip=ip)).inserted_primary_key[0]
 
 
+def request_ssh(conn, *, device_id, host, port, login, user, role, ip="", reauth_ok=False, now=None):
+    """Sesja SSH po sprawdzeniu zamków. Odmowa → ConsoleError i wpis „console_blocked” w audycie."""
+    now = now or time.time()
+    dev = conn.execute(select(device.c.id, device.c.name).where(device.c.id == device_id)).first()
+
+    def refuse(why):
+        auth.audit(conn, "console_blocked", user=user, ip=ip, target=dev.name if dev else str(device_id),
+                   params={"host": str(host)[:100], "login": str(login)[:64]}, result=why)
+        raise ConsoleError(why)
+
+    if role != "admin":
+        refuse("Terminal może otworzyć tylko administrator.")
+    if not dev:
+        refuse("Nie ma takiego urządzenia.")
+    if not actions.enabled(conn):
+        refuse("Akcje są wyłączone (Akcje → Włącz).")
+    if not reauth_ok:
+        refuse("Terminal wymaga potwierdzenia hasłem i kodem 2FA.")
+    if host not in addresses(conn, device_id):
+        refuse("Tego adresu nie ma na karcie urządzenia.")
+    if not 1 <= port <= 65535:
+        refuse("Zły port.")
+    if not LOGIN.match(login):
+        refuse("Zły login.")
+    console_id = conn.execute(console_session.insert().values(
+        created_at=now, device_id=device_id, external_id=ssh.EXTERNAL_ID, target=dev.name, user=user, ip=ip,
+        opened_at=now)).inserted_primary_key[0]
+    auth.audit(conn, "console_open", user=user, ip=ip, target=dev.name,
+               params={"session": console_id, "external_id": ssh.EXTERNAL_ID, "host": host, "port": port, "login": login})
+    return console_id
+
+
 def claim(conn, console_id, user, now=None):
     """Początek połączenia — tylko raz, tylko przez tego, kto zgłosił, i tylko zaraz po zgłoszeniu.
     Zwraca (sesja, integracja, dane obiektu z ostatniego odczytu)."""
@@ -138,9 +180,12 @@ def why_stop(conn, row, token, ip, now=None):
         return "Logowanie wygasło albo zostało cofnięte."
     if not actions.enabled(conn):
         return "Akcje wyłączono."
-    integ = conn.execute(select(integration).where(integration.c.id == row["integration_id"])).mappings().first()
-    if not integ or "konsola" not in ((integ["config"] or {}).get("permissions") or []):
-        return "Integracja nie ma już zakresu „Konsola”."
+    if not row["device_id"]:
+        return "Urządzenie zostało usunięte."
+    if row["external_id"] != ssh.EXTERNAL_ID:
+        integ = conn.execute(select(integration).where(integration.c.id == row["integration_id"])).mappings().first()
+        if not integ or "konsola" not in ((integ["config"] or {}).get("permissions") or []):
+            return "Integracja nie ma już zakresu „Konsola”."
     if now - (row["opened_at"] or now) > MAX_LIFE:
         return "Koniec czasu sesji (2 godziny)."
     return None

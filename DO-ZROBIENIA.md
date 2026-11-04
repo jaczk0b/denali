@@ -127,6 +127,8 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
 - [ ] *Akcje → Wyłącz wszystkie akcje* przy otwartej konsoli → rozłącza w ciągu 15 s; w *Ostatnich sesjach* powód.
 - [ ] Agent 1.3 (ponowna instalacja), `pozwol polecenia` → „Miejsce na dyskach” → wynik po około minucie.
 - [ ] W *Audycie*: `console_open`, `console_close`, `action_request` z kluczem polecenia.
+- [ ] Terminal SSH: *Terminale* → maszyna → login i hasło → terminal; kopiowanie, wklejanie, zmiana rozmiaru okna, gotowe polecenia z boku.
+- [ ] *Moje polecenia*: dopisz swoje, widać je z boku terminala.
 - [ ] Akceptacja Etapu 6.
 
 ## 4. Braki względem projektu (Etap 3)

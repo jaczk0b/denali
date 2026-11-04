@@ -452,6 +452,7 @@ body.kiosk .clock { font-size: 64px; }
   .icons { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
   .icon { width: 60px; height: 60px; border-radius: 17px; font-size: 19px; }
   .dock a { min-width: 64px; padding: 8px 6px; }
+  .ssh-presets { display: none; }
   h1 { font-size: 24px; }
 }
 /* polecenie do skopiowania (instalacja agenta) */
@@ -461,4 +462,9 @@ pre[data-command] { word-break: normal; overflow-wrap: anywhere; }
 .console-page { position: fixed; inset: 0; display: flex; flex-direction: column; background: #07090b; }
 .console-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: #12161b; }
 .console-screen { flex: 1; min-height: 0; }
+.ssh-body { flex: 1; min-height: 0; display: flex; }
+.ssh-screen { flex: 1; min-width: 0; padding: 6px; background: #07090b; }
+.ssh-presets { width: 230px; flex: none; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px; border-left: 1px solid var(--border); background: #12161b; }
+.ssh-presets h2 { margin: 0; font-size: 15px; }
+.ssh-presets .btn { justify-content: flex-start; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 pre.wrap { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); white-space: pre-wrap; word-break: break-all; user-select: all; }

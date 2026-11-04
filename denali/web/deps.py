@@ -18,6 +18,8 @@ PATHS_WITHOUT_2FA = {"/konto/2fa", "/logout"}
 # Odświeżanie na żywo: strumień SSE i pobrania strony w tle (nagłówek) to nie aktywność użytkownika.
 LIVE_PATH = "/na-zywo"
 LIVE_HEADER = "X-Denali-Live"
+CSP = "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+CSP_XTERM = CSP + "; style-src 'self' 'unsafe-inline'"     # xterm.js wstawia własne style: tylko strona terminala
 RESUME_PATH = "/potwierdz/dokoncz"
 PENDING_VALID = 600     # tyle czeka zapamiętane działanie na hasło
 

@@ -7,21 +7,53 @@
 <h1>{{ d.name }}</h1>
 
 <section class="card">
-  <h2>Konsola</h2>
+  <h2>Terminal</h2>
+  {% if hosts %}
+  <p class="muted small">Prawdziwa powłoka po SSH: kopiowanie, wklejanie i gotowe polecenia. Hasło nie jest zapisywane, sesja kończy się po 2 godzinach.</p>
+  <form method="post" action="/terminale/{{ d.id }}/ssh" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="form-row">
+      <label class="field">Adres
+        <select name="host">{% for h in hosts %}<option>{{ h }}</option>{% endfor %}</select></label>
+      <label class="field">Port<input name="port" value="22" inputmode="numeric" class="small-input"></label>
+      <label class="field">Login<input name="login" spellcheck="false"></label>
+    </div>
+    {% if secrets %}
+    <label class="field">Hasło ze Skarbca
+      <select name="secret_id"><option value="">wpiszę hasło niżej</option>{% for s in secrets %}<option value="{{ s.id }}">{{ s.label }}{% if s.username %} ({{ s.username }}){% endif %}</option>{% endfor %}</select></label>
+    {% endif %}
+    <label class="field">Hasło<input name="password" type="password" autocomplete="new-password"></label>
+    <details class="mt"><summary>Klucz prywatny zamiast hasła</summary>
+      <textarea name="key" rows="5" class="mono" spellcheck="false" aria-label="Klucz prywatny"></textarea></details>
+    <button class="btn primary mt" type="submit">Otwórz terminal</button>
+  </form>
+  {% for h in known %}
+  <form method="post" action="/terminale/{{ d.id }}/ssh/zapomnij" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="host" value="{{ h }}">
+    <p class="muted small">Klucz serwera {{ h }} jest zapamiętany. <button class="link" type="submit">Zapomnij klucz</button> (tylko po reinstalacji maszyny)</p>
+  </form>
+  {% endfor %}
+  {% else %}
+  <p class="muted">Dodaj adres IP na karcie urządzenia, żeby otworzyć terminal.</p>
+  {% endif %}
+</section>
+
+{% if console %}
+<section class="card">
+  <h2>Ekran (VNC)</h2>
   {% for o in console %}
     {% if o.reason %}
       <p class="muted">{{ o.reason }}</p>
     {% else %}
-      <p class="muted small">{{ o.spec.effect }} Sesja kończy się po 2 godzinach, a system w maszynie dalej pyta o własne hasło.</p>
+      <p class="muted small">{{ o.spec.effect }} Przydaje się, gdy nie działa sieć albo SSH. System w maszynie dalej pyta o własne hasło.</p>
       <form method="post" action="/terminale/{{ d.id }}/konsola/{{ o.ref_id }}">
         <input type="hidden" name="csrf_token" value="{{ csrf }}">
-        <button class="btn primary" type="submit">Otwórz konsolę</button>
+        <button class="btn primary" type="submit">Otwórz ekran</button>
       </form>
     {% endif %}
-  {% else %}
-    <p class="muted">To urządzenie nie jest VM ani LXC z Proxmoxa.</p>
   {% endfor %}
 </section>
+{% endif %}
 
 <section class="card">
   <h2>Gotowe polecenia</h2>

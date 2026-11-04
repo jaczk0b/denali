@@ -84,7 +84,7 @@ def open_page(app, client, pve):
     ref_id, dev = pve["docker"]
     fresh_reauth(app, client)
     html = client.get(f"/terminale/{dev}").text
-    assert "Otwórz konsolę" in html, html
+    assert "Otwórz ekran" in html, html
     r = client.post(f"/terminale/{dev}/konsola/{ref_id}", data={"csrf_token": csrf_from(html)})
     assert r.status_code == 303, r.text
     return int(r.headers["location"].rsplit("/", 1)[1]), csrf_from(html)
@@ -389,12 +389,11 @@ def test_terminale_nie_zaleza_od_profili(app, pve, console, admin):
     """Zakres w integracji wystarcza: VM ma konsolę bez wpisu w profilu, także wyłączona jest na liście."""
     page = admin.get("/terminale").text
     assert "docker" in page and "Otwórz" in page
-    assert "Otwórz konsolę" in admin.get(f"/terminale/{pve['docker'][1]}").text
+    assert "Otwórz ekran" in admin.get(f"/terminale/{pve['docker'][1]}").text
     assert "Konsola" not in admin.get("/admin/profile").text
     with app.state.engine.begin() as conn:
         actions.save_grants(conn, integrations.get(conn, pve["iid"]), [], "admin")
-    empty = admin.get("/terminale").text
-    assert "nie jest zapisana" in empty and f"/admin/integracje/{pve['iid']}#uprawnienia" in empty
+    assert ">ekran<" not in admin.get("/terminale").text
 
 
 def test_terminale_w_dolnym_pasku(app, pve, console, admin):
