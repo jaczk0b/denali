@@ -22,10 +22,8 @@ from denali.models import action_run
 
 from .conftest import csrf_from, do_login, make_user, new_client
 from .test_agent import agent
-from .test_akcje import ACTION_SECRETS, admin, agent_on_vm, allow, audit_rows, fresh_reauth, pve, req, run  # noqa: F401
+from .test_akcje import admin, agent_on_vm, allow, audit_rows, fresh_reauth, pve, req, run  # noqa: F401
 from .test_proxmox import CONFIG, SECRETS
-
-CONSOLE_SECRETS = {"console_token_id": "denali@pve!konsola", "console_token_secret": "s3kret"}
 
 
 def ticket_api(seen=None, deny=False):
@@ -67,11 +65,10 @@ class FakeConsole:
 
 @pytest.fixture
 def console(app, pve, monkeypatch):
-    """Konsola dozwolona w profilu, token zapisany, zamiast połączenia z Proxmoxem — FakeConsole."""
+    """Konsola dozwolona w profilu, zakres nadany, zamiast połączenia z Proxmoxem — FakeConsole."""
     with app.state.engine.begin() as conn:
         allow(conn, ["proxmox.console"])
-        actions.save_credentials(conn, app.state.box, integrations.get(conn, pve["iid"]),
-                                 {**ACTION_SECRETS, **CONSOLE_SECRETS}, "admin")
+        actions.save_grants(conn, integrations.get(conn, pve["iid"]), ["akcje", "konsola"], "admin")
     app.state.adapter_transport = ticket_api()
     fake = FakeConsole([b"RFB 003.008\n"])
 
@@ -140,7 +137,7 @@ def test_konsola_wymaga_kolejnych_zamkow(app, pve, console, admin):
 
     def refused(text, **kw):
         with app.state.engine.begin() as conn, pytest.raises(consoles.ConsoleError, match=text):
-            consoles.request(conn, app.state.box, device_id=dev, ref_id=ref_id, user="admin",
+            consoles.request(conn, device_id=dev, ref_id=ref_id, user="admin",
                              **{"role": "admin", "reauth_ok": True, **kw})
 
     refused("potwierdzenia", reauth_ok=False)
@@ -154,9 +151,8 @@ def test_konsola_wymaga_kolejnych_zamkow(app, pve, console, admin):
     refused("wyłączone")
     with app.state.engine.begin() as conn:
         actions.set_enabled(conn, True, "admin")
-        actions.clear_credentials(conn, integrations.get(conn, pve["iid"]), "admin")
-        actions.save_credentials(conn, app.state.box, integrations.get(conn, pve["iid"]), ACTION_SECRETS, "admin")
-    refused("tokenu do konsoli")
+        actions.save_grants(conn, integrations.get(conn, pve["iid"]), ["akcje"], "admin")
+    refused("zakresu „Konsola”")
     with app.state.engine.connect() as conn:
         assert len(audit_rows(conn, "console_blocked")) >= 4
 
@@ -165,7 +161,7 @@ def test_wylaczona_maszyna_nie_ma_konsoli(app, pve, console):
     ref_id, dev = pve["test"]        # VM 120 jest wyłączona
     with app.state.engine.begin() as conn:
         with pytest.raises(consoles.ConsoleError, match="stanie"):
-            consoles.request(conn, app.state.box, device_id=dev, ref_id=ref_id, user="admin", role="admin", reauth_ok=True)
+            consoles.request(conn, device_id=dev, ref_id=ref_id, user="admin", role="admin", reauth_ok=True)
 
 
 def test_konsola_nie_jest_zwykla_akcja(app, pve, console, admin):
@@ -226,8 +222,8 @@ def test_zla_rola_tokenu_konczy_sesje(app, pve, console, admin):
     app.state.adapter_transport = ticket_api(deny=True)
     cid, csrf = open_page(app, admin, pve)
     r = start(admin, cid, csrf)
-    assert r.status_code == 502 and "VM.Console" in r.json()["error"]
-    assert session_row(app, cid)["close_reason"].startswith("Token do konsoli")
+    assert r.status_code == 502 and "Uprawnienia" in r.json()["error"]
+    assert "Uprawnienia" in session_row(app, cid)["close_reason"]
 
 
 def test_kiedy_trwajaca_sesja_ma_sie_zamknac(app, pve, console, admin):
@@ -268,18 +264,17 @@ def test_bilet_bez_przegladarki_konczy_sesje(app, pve, console, admin):
     assert "nie połączyła" in session_row(app, cid)["close_reason"]
 
 
-def test_proxmox_vncproxy_tokenem_do_konsoli():
+def test_proxmox_vncproxy_jednym_tokenem():
     seen = []
-    a = Proxmox(CONFIG, SECRETS, transport=ticket_api(seen), action_secrets={**ACTION_SECRETS, **CONSOLE_SECRETS})
+    a = Proxmox(CONFIG, SECRETS, transport=ticket_api(seen))
     info = run(a.console_ticket("lxc/105", {"node": "pve"}))
     assert info == {"path": "/nodes/pve/lxc/105", "port": "5900", "ticket": "PVEVNC:bilet"}
-    assert seen[0].headers["authorization"] == "PVEAPIToken=denali@pve!konsola=s3kret"
+    assert seen[0].headers["authorization"] == f"PVEAPIToken={CONFIG['token_id']}={SECRETS['token_secret']}"
     assert seen[0].content == b"websocket=1"
     with pytest.raises(AdapterError, match="węźle"):
         run(a.console_ticket("qemu/1", {}))
-    with pytest.raises(AdapterError, match="VM.Console"):
-        run(Proxmox(CONFIG, SECRETS, transport=ticket_api(deny=True),
-                    action_secrets=CONSOLE_SECRETS).console_ticket("lxc/105", {"node": "pve"}))
+    with pytest.raises(AdapterError, match="Uprawnienia"):
+        run(Proxmox(CONFIG, SECRETS, transport=ticket_api(deny=True)).console_ticket("lxc/105", {"node": "pve"}))
 
 
 def tls_server_context(tmp_path):
@@ -311,8 +306,7 @@ def test_polaczenie_z_vncwebsocket_po_tls(tmp_path):
         async with websockets.serve(handler, "127.0.0.1", 0, ssl=tls_server_context(tmp_path),
                                     subprotocols=["binary"]) as srv:
             port = srv.sockets[0].getsockname()[1]
-            a = Proxmox({**CONFIG, "url": f"https://127.0.0.1:{port}", "verify_tls": False}, SECRETS,
-                        action_secrets=CONSOLE_SECRETS)
+            a = Proxmox({**CONFIG, "url": f"https://127.0.0.1:{port}", "verify_tls": False}, SECRETS)
             up = await a.console_connect({"path": "/nodes/pve/qemu/107", "port": "5900", "ticket": "PVEVNC:a+b/c=="})
             assert await up.recv() == b"RFB 003.008\n"
             await up.send(b"odpowiedz")
@@ -321,7 +315,7 @@ def test_polaczenie_z_vncwebsocket_po_tls(tmp_path):
 
     run(scenario())
     assert seen["path"] == "/api2/json/nodes/pve/qemu/107/vncwebsocket?port=5900&vncticket=PVEVNC%3Aa%2Bb%2Fc%3D%3D"
-    assert seen["auth"] == "PVEAPIToken=denali@pve!konsola=s3kret" and seen["sub"] == "binary"
+    assert seen["auth"] == f"PVEAPIToken={CONFIG['token_id']}={SECRETS['token_secret']}" and seen["sub"] == "binary"
     assert seen["got"] == b"odpowiedz"
 
 
@@ -333,24 +327,11 @@ def test_odmowa_vncwebsocket_ma_czytelny_blad(tmp_path):
         async with websockets.serve(lambda ws: None, "127.0.0.1", 0, ssl=tls_server_context(tmp_path),
                                     process_request=refuse) as srv:
             port = srv.sockets[0].getsockname()[1]
-            a = Proxmox({**CONFIG, "url": f"https://127.0.0.1:{port}", "verify_tls": False}, SECRETS,
-                        action_secrets=CONSOLE_SECRETS)
+            a = Proxmox({**CONFIG, "url": f"https://127.0.0.1:{port}", "verify_tls": False}, SECRETS)
             with pytest.raises(AdapterError, match="HTTP 401"):
                 await a.console_connect({"path": "/nodes/pve/qemu/107", "port": "5900", "ticket": "x"})
 
     run(scenario())
-
-
-def test_token_do_konsoli_formularz(app, pve):
-    with app.state.engine.begin() as conn:
-        row = integrations.get(conn, pve["iid"])
-        with pytest.raises(actions.ActionError, match="konsoli"):
-            actions.save_credentials(conn, app.state.box, row, {**ACTION_SECRETS, "console_token_id": "denali@pve!k"}, "admin")
-        actions.save_credentials(conn, app.state.box, row, {**ACTION_SECRETS, **CONSOLE_SECRETS}, "admin")
-        row = integrations.get(conn, pve["iid"])
-        actions.save_credentials(conn, app.state.box, row, ACTION_SECRETS, "admin")     # puste = bez zmian
-        row = integrations.get(conn, pve["iid"])
-        assert Proxmox.console_ready(actions.action_secrets(row, app.state.box))
 
 
 def test_terminale_w_dolnym_pasku(app, pve, console, admin):

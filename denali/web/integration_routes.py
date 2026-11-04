@@ -44,7 +44,14 @@ def _form(request, cls, row=None, values=None, error=None, message=None, objects
     return render(request, "integracja.html", {
         "cls": cls, "row": row, "values": values or {}, "error": error, "message": message, "objects": objects,
         "action_hint": actions.credentials_hint(row, request.app.state.box) if row else "",
+        "commands": cls.setup_commands((row["config"] or {}).get("token_id", "") if row else "") if cls.grants else {},
         "fresh": auth.reauth_fresh(request.state.sess)}, status_code)
+
+
+def _moved(cls, old, new):
+    def norm(v):
+        return v.replace("\r", "").strip() if isinstance(v, str) else v
+    return any(norm(old.get(k)) != norm(new.get(k)) for k in cls.endpoint_fields)
 
 
 def _objects(conn, integration_id):
@@ -93,6 +100,9 @@ async def integration_create(request: Request, sess: dict = Depends(require_admi
     if cls.push:
         raise NotFound("Agenta dodaje się poleceniem instalacji na maszynie.")
     config, secrets = integrations.split_form(cls, form)
+    if cls.grants:
+        chosen = set(form.getlist("grant"))
+        config["permissions"] = [g.key for g in cls.grants if g.key in chosen]
     with request.app.state.engine.begin() as conn:
         try:
             iid = integrations.save(conn, request.app.state.box, cls.type, form.get("name", ""), config, secrets,
@@ -137,6 +147,15 @@ async def integration_update(request: Request, integration_id: int, sess: dict =
         if cls.push:      # agent nie ma ustawień — zapis formularza skasowałby skrót tokenu
             raise NotFound("Agent nie ma ustawień do zmiany.")
         config, secrets = integrations.split_form(cls, form, integrations.secrets_of(row, box))
+        old = row["config"] or {}
+        if cls.grants:
+            config["permissions"] = old.get("permissions") or []     # zakresy zmienia się osobno, po potwierdzeniu
+        if config.get("permissions") and _moved(cls, old, config) and not auth.reauth_fresh(sess):
+            return _form(request, cls, row=row, values={**config, "name": form.get("name", ""),
+                                                         "poll_seconds": form.get("poll_seconds")},
+                         error="Ten token ma prawo do akcji: zmiana adresu albo certyfikatu wysłałaby go gdzie indziej, "
+                               "więc wymaga potwierdzenia hasłem. Potwierdź w menu konta i zapisz ponownie.",
+                         objects=_objects(conn, integration_id), status_code=403)
         try:
             integrations.save(conn, box, row["type"], form.get("name", ""), config, secrets, form.get("poll_seconds"),
                               integration_id=integration_id)

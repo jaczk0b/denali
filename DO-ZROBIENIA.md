@@ -119,8 +119,10 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
 (`pveversion`) i komunikat z paska konsoli albo z *Ostatnich sesji*.
 
 - [ ] *Deploy* (migracja 0015), w NPM **Websockets Support** włączone.
-- [ ] Proxmox: rola `PanelConsole` (`VM.Console`), token `denali@pve!konsola` na `/vms` (README → Terminale),
-      w Denali wpisany przy tokenie do akcji, w profilu „Konsola (VNC)”.
+- [ ] **Po wdrożeniu akcje Proxmoxa są wyłączone, dopóki tego nie zrobisz:** *Integracje → Proxmox → Uprawnienia*: zaznacz
+      „Akcje” i „Konsola”, wklej polecenie w Shell węzła, *Zapisz i sprawdź*. Stary token `denali@pve!akcje` można potem
+      usunąć w Proxmoxie.
+- [ ] Profil: „Konsola (VNC)”.
 - [ ] *Terminale* w dolnym pasku pulpitu → testowa VM → *Otwórz konsolę* → potwierdzenie → ekran, klawiatura, *Ctrl+Alt+Del*.
 - [ ] To samo na LXC.
 - [ ] *Akcje → Wyłącz wszystkie akcje* przy otwartej konsoli → rozłącza w ciągu 15 s; w *Ostatnich sesjach* powód.
@@ -197,4 +199,4 @@ Zakładka źródła (Proxmox, TrueNAS, Docker, Sieć) pokazuje się dopiero, gdy
 | Etap | Zakres | Kryterium odbioru |
 |---|---|---|
 | **5. Akcje** — kod gotowy 31.10.2026, do sprawdzenia (punkt 3a) | lista dozwolonych akcji (przez profil), potwierdzenia, audyt; Proxmox (start, wyłącz, restart, zatrzymaj, snapshot), Komodo (start, restart, stop, Deploy), agent (`apt upgrade` z lokalnej białej listy, snapshot przed); router — bez akcji do czasu OpenWrt | każda akcja ma wpis w audycie; akcja spoza listy jest niemożliwa nawet przez API |
-| **6. Terminale** — kod gotowy 4.11.2026, do sprawdzenia (punkt 3b); decyzja 4.11.2026, zmienia zasadę „żadnego shella” (PROJEKT.md, wiersz „Shell”) | osobna karta: gotowe polecenia przez lokalną białą listę agenta; konsola VM i LXC (noVNC) przez API Proxmoxa (osobny token z `VM.Console`, bez kluczy SSH w bazie, bez konsoli hosta); tylko admin, ponowne potwierdzenie przed otwarciem, 2 godziny na sesję | każde otwarcie i zamknięcie sesji ma wpis w audycie; bez potwierdzenia i dla innej roli sesja się nie otworzy, nawet przez API |
+| **6. Terminale** — kod gotowy 4.11.2026, do sprawdzenia (punkt 3b); decyzja 4.11.2026, zmienia zasadę „żadnego shella” (PROJEKT.md, wiersz „Shell”) | osobna karta: gotowe polecenia przez lokalną białą listę agenta; konsola VM i LXC (noVNC) przez API Proxmoxa (jeden token integracji, zakres „Konsola”, bez kluczy SSH w bazie, bez konsoli hosta); tylko admin, ponowne potwierdzenie przed otwarciem, 2 godziny na sesję | każde otwarcie i zamknięcie sesji ma wpis w audycie; bez potwierdzenia i dla innej roli sesja się nie otworzy, nawet przez API |

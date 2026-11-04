@@ -241,6 +241,11 @@ TrueNAS, a nie VM. Profil *Dostępne aktualizacje: ignoruj* chowa urządzenie z 
 
 ## Akcje
 
+Proxmox ma jedno konto i jeden token do wszystkiego: w integracji zaznaczasz zakresy (odczyt jest zawsze, do tego Akcje
+i Konsola), panel pokazuje polecenie `pveum` z dokładnie tymi uprawnieniami, a po zapisie sprawdza, czy token je ma.
+Dodanie zakresu i zmiana adresu Proxmoxa przy nadanych zakresach wymagają potwierdzenia hasłem. Komodo ma nadal osobny
+klucz do akcji.
+
 Restart VM, aktualizacja stacka, `apt upgrade` — z karty urządzenia (*Akcje*), a dla maszyn i stacków także z zakładek
 *Infrastruktura → Proxmox* i *Docker* (kolumna *Akcje*, tylko administrator; przyciski pojawiają się tylko przy akcjach,
 które już przeszły zamki). Akcja wykona się tylko, gdy przejdzie
@@ -260,7 +265,7 @@ historia w *Akcjach*, a przy trwającym incydencie urządzenia — w jego przebi
 
 | Źródło | Akcje | Token do akcji |
 |---|---|---|
-| Proxmox VE | Uruchom, Wyłącz, Uruchom ponownie, Zatrzymaj natychmiast, Zrób snapshot (VM i LXC) | token `denali@pve!akcje` z rolą `PanelActions` (`VM.PowerMgmt`, `VM.Snapshot`) na `/vms` — instrukcja na stronie integracji |
+| Proxmox VE | Uruchom, Wyłącz, Uruchom ponownie, Zatrzymaj natychmiast, Zrób snapshot (VM i LXC) | jeden token integracji, zakres „Akcje” (`VM.PowerMgmt`, `VM.Snapshot`), polecenie układa panel |
 | Komodo | Uruchom, Uruchom ponownie, Zatrzymaj, Aktualizuj (Deploy) — na stackach | klucz osobnego użytkownika z prawem **Execute** tylko na wybranych stackach |
 | Agent | Zainstaluj aktualizacje (`apt-get update` + `apt-get upgrade`, bez usuwania pakietów), Uruchom ponownie maszynę (`shutdown -r +1`) | lokalna lista na maszynie (`pozwol apt_upgrade`, `pozwol reboot`; restart od agenta 1.2) |
 
@@ -282,14 +287,9 @@ zamyka też otwarte konsole (w ciągu 15 sekund).
 **Konsola (VNC)** — ekran VM albo LXC z Proxmoxa w przeglądarce (noVNC), przez panel, bez kluczy SSH w bazie.
 Jednorazowo w Proxmoxie:
 
-1. *Datacenter → Permissions → Roles → Create*: `PanelConsole`, uprawnienie `VM.Console`.
-2. *API Tokens → Add*: użytkownik `denali@pve`, token `konsola`, z oddzielonymi uprawnieniami.
-3. *Permissions → Add → API Token Permission*: `/vms`, `denali@pve!konsola`, rola `PanelConsole`. Przy błędzie 403 tę
-   samą rolę nadaj też użytkownikowi `denali@pve`.
-4. W Denali: *Integracje → Proxmox → Akcje — osobny token*: wpisz identyfikator tokenu do akcji i oba pola tokenu
-   do konsoli (sekret tokenu do akcji zostaw pusty, zostanie bez zmian).
-5. *Profile*: zaznacz „Proxmox VE: Konsola (VNC)”.
-6. W Nginx Proxy Manager włącz *Websockets Support*.
+1. *Integracje → Proxmox → Uprawnienia*: zaznacz „Konsola”, wklej pokazane polecenie w Shell węzła, *Zapisz i sprawdź*.
+2. *Profile*: zaznacz „Proxmox VE: Konsola (VNC)”.
+3. W Nginx Proxy Manager włącz *Websockets Support*.
 
 Otwarcie wymaga hasła i kodu, a sesja kończy się po 2 godzinach albo po wylogowaniu. System w maszynie dalej pyta
 o własne hasło. Treści sesji panel nie zapisuje, w *Audycie* są otwarcie, odmowa i koniec (`console_open`,

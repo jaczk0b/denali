@@ -89,6 +89,16 @@ class ActionSpec:
     dangerous: bool = False     # wymaga ponownego hasła i kodu 2FA
     when: tuple = ()            # stany obiektu, w których ma sens (puste = zawsze)
     terminal: bool = False      # tylko z karty Terminale (konsola, gotowe polecenia), nie obok akcji na urządzeniu
+    grant: str = ""             # integracja z jednym tokenem: uprawnienie (Grant.key), którego akcja potrzebuje
+
+
+@dataclass(frozen=True)
+class Grant:
+    """Zakres, który administrator wybiera dla jednego tokenu integracji."""
+    key: str
+    label: str
+    help: str
+    privs: tuple                # uprawnienia po stronie źródła
 
 
 @dataclass
@@ -117,6 +127,8 @@ class Adapter:
     removable: tuple = ()
     actions: list = []          # ActionSpec
     action_fields: list = []    # osobny token do akcji (Field); pusta lista = akcje bez tokenu (agent)
+    grants: list = []           # jeden token do wszystkiego: wybierane zakresy (Grant), zapisane w config["permissions"]
+    endpoint_fields: tuple = ()  # pola decydujące, dokąd idzie token — przy nadanych zakresach zmiana wymaga potwierdzenia
     action_help = ""            # jak założyć token do akcji (markdown-free, krótko)
 
     def __init__(self, config: dict, secrets: dict, transport=None, action_secrets: dict | None = None):

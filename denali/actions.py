@@ -4,7 +4,8 @@ Akcja dochodzi do skutku tylko wtedy, gdy przejdzie wszystkie zamki — sprawdza
 każdym zleceniu (formularz i bezpośredni POST przechodzą tę samą drogę):
   1. akcje włączone w ogóle (wyłącznik w „Akcjach” — jednym kliknięciem wyłącza wszystko),
   2. klucz akcji na liście „Dozwolone akcje” urządzenia (z profilu albo wyjątek na urządzeniu),
-  3. integracja ma osobny token do akcji (agent: akcja na lokalnej białej liście maszyny — sprawdza ją sam agent),
+  3. integracja ma prawo do akcji: wybrany zakres jednego tokenu (Proxmox) albo osobny token do akcji (Komodo);
+     agent: akcja na lokalnej białej liście maszyny — sprawdza ją sam agent,
   4. akcja pasuje do obiektu i jego stanu, a na obiekcie nie trwa inna,
   5. akcja niebezpieczna: świeże potwierdzenie hasłem i kodem 2FA (5 minut).
 Każde zlecenie, odmowa i wynik trafiają do audytu, a przy trwającym incydencie urządzenia — do jego przebiegu.
@@ -62,9 +63,22 @@ def action_secrets(row, box):
     return json.loads(box.decrypt(row["action_ct"])) if row["action_ct"] else None
 
 
-def has_credentials(row):
+def has_credentials(row, spec=None):
+    """Czy integracja może wykonać akcję (spec) albo, bez spec, jakąkolwiek."""
     cls = registry().get(row["type"])
+    if cls and cls.grants:
+        chosen = (row["config"] or {}).get("permissions") or []
+        return spec.grant in chosen if spec else bool(chosen)
     return bool(cls and (cls.push or (cls.action_fields and row["action_ct"])))
+
+
+def save_grants(conn, row, keys, user, ip=""):
+    """Wybrane zakresy jednego tokenu. Stary osobny token do akcji przestaje być potrzebny, więc znika z bazy."""
+    cls = registry()[row["type"]]
+    chosen = [g.key for g in cls.grants if g.key in keys]
+    conn.execute(integration.update().where(integration.c.id == row["id"]).values(
+        config={**(row["config"] or {}), "permissions": chosen}, action_ct=None))
+    auth.audit(conn, "integration_grants", user=user, ip=ip, target=row["name"], params={"permissions": chosen})
 
 
 def save_credentials(conn, box, row, form, user, ip=""):
@@ -75,7 +89,7 @@ def save_credentials(conn, box, row, form, user, ip=""):
     values = {}
     for f in cls.action_fields:
         raw = str(form.get(f.key) or "").strip()
-        values[f.key] = raw or (old.get(f.key, "") if f.kind == "secret" or not f.required else "")
+        values[f.key] = raw or (old.get(f.key, "") if f.kind == "secret" else "")
     try:
         cls.validate_action_secrets(values)
     except AdapterError as e:
@@ -103,7 +117,7 @@ def adapter_for(row, box, transport=None):
     from .integrations import secrets_of
     cls = registry()[row["type"]]
     return cls(row["config"] or {}, secrets_of(row, box), transport=transport,
-               action_secrets=action_secrets(row, box) or {})
+               action_secrets=(action_secrets(row, box) or {}) if cls.action_fields else {})
 
 
 # ───────────────────────── co można zrobić z urządzeniem ─────────────────────────
@@ -145,7 +159,10 @@ def _blocker(conn, o, allowed, on):
         return f"Integracja „{row['name']}” jest wyłączona."
     if o["key"] not in allowed:
         return "Niedozwolona — nie ma jej na liście „Dozwolone akcje” (profil albo wyjątek na urządzeniu)."
-    if not has_credentials(row):
+    if not has_credentials(row, spec):
+        if o["cls"].grants:
+            label = next(g.label for g in o["cls"].grants if g.key == spec.grant)
+            return f"Integracja „{row['name']}” nie ma zakresu „{label}” — zaznacz go w jej Uprawnieniach."
         return f"Integracja „{row['name']}” nie ma tokenu do akcji."
     if o["cls"].push and spec.key not in ((st["data"] if st else {}) or {}).get("actions", []):
         return ("Agent na maszynie na nią nie pozwala — lokalna lista: "

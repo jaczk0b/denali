@@ -6,7 +6,7 @@
   <div>
     <h1>Akcje</h1>
     <p class="muted">Akcja wykona się tylko, gdy: akcje są włączone, jest na liście „Dozwolone akcje” urządzenia (profil albo wyjątek),
-      integracja ma osobny token do akcji, a niebezpieczna — po potwierdzeniu hasłem i kodem. Każde zlecenie i wynik są w <a href="/admin/audyt">audycie</a>.</p>
+      integracja ma do niej prawo (zakres albo token do akcji), a niebezpieczna — po potwierdzeniu hasłem i kodem. Każde zlecenie i wynik są w <a href="/admin/audyt">audycie</a>.</p>
   </div>
   <div class="actions">
     {% if on %}
@@ -23,9 +23,9 @@
   <ul class="list-rows">
     {% for t in tokens %}
     <li>{{ st("ok" if t.ready else "unknown", 14) }}
-      <span class="grow"><a href="/admin/integracje/{{ t.row.id }}{{ '' if t.cls.push else '#akcje' }}">{{ t.row.name }}</a><br>
+      <span class="grow"><a href="/admin/integracje/{{ t.row.id }}{{ '' if t.cls.push else ('#uprawnienia' if t.cls.grants else '#akcje') }}">{{ t.row.name }}</a><br>
         <span class="muted small">{% for a in t.cls.actions %}{{ a.label }}{% if not loop.last %} · {% endif %}{% endfor %}</span></span>
-      <span class="small">{% if t.cls.push %}lokalna lista na maszynie{% elif t.ready %}token do akcji zapisany{% else %}<span class="muted">bez tokenu do akcji</span>{% endif %}</span>
+      <span class="small">{% if t.cls.push %}lokalna lista na maszynie{% elif t.cls.grants %}{{ "zakres nadany" if t.ready else "bez zakresu" }}{% elif t.ready %}token do akcji zapisany{% else %}<span class="muted">bez tokenu do akcji</span>{% endif %}</span>
     </li>
     {% else %}<li class="muted">Brak integracji, które mają akcje (Proxmox, Komodo, agent).</li>{% endfor %}
   </ul>

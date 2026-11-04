@@ -38,6 +38,19 @@
   }
   inlineStyles();
 
+  // Uprawnienia integracji: pod polami widać polecenie dla tego, co jest teraz zaznaczone.
+  function grantCommands(box) {
+    function show() {
+      var keys = [].map.call(box.querySelectorAll("input[name=grant]:checked"), function (i) { return i.value; }).join(",");
+      [].forEach.call(box.querySelectorAll("[data-command]"), function (el) {
+        el.hidden = el.dataset.command !== keys;
+      });
+    }
+    box.addEventListener("change", show);
+    show();
+  }
+  [].forEach.call(document.querySelectorAll("[data-grants]"), grantCommands);
+
   // Tablet raz na godzinę ładuje stronę od nowa — po wdrożeniu dostaje nowy wygląd.
   if (body.classList.contains("kiosk")) {
     setTimeout(reloadWhenUp, HOUR);

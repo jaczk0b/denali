@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import st, alerts %}
+{% from "_makra.html" import st, alerts, grant_picker %}
 {% block title %}{{ row.name if row else "Nowa integracja" }}{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/admin/integracje">Integracje</a> / {{ row.name if row else cls.label }}</p>
@@ -25,6 +25,9 @@
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <input type="hidden" name="type" value="{{ cls.type }}">
     <h2>Ustawienia</h2>
+    {% if cls.grants and not row %}
+    {{ grant_picker(cls, values.get("permissions") or [], commands, "Wklej w Shell węzła Proxmoxa (węzeł → Shell). Polecenie założy konto i wypisze sekret tokenu oraz certyfikat — wklej je niżej.") }}
+    {% endif %}
     <label class="field">Nazwa<input name="name" value="{{ values.name or '' }}" required maxlength="100"></label>
     {% for f in cls.fields %}
       {% if f.kind == "bool" %}
@@ -50,6 +53,16 @@
       <a class="btn" href="/admin/integracje">Anuluj</a>
     </div>
   </form>
+
+  {% if row and cls.grants %}
+  <form class="card" id="uprawnienia" method="post" action="/admin/integracje/{{ row.id }}/uprawnienia">
+    <h2>Uprawnienia</h2>
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    {{ grant_picker(cls, row.config.get("permissions") or [], commands, "Po zmianie wklej to polecenie w Shell węzła Proxmoxa i zapisz. Panel sprawdzi, czy token dostał te uprawnienia.") }}
+    <button class="btn mt" type="submit">Zapisz i sprawdź</button>
+    <p class="muted small mt">Dodanie zakresu wymaga potwierdzenia hasłem, odebranie działa od razu. Które akcje są dozwolone na których urządzeniach, ustawiasz w <a href="/admin/profile">Profilach</a>.</p>
+  </form>
+  {% endif %}
 
   {% if row and cls.action_fields %}
   <section class="card" aria-labelledby="akcje">
@@ -93,26 +106,9 @@
 <div class="col">
   {% if cls.type == "proxmox" %}
   <section class="card md">
-    <h2>Jak założyć token (tylko odczyt)</h2>
-    <p>W panelu Proxmoxa, w przeglądarce:</p>
-    <ol>
-      <li><strong>Datacenter → Permissions → Users → Add</strong>: użytkownik <code>denali</code>, realm <code>Proxmox VE authentication server</code> (pve). Hasło dowolne, nie będzie potrzebne.</li>
-      <li><strong>Datacenter → Permissions → API Tokens → Add</strong>: użytkownik <code>denali@pve</code>, Token ID <code>odczyt</code>, <em>Privilege Separation</em> zaznaczone. Skopiuj <strong>Secret</strong> — Proxmox pokaże go tylko raz.</li>
-      <li><strong>Datacenter → Permissions → Add → API Token Permission</strong>: ścieżka <code>/</code>, token <code>denali@pve!odczyt</code>, rola <code>PVEAuditor</code>, <em>Propagate</em> zaznaczone.</li>
-      <li>Certyfikat: węzeł → <strong>Shell</strong> → <code>cat /etc/pve/pve-root-ca.pem</code>, skopiuj całość (z liniami BEGIN/END) do pola obok.</li>
-    </ol>
-    <p class="muted small">PVEAuditor pozwala tylko czytać. Adresy IP maszyn wirtualnych wymagają agenta QEMU w VM (qemu-guest-agent); bez niego VM pojawi się bez IP.</p>
-  </section>
-  <section class="card md">
-    <h2>Token do akcji (opcjonalnie)</h2>
-    <ol>
-      <li><strong>Datacenter → Permissions → Roles → Create</strong>: nazwa <code>PanelActions</code>, uprawnienia <code>VM.PowerMgmt</code> i <code>VM.Snapshot</code>.</li>
-      <li><strong>API Tokens → Add</strong>: użytkownik <code>denali@pve</code>, Token ID <code>akcje</code>, <em>Privilege Separation</em> zaznaczone. Skopiuj <strong>Secret</strong>.</li>
-      <li>Konsola (karta Terminale) — osobno: rola <code>PanelConsole</code> tylko z <code>VM.Console</code> i token <code>denali@pve!konsola</code> z nią na <code>/vms</code>, wpisane w polach „token do konsoli” powyżej.</li>
-      <li><strong>Permissions → Add → API Token Permission</strong>: ścieżka <code>/vms</code> (wszystkie maszyny) albo <code>/vms/107</code> (tylko wybrane), token <code>denali@pve!akcje</code>, rola <code>PanelActions</code>.</li>
-      <li>Jeśli akcja dostanie odmowę (403): tę samą rolę na tej samej ścieżce nadaj też użytkownikowi <code>denali@pve</code> — token z oddzielonymi uprawnieniami ma najwyżej to, co jego użytkownik.</li>
-    </ol>
-    <p class="muted small">Bez <code>Sys.*</code>, <code>VM.Config.*</code> i dostępu do węzła: token może tylko włączać, wyłączać i robić snapshoty maszyn.</p>
+    <h2>Jedno konto do wszystkiego</h2>
+    <p>Panel używa jednego konta <code>denali@pve</code> z jednym tokenem. Zaznaczasz, co ma móc, a polecenie nadaje dokładnie tyle. Akcje i konsola dotyczą tylko maszyn (<code>/vms</code>), bez dostępu do ustawień węzła.</p>
+    <p class="muted small">Adresy IP maszyn wirtualnych wymagają agenta QEMU w VM (qemu-guest-agent); bez niego VM pojawi się bez IP.</p>
   </section>
   {% elif cls.type == "komodo" %}
   <section class="card md">

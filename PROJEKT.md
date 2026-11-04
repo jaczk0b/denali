@@ -22,6 +22,7 @@ Cel, do którego odnosi się każda decyzja:
 | Hasła do urządzeń | Zostają w panelu (skarbiec), tylko dla admina, odsłanianie po haśle/2FA, każde w audycie |
 | Poza zakresem | Asystent AI, panel Start z pogodą/kalendarzem, widok domownika — w [POMYSLY.md](POMYSLY.md) |
 | Shell | Do Etapu 5 żadnego: akcje wyłącznie przez API (Proxmox, Komodo, OpenWrt) albo lokalną białą listę agenta. Decyzja 4.11.2026: od Etapu 6 osobna karta z terminalami i VNC, bo panel nie jest wystawiony do internetu. Bez kluczy SSH w bazie |
+| Token Proxmoxa | Jeden na wszystko (decyzja 4.11.2026). Zakresy wybiera administrator, panel układa polecenie `pveum` i sprawdza wynik. Dodanie zakresu i zmiana adresu przy nadanych zakresach: po potwierdzeniu hasłem |
 | Powiadomienia | **Discord (webhook)** na start |
 | Ustawienia urządzeń | **Minimum ustawień na pojedynczym urządzeniu** — zasada nadrzędna, patrz niżej (warunek akceptacji projektu) |
 

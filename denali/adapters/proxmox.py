@@ -1,25 +1,29 @@
-"""Proxmox VE: węzły, VM i kontenery LXC — stan, zasoby, adresy IP. Odczyt tokenem z rolą PVEAuditor.
+"""Proxmox VE: węzły, VM i kontenery LXC — stan, zasoby, adresy IP.
 
-Akcje (start, wyłączenie, restart, zatrzymanie, snapshot VM i LXC) — osobnym tokenem z rolą PanelActions
-(VM.PowerMgmt, VM.Snapshot). Bez tego tokenu panel nie ma czym ich wykonać. Proxmox zwraca zadanie (UPID),
-którego koniec sprawdzamy osobno.
+Jeden token do wszystkiego. Odczyt to wbudowana rola PVEAuditor (jej skład zależy od wersji Proxmoxa, więc nie
+wypisujemy go sami). Administrator wybiera zakresy (Grant): akcje i konsolę, a panel układa polecenie pveum z dokładnie
+tymi uprawnieniami i po zapisie sprawdza w /access/permissions, czy token je ma.
 
-Konsola VM i LXC (karta Terminale) — trzecim tokenem, tylko z VM.Console: vncproxy daje jednorazowy bilet, a panel
-przekazuje połączenie noVNC przez vncwebsocket. Bez hasła do systemu w maszynie konsola kończy się na ekranie logowania.
+Akcje (start, wyłączenie, restart, zatrzymanie, snapshot VM i LXC): Proxmox zwraca zadanie (UPID), którego koniec
+sprawdzamy osobno. Konsola VM i LXC (karta Terminale): vncproxy daje jednorazowy bilet, a panel przekazuje połączenie
+noVNC przez vncwebsocket. Bez hasła do systemu w maszynie konsola kończy się na ekranie logowania.
 
 Zatrzymana maszyna to „off” (wyłączona celowo), chyba że ma startować z hostem (onboot) — wtedy „down”.
 Aktualizacje węzła: lista pakietów z `/nodes/<węzeł>/apt/update` (ta sama co w Proxmoxie: Węzeł → Updates;
 Proxmox odświeża ją sam raz dziennie). PVEAuditor ją widzi (Sys.Audit).
 """
 import asyncio
+import itertools
 import re
+import shlex
 import time
 from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
 import websockets
 
-from . import Adapter, ActionResult, ActionSpec, AdapterError, Field, Found, PollResult, State, apt_updates, lan_iface
+from . import (Adapter, ActionResult, ActionSpec, AdapterError, Field, Found, Grant, PollResult, State, apt_updates,
+               lan_iface)
 from .tls import clean_pem as _clean_pem, ssl_context, validate_pem_field
 
 GB = 1024 ** 3
@@ -27,6 +31,9 @@ CA_HINT = "cat /etc/pve/pve-root-ca.pem"
 GUESTS = ("qemu/", "lxc/")
 RUNNING = ("ok", "warn")
 SNAPNAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,39}$")
+ROLE = "DenaliPanel"
+GUEST_ACL = "/vms"
+DEFAULT_TOKEN = "denali@pve!panel"
 
 
 def clean_pem(text: str) -> str:
@@ -55,7 +62,7 @@ class Proxmox(Adapter):
     default_poll = 60
     fields = [
         Field("url", "Adres", "url", help="np. https://192.168.1.2:8006 — bez ścieżki"),
-        Field("token_id", "Identyfikator tokenu", help="użytkownik@realm!nazwa, np. denali@pve!odczyt"),
+        Field("token_id", "Identyfikator tokenu", help="użytkownik@realm!nazwa", default=DEFAULT_TOKEN),
         Field("token_secret", "Sekret tokenu", "secret"),
         Field("ca_pem", "Certyfikat CA Proxmoxa (pve-root-ca.pem)", "textarea", required=False,
               help="Zawartość /etc/pve/pve-root-ca.pem. Bez tego nie da się sprawdzić certyfikatu z własnym podpisem."),
@@ -63,26 +70,25 @@ class Proxmox(Adapter):
               help="Wyłącz tylko, jeśli nie możesz wkleić certyfikatu CA (połączenie dalej szyfrowane, ale bez pewności, z kim)."),
     ]
 
+    grants = [
+        Grant("akcje", "Akcje", "Start, wyłączenie, restart, zatrzymanie i snapshot maszyn.", ("VM.PowerMgmt", "VM.Snapshot")),
+        Grant("konsola", "Konsola", "Ekran VM i LXC na karcie Terminale.", ("VM.Console",)),
+    ]
+    endpoint_fields = ("url", "ca_pem", "verify_tls")
+
     actions = [
-        ActionSpec("start", "Uruchom", "Proxmox uruchomi maszynę.", GUESTS, when=("off", "down", "unknown")),
+        ActionSpec("start", "Uruchom", "Proxmox uruchomi maszynę.", GUESTS, when=("off", "down", "unknown"), grant="akcje"),
         ActionSpec("shutdown", "Wyłącz", "Proxmox poprosi system w maszynie o wyłączenie (ACPI albo agent QEMU). "
-                   "Usługi na niej przestaną działać, dopóki ktoś jej nie uruchomi.", GUESTS, True, RUNNING),
+                   "Usługi na niej przestaną działać, dopóki ktoś jej nie uruchomi.", GUESTS, True, RUNNING, grant="akcje"),
         ActionSpec("reboot", "Uruchom ponownie", "System w maszynie zostanie czysto zrestartowany. Przez chwilę "
-                   "usługi na niej nie będą działać.", GUESTS, True, RUNNING),
+                   "usługi na niej nie będą działać.", GUESTS, True, RUNNING, grant="akcje"),
         ActionSpec("stop", "Zatrzymaj natychmiast", "Jak wyjęcie wtyczki: maszyna zatrzyma się od razu, bez "
                    "zamykania systemu. Niezapisane dane przepadną. Tylko gdy „Wyłącz” nie działa.", GUESTS, True,
-                   RUNNING + ("unknown",)),
+                   RUNNING + ("unknown",), grant="akcje"),
         ActionSpec("snapshot", "Zrób snapshot", "Proxmox zapisze snapshot maszyny (dyski, bez pamięci RAM). "
-                   "Wrócić do niego można w Proxmoxie (maszyna → Snapshots → Rollback).", GUESTS),
+                   "Wrócić do niego można w Proxmoxie (maszyna → Snapshots → Rollback).", GUESTS, grant="akcje"),
         ActionSpec("console", "Konsola (VNC)", "Ekran maszyny w przeglądarce: kto ma konsolę, może się zalogować do "
-                   "systemu albo przerwać jego start.", GUESTS, True, RUNNING, terminal=True),
-    ]
-    action_fields = [
-        Field("action_token_id", "Identyfikator tokenu do akcji", help="np. denali@pve!akcje"),
-        Field("action_token_secret", "Sekret tokenu do akcji", "secret"),
-        Field("console_token_id", "Identyfikator tokenu do konsoli", required=False,
-              help="np. denali@pve!konsola — osobny token z samym VM.Console na /vms. Puste = bez zmian."),
-        Field("console_token_secret", "Sekret tokenu do konsoli", "secret", required=False),
+                   "systemu albo przerwać jego start.", GUESTS, True, RUNNING, terminal=True, grant="konsola"),
     ]
 
     @classmethod
@@ -97,35 +103,40 @@ class Proxmox(Adapter):
         validate_pem_field(config, CA_HINT)          # zapisujemy oczyszczony; zły certyfikat → błąd na formularzu
 
     @classmethod
-    def validate_action_secrets(cls, values):
-        super().validate_action_secrets(values)
-        tid = str(values.get("action_token_id", "")).strip()
-        if "@" not in tid or "!" not in tid:
-            raise AdapterError("Identyfikator tokenu ma postać użytkownik@realm!nazwa, np. denali@pve!akcje.")
-        cid, csecret = str(values.get("console_token_id", "")).strip(), str(values.get("console_token_secret", "")).strip()
-        if bool(cid) != bool(csecret) or (cid and ("@" not in cid or "!" not in cid)):
-            raise AdapterError("Token do konsoli: podaj identyfikator użytkownik@realm!nazwa i sekret — oba albo żadne.")
+    def setup_command(cls, selected, token_id=""):
+        """Polecenie do powłoki węzła: nadaje dokładnie wybrane zakresy. token_id = token już zapisany w panelu."""
+        tid = token_id or DEFAULT_TOKEN
+        user, _, name = tid.partition("!")
+        who = f"--users {shlex.quote(user)}" + (f" --tokens {shlex.quote(tid)}" if token_id else "")
+        privs = ",".join(p for g in cls.grants if g.key in selected for p in g.privs)
+        lines = [f"pveum user add {shlex.quote(user)} --comment Denali 2>/dev/null",
+                 f"pveum acl modify / {who} --roles PVEAuditor"]
+        if privs:
+            lines += [f'pveum role add {ROLE} --privs "{privs}" 2>/dev/null || pveum role modify {ROLE} --privs "{privs}"',
+                      f"pveum acl modify {GUEST_ACL} {who} --roles {ROLE}"]
+        elif token_id:
+            lines.append(f"pveum acl delete {GUEST_ACL} {who} --roles {ROLE} 2>/dev/null")
+        if not token_id:
+            lines += [f"pveum user token add {shlex.quote(user)} {shlex.quote(name)} --privsep 0",
+                      "cat /etc/pve/pve-root-ca.pem"]
+        return "\n".join(lines)
 
-    @staticmethod
-    def console_ready(action_secrets):
-        return bool(action_secrets.get("console_token_id") and action_secrets.get("console_token_secret"))
+    @classmethod
+    def setup_commands(cls, token_id=""):
+        """Polecenie dla każdego układu zaznaczonych pól: {„akcje,konsola”: tekst}."""
+        keys = [g.key for g in cls.grants]
+        combos = itertools.chain.from_iterable(itertools.combinations(keys, n) for n in range(len(keys) + 1))
+        return {",".join(c): cls.setup_command(c, token_id) for c in combos}
 
-    def _console_token(self):
-        return (f"{self.action_secrets['console_token_id'].strip()}="
-                f"{self.action_secrets['console_token_secret'].strip()}")
-
-    def _client(self, action=False, console=False):
+    def _client(self):
         url = str(self.config["url"]).strip().rstrip("/")
-        if console:
-            token = self._console_token()
-        elif action:
-            token = f"{self.action_secrets['action_token_id'].strip()}={self.action_secrets['action_token_secret'].strip()}"
-        else:
-            token = f"{self.config['token_id'].strip()}={self.secrets['token_secret'].strip()}"
-        headers = {"Authorization": f"PVEAPIToken={token}", "Accept": "application/json"}
+        headers = {"Authorization": f"PVEAPIToken={self._token()}", "Accept": "application/json"}
         kw = {"transport": self.transport} if self.transport else {
             "verify": _ssl_context(self.config.get("ca_pem", ""), bool(self.config.get("verify_tls", True)))}
         return httpx.AsyncClient(base_url=url + "/api2/json", headers=headers, timeout=10, follow_redirects=False, **kw)
+
+    def _token(self):
+        return f"{self.config['token_id'].strip()}={self.secrets['token_secret'].strip()}"
 
     async def _get(self, cli, path, timeout=None):
         try:
@@ -142,7 +153,7 @@ class Proxmox(Adapter):
         if r.status_code == 401:
             raise AdapterError("Proxmox odrzucił token — sprawdź identyfikator i sekret.")
         if r.status_code == 403:
-            raise AdapterError(f"Token nie ma uprawnień do {path} — nadaj mu rolę PVEAuditor na „/”.")
+            raise AdapterError(f"Token nie ma uprawnień do {path} — uruchom polecenie z sekcji „Uprawnienia”.")
         if r.status_code >= 400:
             raise AdapterError(f"Proxmox zwrócił błąd {r.status_code} dla {path}.")
         try:
@@ -157,12 +168,28 @@ class Proxmox(Adapter):
         nodes = sum(1 for r in res if r.get("type") == "node")
         guests = sum(1 for r in res if r.get("type") in ("qemu", "lxc") and not r.get("template"))
         if not nodes:
-            raise AdapterError("Połączono, ale token nie widzi żadnego węzła — nadaj mu rolę PVEAuditor na „/” "
-                               "(przy tokenie z oddzielonymi uprawnieniami: także samemu tokenowi).")
+            raise AdapterError("Połączono, ale token nie widzi żadnego węzła — uruchom polecenie z sekcji „Uprawnienia”.")
         if not any(r.get("maxmem") for r in res if r.get("type") == "node"):
             raise AdapterError(f"Połączono, ale token widzi tylko nazwy węzłów (bez CPU, RAM i maszyn: {guests}) — "
-                               "dodaj tokenowi rolę PVEAuditor na „/” (Datacenter → Permissions → API Token Permission).")
+                               "uruchom polecenie z sekcji „Uprawnienia”.")
+        if missing := await self._missing_privs():
+            raise AdapterError(f"Połączono, ale token nie ma uprawnień: {', '.join(missing)}. "
+                               "Uruchom polecenie z sekcji „Uprawnienia”.")
         return f"Połączono: Proxmox VE {ver.get('version', '?')} · węzły: {nodes} · maszyny i kontenery: {guests}"
+
+    async def _missing_privs(self):
+        """Uprawnienia z wybranych zakresów, których token nie ma. Gdy Proxmox tego nie poda — pusta lista."""
+        wanted = [p for g in self.grants if g.key in (self.config.get("permissions") or []) for p in g.privs]
+        if not wanted:
+            return []
+        try:
+            async with self._client() as cli:
+                have = await self._get(cli, f"/access/permissions?path={quote(GUEST_ACL, safe='')}")
+        except AdapterError:
+            return []
+        if not isinstance(have, dict) or not isinstance(have.get(GUEST_ACL), dict):
+            return []
+        return [p for p in wanted if not have[GUEST_ACL].get(p)]
 
     async def _guest_ips(self, cli, g):
         node, vmid, typ = g["node"], g["vmid"], g["type"]
@@ -266,10 +293,10 @@ class Proxmox(Adapter):
         except httpx.HTTPError:
             raise AdapterError(f"Brak połączenia z {self.config['url']}.") from None
         if r.status_code == 401:
-            raise AdapterError("Proxmox odrzucił token do akcji — sprawdź identyfikator i sekret.")
+            raise AdapterError("Proxmox odrzucił token — sprawdź identyfikator i sekret.")
         if r.status_code == 403:
-            raise AdapterError("Token do akcji nie ma uprawnień — nadaj mu rolę PanelActions (VM.PowerMgmt, "
-                               "VM.Snapshot) na „/vms”.")
+            raise AdapterError("Token nie ma tego uprawnienia w Proxmoxie — uruchom polecenie z sekcji „Uprawnienia” "
+                               "w integracji.")
         if r.status_code >= 400:
             # Proxmox podaje powód w linii statusu, np. „500 VM 107 not running”
             raise AdapterError(f"Proxmox: {r.reason_phrase or r.status_code}"[:300])
@@ -289,13 +316,8 @@ class Proxmox(Adapter):
     async def console_ticket(self, external_id, data):
         """Bilet na konsolę: {path, port, ticket}. Proxmox czeka na połączenie około 10 sekund."""
         path = self._guest_path(external_id, data)
-        async with self._client(console=True) as cli:
-            try:
-                res = await self._call(cli, "POST", path + "/vncproxy", {"websocket": 1})
-            except AdapterError as e:
-                if "uprawnień" in str(e):
-                    raise AdapterError("Token do konsoli nie ma uprawnień — nadaj mu rolę z VM.Console na „/vms”.") from None
-                raise
+        async with self._client() as cli:
+            res = await self._call(cli, "POST", path + "/vncproxy", {"websocket": 1})
         if not isinstance(res, dict) or not res.get("port") or not res.get("ticket"):
             raise AdapterError("Proxmox nie podał biletu na konsolę.")
         return {"path": path, "port": res["port"], "ticket": res["ticket"]}
@@ -307,7 +329,7 @@ class Proxmox(Adapter):
         try:
             return await websockets.connect(
                 f"wss://{u.netloc}/api2/json{info['path']}/vncwebsocket?{query}", open_timeout=10, max_size=None,
-                subprotocols=["binary"], additional_headers={"Authorization": f"PVEAPIToken={self._console_token()}"},
+                subprotocols=["binary"], additional_headers={"Authorization": f"PVEAPIToken={self._token()}"},
                 ssl=_ssl_context(self.config.get("ca_pem", ""), bool(self.config.get("verify_tls", True))))
         except websockets.InvalidStatus as e:
             raise AdapterError(f"Proxmox odrzucił połączenie z konsolą (HTTP {e.response.status_code}) — token API na "
@@ -318,7 +340,7 @@ class Proxmox(Adapter):
     async def run_action(self, key, external_id, data, params):
         base = self._guest_path(external_id, data)
         node = data["node"]
-        async with self._client(action=True) as cli:
+        async with self._client() as cli:
             if key == "snapshot":
                 name = params.get("snapname") or time.strftime("denali-%Y%m%d-%H%M%S")
                 if not SNAPNAME.match(name):
@@ -336,7 +358,7 @@ class Proxmox(Adapter):
         return ActionResult(True, done, task={"node": node, "upid": upid, "text": done})
 
     async def check_task(self, task):
-        async with self._client(action=True) as cli:
+        async with self._client() as cli:
             st = await self._call(cli, "GET", f"/nodes/{quote(str(task['node']), safe='')}/tasks/"
                                               f"{quote(task['upid'], safe='')}/status") or {}
         if st.get("status") != "stopped":

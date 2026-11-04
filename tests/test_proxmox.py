@@ -87,7 +87,7 @@ def test_sprawdzenie_polaczenia():
     assert msg == "Połączono: Proxmox VE 8.4.1 · węzły: 1 · maszyny i kontenery: 4"
     with pytest.raises(AdapterError, match="odrzucił token"):
         run(Proxmox(CONFIG, SECRETS, pve_api(auth_ok=False)).test())
-    with pytest.raises(AdapterError, match="PVEAuditor"):
+    with pytest.raises(AdapterError, match="Uprawnienia"):
         run(Proxmox(CONFIG, SECRETS, pve_api(resources=[])).test())
 
 
@@ -174,7 +174,7 @@ def test_dodanie_przez_panel(app):
         do_login(c)
         enable_2fa(c, app)
         page = c.get("/admin/integracje/nowa?typ=proxmox")
-        assert "Jak założyć token" in page.text
+        assert "Jedno konto do wszystkiego" in page.text
         r = c.post("/admin/integracje/nowa", data={"csrf_token": csrf_from(page.text), "type": "proxmox", "name": "pve",
                                                     "url": CONFIG["url"], "token_id": CONFIG["token_id"],
                                                     "token_secret": SECRETS["token_secret"], "verify_tls": "1",

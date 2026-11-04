@@ -11,6 +11,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
 from .. import actions, auth, integrations, inventory as inv, profiles
+from ..adapters import registry
 from ..models import integration, profile
 from ..templating import render
 from .deps import NotFound, Redirect, client_ip, require_admin
@@ -122,6 +123,20 @@ def _integration(conn, integration_id):
         return integrations.get(conn, integration_id)
     except integrations.IntegrationError as e:
         raise NotFound(str(e)) from None
+
+
+@router.post("/admin/integracje/{integration_id:int}/uprawnienia")
+async def integration_grants(request: Request, integration_id: int, sess: dict = Depends(require_admin)):
+    form = await request.form()
+    with request.app.state.engine.begin() as conn:
+        row = _integration(conn, integration_id)
+        if not registry()[row["type"]].grants:
+            raise NotFound("Ta integracja nie ma zakresów do wyboru.")
+        chosen = set(form.getlist("grant"))
+        if chosen - set((row["config"] or {}).get("permissions") or []):      # odebranie działa od razu, jak wyłącznik
+            _need_reauth(sess, f"/admin/integracje/{integration_id}#uprawnienia")
+        actions.save_grants(conn, row, chosen, sess["login"], client_ip(request))
+    return RedirectResponse(f"/admin/integracje/{integration_id}?sprawdz=1", 303)
 
 
 @router.post("/admin/integracje/{integration_id:int}/akcje")

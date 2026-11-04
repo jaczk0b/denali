@@ -18,7 +18,6 @@ from .conftest import csrf_from, do_login, enable_2fa, make_user, new_client
 from .test_agent import agent, fake_report
 from .test_proxmox import CONFIG, SECRETS, pve_api
 
-ACTION_SECRETS = {"action_token_id": "denali@pve!akcje", "action_token_secret": "aaaa-bbbb"}
 UPID = "UPID:pve:0001:0002:6720AB00:qmreboot:107:denali@pve!akcje:"
 
 
@@ -58,7 +57,7 @@ def pve(app):
         discovery.approve(conn, refs["qemu/107"]["id"])
         discovery.approve(conn, refs["qemu/120"]["id"])
         ids = {r.external_id: (r.id, r.device_id) for r in conn.execute(select(external_ref))}
-        actions.save_credentials(conn, app.state.box, integrations.get(conn, iid), ACTION_SECRETS, "admin")
+        actions.save_grants(conn, integrations.get(conn, iid), ["akcje"], "admin")
     return {"iid": iid, "docker": ids["qemu/107"], "test": ids["qemu/120"]}
 
 
@@ -109,11 +108,11 @@ def test_kolejne_zamki(app, pve):
         with pytest.raises(actions.ActionError, match="wyłączone"):
             req(conn, pve["docker"], "proxmox.snapshot")
         actions.set_enabled(conn, True, "admin")
-        # bez tokenu do akcji
-        actions.clear_credentials(conn, integrations.get(conn, pve["iid"]), "admin")
-        with pytest.raises(actions.ActionError, match="tokenu do akcji"):
+        # integracja bez zakresu „Akcje”
+        actions.save_grants(conn, integrations.get(conn, pve["iid"]), ["konsola"], "admin")
+        with pytest.raises(actions.ActionError, match="zakresu „Akcje”"):
             req(conn, pve["docker"], "proxmox.snapshot")
-        actions.save_credentials(conn, app.state.box, integrations.get(conn, pve["iid"]), ACTION_SECRETS, "admin")
+        actions.save_grants(conn, integrations.get(conn, pve["iid"]), ["akcje"], "admin")
         # wyjątek na urządzeniu zabiera akcję tylko temu urządzeniu
         profiles.set_override(conn, pve["docker"][1], "actions", ["proxmox.start"])
         with pytest.raises(actions.ActionError, match="Niedozwolona"):
@@ -144,7 +143,7 @@ def test_restart_vm_przez_proxmoxa_z_audytem_i_incydentem(app, pve):
         assert [(x.method, x.url.path) for x in seen] == [
             ("POST", "/api2/json/nodes/pve/qemu/107/status/reboot"),
             ("GET", f"/api2/json/nodes/pve/tasks/{UPID}/status")]
-        assert seen[0].headers["authorization"] == "PVEAPIToken=denali@pve!akcje=aaaa-bbbb"   # token do akcji
+        assert seen[0].headers["authorization"] == "PVEAPIToken=denali@pve!odczyt=11111111-2222-3333-4444-555555555555"   # ten sam token co odczyt
         [requested] = audit_rows(conn, "action_request")
         assert requested["params"]["action"] == "proxmox.reboot" and requested["ip"] == "192.168.1.5"
         [result] = audit_rows(conn, "action_result")
@@ -163,7 +162,7 @@ def test_blad_zrodla_i_dlugie_zadanie(app, pve):
     run(actions.execute(app.state.engine, app.state.box, bad, pve_actions(deny=True), wait=0))
     with app.state.engine.begin() as conn:
         r = actions.get(conn, bad)
-        assert r["status"] == "blad" and "PanelActions" in r["result"]
+        assert r["status"] == "blad" and "Uprawnienia" in r["result"]
         assert "błąd" in audit_rows(conn, "action_result")[0]["result"]
         slow = req(conn, pve["docker"], "proxmox.snapshot")
     run(actions.execute(app.state.engine, app.state.box, slow, pve_actions(task_status={"status": "running"}), wait=0))
@@ -189,7 +188,7 @@ def test_zlecenie_wykonuje_sie_raz(app, pve):
 
 def test_proxmox_adapter_akcje():
     seen = []
-    a = Proxmox(CONFIG, SECRETS, pve_actions(seen), ACTION_SECRETS)
+    a = Proxmox(CONFIG, SECRETS, pve_actions(seen))
     res = run(a.run_action("snapshot", "lxc/110", {"node": "pve"}, {"snapname": "przed-aktualizacja"}))
     assert res.ok and res.task["upid"] == UPID
     assert seen[0].url.path.endswith("/lxc/110/snapshot") and b"snapname=przed-aktualizacja" in seen[0].content
@@ -197,11 +196,8 @@ def test_proxmox_adapter_akcje():
         run(a.run_action("start", "qemu/107", {}, {}))
     with pytest.raises(AdapterError, match="Zła nazwa"):
         run(a.run_action("snapshot", "qemu/107", {"node": "pve"}, {"snapname": "x; rm"}))
-    failed = Proxmox(CONFIG, SECRETS, pve_actions(task_status={"status": "stopped", "exitstatus": "VM is locked"}),
-                     ACTION_SECRETS)
+    failed = Proxmox(CONFIG, SECRETS, pve_actions(task_status={"status": "stopped", "exitstatus": "VM is locked"}))
     assert run(failed.check_task(res.task)).ok is False
-    with pytest.raises(AdapterError, match="użytkownik@realm"):
-        Proxmox.validate_action_secrets({"action_token_id": "zly", "action_token_secret": "x"})
 
 
 def komodo_exec(seen):
@@ -303,7 +299,7 @@ def test_podglad_nie_widzi_akcji(app, pve):
         assert c.get("/akcje").status_code == 403
 
 
-def test_wylacznik_i_token_w_panelu(app, pve, admin):
+def test_wylacznik_w_panelu(app, pve, admin):
     page = admin.get("/akcje").text
     admin.post("/akcje/wylacz", data={"csrf_token": csrf_from(page)})
     with app.state.engine.connect() as conn:
@@ -314,14 +310,6 @@ def test_wylacznik_i_token_w_panelu(app, pve, admin):
     admin.post("/akcje/wlacz", data={"csrf_token": csrf_from(page)})
     with app.state.engine.connect() as conn:
         assert actions.enabled(conn)
-    ipage = admin.get(f"/admin/integracje/{pve['iid']}").text
-    assert "denali@pve!akcje" in ipage and "aaaa-bbbb" not in ipage
-    admin.post(f"/admin/integracje/{pve['iid']}/akcje/usun", data={"csrf_token": csrf_from(ipage)})
-    with app.state.engine.connect() as conn:
-        row = integrations.get(conn, pve["iid"])
-        assert row["action_ct"] is None and row["secret_ct"]          # token do odczytu zostaje
-        assert [r["action"] for r in conn.execute(select(audit_log.c.action)).mappings()
-                if r["action"].startswith("action")][-1] == "action_token_remove"
 
 
 # ───────────────────────── agent ─────────────────────────

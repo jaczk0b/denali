@@ -1,8 +1,8 @@
 """Konsola maszyny z karty Terminale (Etap 6): ekran VM i LXC przez API Proxmoxa, bez kluczy SSH w bazie.
 
 Otwarcie przechodzi przez te same zamki co akcja (actions.for_device z terminal=True): wyłącznik akcji, „Dozwolone
-akcje” urządzenia („proxmox.console” z profilu albo wyjątek), stan maszyny — a do tego osobny token z VM.Console
-i świeże potwierdzenie hasłem i kodem.
+akcje” urządzenia („proxmox.console” z profilu albo wyjątek), zakres „Konsola” integracji, stan maszyny — a do tego
+świeże potwierdzenie hasłem i kodem.
 
 Przebieg: zgłoszenie (formularz) → strona konsoli → start (bilet od Proxmoxa, raz) → WebSocket przeglądarki, który panel
 przekazuje do Proxmoxa. Działająca sesja jest sprawdzana co CHECK_EVERY sekund: wylogowanie, wyłączenie akcji, odebranie
@@ -30,22 +30,13 @@ class ConsoleError(ValueError):
     pass
 
 
-def for_device(conn, box, device_id):
-    """Konsola i polecenia urządzenia — każde z oceną, czy wolno, i dlaczego nie."""
-    out = actions.for_device(conn, device_id, terminal=True)
-    for o in out:
-        if o["key"] == KEY and not o["reason"] and not o["cls"].console_ready(actions.action_secrets(o["integration"], box) or {}):
-            o["reason"] = f"Integracja „{o['integration']['name']}” nie ma tokenu do konsoli (VM.Console)."
-    return out
-
-
-def devices(conn, box):
+def devices(conn):
     """Urządzenia, na których konsola albo polecenia są dozwolone (lista na karcie Terminale)."""
     rows = conn.execute(select(device.c.id, device.c.name).where(device.c.id.in_(
         select(external_ref.c.device_id).where(external_ref.c.status == "zatwierdzony"))).order_by(device.c.name)).all()
     out = []
     for r in rows:
-        opts = [o for o in for_device(conn, box, r.id) if o["allowed"]]
+        opts = [o for o in actions.for_device(conn, r.id, terminal=True) if o["allowed"]]
         if opts:
             out.append({"id": r.id, "name": r.name, "console": [o for o in opts if o["key"] == KEY],
                         "commands": [o for o in opts if o["key"] != KEY]})
@@ -63,7 +54,7 @@ def recent(conn, device_id=None, limit=20):
     return conn.execute(q.order_by(console_session.c.id.desc()).limit(limit)).mappings().all()
 
 
-def request(conn, box, *, device_id, ref_id, user, role, ip="", reauth_ok=False, now=None):
+def request(conn, *, device_id, ref_id, user, role, ip="", reauth_ok=False, now=None):
     """Zgłoszenie konsoli po sprawdzeniu zamków. Odmowa → ConsoleError i wpis „console_blocked” w audycie."""
     now = now or time.time()
     dev = conn.execute(select(device.c.id, device.c.name).where(device.c.id == device_id)).first()
@@ -77,7 +68,8 @@ def request(conn, box, *, device_id, ref_id, user, role, ip="", reauth_ok=False,
         refuse("Konsolę może otworzyć tylko administrator.")
     if not dev:
         refuse("Nie ma takiego urządzenia.")
-    o = next((x for x in for_device(conn, box, device_id) if x["ref_id"] == ref_id and x["key"] == KEY), None)
+    o = next((x for x in actions.for_device(conn, device_id, terminal=True)
+              if x["ref_id"] == ref_id and x["key"] == KEY), None)
     if not o:
         refuse("Tej konsoli nie ma dla tego urządzenia.")
     if o["reason"]:

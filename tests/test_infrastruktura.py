@@ -86,10 +86,9 @@ def test_strony_zakladek(full):
 def test_przyciski_akcji_na_zakladkach(full):
     from denali import actions, profiles
     from denali.models import integration
-    from .test_akcje import ACTION_SECRETS
     with full.state.engine.begin() as c:
         [pve] = [r for r in c.execute(integration.select()).mappings() if r["type"] == "proxmox"]
-        actions.save_credentials(c, full.state.box, pve, ACTION_SECRETS, "admin")
+        actions.save_grants(c, pve, ["akcje"], "admin")
         p = profiles.profile_for(c, {"profile_id": None, "kind": "vm"})
         profiles.set_profile_setting(c, p["id"], "actions", ["proxmox.snapshot"])
     make_user(full)

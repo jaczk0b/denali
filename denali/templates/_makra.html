@@ -56,6 +56,21 @@
 </svg>
 {%- endmacro %}
 
+{# wybór zakresów jednego tokenu i polecenie dla zaznaczonych pól (denali.js przełącza je na żywo) #}
+{% macro grant_picker(cls, selected, commands, intro) %}
+{% set current = cls.grants | selectattr("key", "in", selected) | map(attribute="key") | join(",") %}
+<div data-grants>
+  <label class="check"><input type="checkbox" checked disabled> Odczyt <span class="muted small">(zawsze) stan maszyn, zasoby, aktualizacje</span></label>
+  {% for g in cls.grants %}
+  <label class="check"><input type="checkbox" name="grant" value="{{ g.key }}" {% if g.key in selected %}checked{% endif %}> {{ g.label }} <span class="muted small">{{ g.help }}</span></label>
+  {% endfor %}
+  <p class="muted small mt">{{ intro }}</p>
+  {% for key, text in commands.items() %}
+  <pre class="wrap mono small" data-command="{{ key }}" {% if key != current %}hidden{% endif %}>{{ text }}</pre>
+  {% endfor %}
+</div>
+{% endmacro %}
+
 {# sesje konsoli na karcie Terminale #}
 {% macro console_history(rows) %}
 <table>

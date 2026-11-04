@@ -34,7 +34,7 @@ def _device_or_404(conn, device_id):
 @router.get("/terminale")
 def terminals(request: Request, sess: dict = Depends(require_admin)):
     with request.app.state.engine.connect() as conn:
-        rows = consoles.devices(conn, request.app.state.box)
+        rows = consoles.devices(conn)
         history = consoles.recent(conn)
     return render(request, "terminale.html", {"devices": rows, "history": history})
 
@@ -43,7 +43,7 @@ def terminals(request: Request, sess: dict = Depends(require_admin)):
 def terminal_device(request: Request, device_id: int, sess: dict = Depends(require_admin)):
     with request.app.state.engine.connect() as conn:
         d = _device_or_404(conn, device_id)
-        opts = consoles.for_device(conn, request.app.state.box, device_id)
+        opts = actions.for_device(conn, device_id, terminal=True)
         runs = conn.execute(select(action_run).where(action_run.c.device_id == device_id, action_run.c.action == COMMAND_KEY)
                             .order_by(action_run.c.id.desc()).limit(10)).mappings().all()
         history = consoles.recent(conn, device_id, 10)
@@ -80,8 +80,8 @@ def console_request(request: Request, device_id: int, ref_id: int, sess: dict = 
         raise Redirect(f"/potwierdz?next=/terminale/{device_id}")
     with request.app.state.engine.begin() as conn:
         try:
-            console_id = consoles.request(conn, request.app.state.box, device_id=device_id, ref_id=ref_id, user=sess["login"],
-                                          role=sess["role"], ip=client_ip(request), reauth_ok=True)
+            console_id = consoles.request(conn, device_id=device_id, ref_id=ref_id, user=sess["login"], role=sess["role"],
+                                          ip=client_ip(request), reauth_ok=True)
             error = None
         except consoles.ConsoleError as e:
             error = str(e)
