@@ -39,8 +39,17 @@ def test_polecenie_nowej_integracji():
     assert 'pveum role modify DenaliPanel --privs "VM.PowerMgmt,VM.Snapshot,VM.Console"' in text
     assert "pveum acl modify / --users denali@pve --roles PVEAuditor" in text
     assert "pveum acl modify /vms --users denali@pve --roles DenaliPanel" in text
+    assert "pveum acl modify /vms --users denali@pve --roles PVEAuditor" in text
     assert "pveum user token add denali@pve panel --privsep 0" in text
     assert text.endswith("cat /etc/pve/pve-root-ca.pem")
+
+
+def test_wlasna_rola_na_vms_nie_odcina_odczytu_maszyn():
+    """W Proxmoxie wpis na /vms zastępuje rolę odziedziczoną z „/”: bez PVEAuditor na /vms token widzi tylko węzły."""
+    for token_id in ("", "denali@pve!odczyt"):
+        lines = Proxmox.setup_command(["akcje"], token_id).splitlines()
+        on_vms = [line for line in lines if line.startswith("pveum acl modify /vms")]
+        assert any("--roles PVEAuditor" in line for line in on_vms) and any("--roles DenaliPanel" in line for line in on_vms)
 
 
 def test_polecenie_tylko_odczyt_nie_ma_wlasnej_roli():
@@ -71,13 +80,17 @@ def test_po_jednym_poleceniu_na_uklad_pol():
 
 def test_sprawdzenie_mowi_czego_brakuje():
     config = {**CONFIG, "permissions": ["akcje", "konsola"]}
-    ok = Proxmox(config, SECRETS, transport=with_permissions(["VM.PowerMgmt", "VM.Snapshot", "VM.Console"]))
+    ok = Proxmox(config, SECRETS, transport=with_permissions(["VM.Audit", "VM.PowerMgmt", "VM.Snapshot", "VM.Console"]))
     assert run(ok.test()).startswith("Połączono")
-    bad = Proxmox(config, SECRETS, transport=with_permissions(["VM.PowerMgmt", "VM.Snapshot"]))
+    bad = Proxmox(config, SECRETS, transport=with_permissions(["VM.Audit", "VM.PowerMgmt", "VM.Snapshot"]))
     with pytest.raises(AdapterError, match="VM.Console"):
         run(bad.test())
-    # sam odczyt niczego nie wymaga, a brak odpowiedzi o uprawnieniach nie blokuje połączenia
-    assert run(Proxmox(CONFIG, SECRETS, transport=with_permissions([])).test()).startswith("Połączono")
+    # akcje bez odczytu maszyn: token widzi tylko węzły
+    blind = Proxmox(config, SECRETS, transport=with_permissions(["VM.PowerMgmt", "VM.Snapshot", "VM.Console"]))
+    with pytest.raises(AdapterError, match="VM.Audit"):
+        run(blind.test())
+    # brak odpowiedzi o uprawnieniach nie blokuje połączenia
+    assert run(Proxmox(CONFIG, SECRETS, transport=with_permissions(["VM.Audit"])).test()).startswith("Połączono")
     assert run(Proxmox(config, SECRETS, transport=with_permissions(None)).test()).startswith("Połączono")
 
 

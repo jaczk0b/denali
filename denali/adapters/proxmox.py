@@ -33,6 +33,7 @@ RUNNING = ("ok", "warn")
 SNAPNAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,39}$")
 ROLE = "DenaliPanel"
 GUEST_ACL = "/vms"
+READ_PRIV = "VM.Audit"
 DEFAULT_TOKEN = "denali@pve!panel"
 
 
@@ -112,7 +113,9 @@ class Proxmox(Adapter):
         lines = [f"pveum user add {shlex.quote(user)} --comment Denali 2>/dev/null",
                  f"pveum acl modify / {who} --roles PVEAuditor"]
         if privs:
+            # wpis na głębszej ścieżce zastępuje odziedziczony z „/”, więc odczyt maszyn trzeba nadać na niej jeszcze raz
             lines += [f'pveum role add {ROLE} --privs "{privs}" 2>/dev/null || pveum role modify {ROLE} --privs "{privs}"',
+                      f"pveum acl modify {GUEST_ACL} {who} --roles PVEAuditor",
                       f"pveum acl modify {GUEST_ACL} {who} --roles {ROLE}"]
         elif token_id:
             lines.append(f"pveum acl delete {GUEST_ACL} {who} --roles {ROLE} 2>/dev/null")
@@ -178,10 +181,8 @@ class Proxmox(Adapter):
         return f"Połączono: Proxmox VE {ver.get('version', '?')} · węzły: {nodes} · maszyny i kontenery: {guests}"
 
     async def _missing_privs(self):
-        """Uprawnienia z wybranych zakresów, których token nie ma. Gdy Proxmox tego nie poda — pusta lista."""
-        wanted = [p for g in self.grants if g.key in (self.config.get("permissions") or []) for p in g.privs]
-        if not wanted:
-            return []
+        """Uprawnienia (odczyt maszyn i wybrane zakresy), których token nie ma. Gdy Proxmox tego nie poda — pusta lista."""
+        wanted = [READ_PRIV] + [p for g in self.grants if g.key in (self.config.get("permissions") or []) for p in g.privs]
         try:
             async with self._client() as cli:
                 have = await self._get(cli, f"/access/permissions?path={quote(GUEST_ACL, safe='')}")
