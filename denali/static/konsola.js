@@ -1,6 +1,7 @@
 // Konsola maszyny: noVNC (static/novnc) na WebSocket panelu, który przekazuje połączenie do Proxmoxa.
 // Hasło VNC to jednorazowy bilet od Proxmoxa — przychodzi z /start i nigdzie nie zostaje.
 import RFB from "./novnc/core/rfb.js";
+import { initLogging } from "./novnc/core/util/logging.js";
 
 var page = document.getElementById("konsola");
 var screen = document.getElementById("console-screen");
@@ -8,6 +9,15 @@ var statusEl = document.getElementById("console-status");
 var cad = document.getElementById("console-cad");
 var end = document.getElementById("console-end");
 var rfb = null;
+var novncError = "";
+
+// noVNC opisuje swoje błędy tylko w konsoli przeglądarki — zabieramy je stamtąd na pasek.
+var consoleError = console.error;
+console.error = function () {
+  novncError = [].join.call(arguments, " ");
+  consoleError.apply(console, arguments);
+};
+initLogging("warn");
 
 function say(text) {
   statusEl.textContent = text;
@@ -26,7 +36,8 @@ async function finishedWithReason(text) {
   await new Promise(function (ok) { setTimeout(ok, 700); });
   var res = await fetch(page.dataset.end).catch(function () { return null; });
   var body = res && res.ok ? await res.json().catch(function () { return {}; }) : {};
-  if (body.reason && body.reason !== "Rozłączono.") { say(body.reason); }
+  var parts = [body.reason, novncError].filter(function (t) { return t && t !== "Rozłączono."; });
+  if (parts.length) { say(parts.join(" · ")); }
 }
 
 async function start() {

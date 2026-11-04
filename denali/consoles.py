@@ -169,7 +169,8 @@ async def bridge(ws, upstream, check):
         while True:
             m = await ws.receive()
             if m["type"] == "websocket.disconnect":
-                return "Rozłączono."
+                code = m.get("code")
+                return "Rozłączono." if code in (None, 1000, 1001, 1005) else f"Przeglądarka straciła połączenie (kod {code})."
             data = m.get("bytes") if m.get("bytes") is not None else m.get("text")
             if data is not None:
                 await upstream.send(data)

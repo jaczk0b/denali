@@ -289,6 +289,14 @@ def test_nieoczekiwany_blad_polaczenia_zostaje_w_historii(app, pve, console, adm
     assert "ValueError: zły adres" in session_row(app, cid)["close_reason"]
 
 
+def test_most_podaje_kod_rozlaczenia_przegladarki():
+    class Browser:
+        async def receive(self):
+            return {"type": "websocket.disconnect", "code": 1006}
+
+    assert run(consoles.bridge(Browser(), FakeConsole(), lambda: None)) == "Przeglądarka straciła połączenie (kod 1006)."
+
+
 def test_most_podaje_kod_zamkniecia_proxmoxa():
     class Browser:
         async def receive(self):
