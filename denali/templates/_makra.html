@@ -72,6 +72,18 @@
 {% endmacro %}
 
 {# kafelek na karcie Terminale: klik otwiera sesję, gdy to możliwe, inaczej prowadzi do strony urządzenia #}
+{% macro panel_key_box(public, install) %}
+<details class="mt"><summary>Klucz publiczny panelu</summary>
+  <p class="muted small mt">Ten sam dla wszystkich maszyn. Prywatny zostaje zaszyfrowany w panelu.</p>
+  <pre class="mono small wrap">{{ public }}</pre>
+  <div class="actions mt">
+    <button class="btn small" type="button" data-copy="{{ public }}">Kopiuj klucz</button>
+    <button class="btn small" type="button" data-copy="{{ install }}">Kopiuj polecenie instalacji</button>
+  </div>
+  <p class="muted small mt">Polecenie wklejasz na maszynie, na której panel nie może dopisać klucza sam.</p>
+</details>
+{% endmacro %}
+
 {% macro term_tile(d, tab, mark, csrf, hide) %}
 {% set o = d.console[0] if tab == "vnc" and d.console else none %}
 {% set url = "/terminale/%d/ssh" % d.id if tab == "ssh" and d.login else ("/terminale/%d/konsola/%d" % (d.id, o.ref_id) if o and not o.reason else "") %}

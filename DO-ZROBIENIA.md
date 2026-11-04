@@ -142,6 +142,8 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
 - [ ] **OpenWrt** — odłożone (POMYSLY.md); router działa przez nieoficjalną bibliotekę TP-Link.
 - [ ] **OVHcloud (VPS)** — kod gotowy, testy na nagranym API. Do sprawdzenia na prawdziwym koncie: założyć klucze,
       zatwierdzić VPS, porównać termin opłaty i faktury z panelem OVH, otworzyć terminal SSH z zakładki VPS.
+- [ ] **Klucz panelu** — kod gotowy, testy na lokalnym serwerze SSH. Do sprawdzenia: pierwsze logowanie hasłem na prawdziwej
+      maszynie dopisuje klucz, kolejne idzie jednym kliknięciem; przyciski kopiowania w przeglądarce.
 - [ ] Z migracji HLC **nie przeniesione**: sprawdzenia, kanały powiadomień, konta (z założenia — wracają w nowej postaci).
 
 ## 5. Rzeczy niesprawdzone albo do decyzji

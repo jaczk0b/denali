@@ -143,3 +143,17 @@
     if (es.readyState === EventSource.CLOSED) { reloadWhenUp(); }
   };
 })();
+
+// Przycisk „Kopiuj”: tekst w data-copy trafia do schowka, a napis na chwilę potwierdza
+document.addEventListener("click", async (e) => {
+  const button = e.target.closest("[data-copy]");
+  if (!button) return;
+  const label = button.textContent;
+  try {
+    await navigator.clipboard.writeText(button.dataset.copy);
+    button.textContent = "Skopiowano";
+  } catch {
+    button.textContent = "Nie udało się skopiować";
+  }
+  setTimeout(() => { button.textContent = label; }, 1500);
+});

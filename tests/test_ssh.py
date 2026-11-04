@@ -2,6 +2,7 @@
 import asyncio
 import json
 import threading
+import time
 
 import asyncssh
 import pytest
@@ -10,6 +11,7 @@ from starlette.websockets import WebSocketDisconnect
 from denali import actions, consoles, integrations, polecenia, ssh, vault
 from denali import inventory as inv
 from denali.adapters import AdapterError
+from denali.db import kv_get
 
 from .conftest import csrf_from, do_login, make_user, new_client
 from .test_akcje import admin, audit_rows, fresh_reauth, pve  # noqa: F401
@@ -20,6 +22,8 @@ PUBLIC = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ1V1vTx2aV8vJ0m5a0G1Yl6YQmB7c4Vw0
 
 
 SEEN = []                       # hasła, które dotarły do serwera
+COMMANDS = []                   # polecenia uruchomione bez terminala
+COMMAND_EXIT = {"status": 0}
 
 
 class Server(asyncssh.SSHServer):
@@ -41,6 +45,10 @@ class Server(asyncssh.SSHServer):
 
 
 async def shell(process):
+    if process.command:
+        COMMANDS.append(process.command)
+        process.exit(COMMAND_EXIT["status"])
+        return
     sizes = process.get_terminal_size()
     process.stdout.write(f"witaj {process.get_extra_info('username')} {process.term_type} {sizes[0]}\r\n".encode())
     while True:
@@ -285,6 +293,63 @@ def test_haslo_zapamietane_po_udanym_logowaniu_i_jeden_klik(app, box, server, ad
                                                   "port": saved["port"], "secret_id": saved["id"]})
     assert r.status_code == 303
     connect_once(app, admin, int(r.headers["location"].rsplit("/", 1)[1]))
+
+
+def test_klucz_panelu_powstaje_raz_i_jest_zaszyfrowany(app, box, admin):
+    with app.state.engine.begin() as conn:
+        public = ssh.panel_public(conn, app.state.box)
+        assert public == ssh.panel_public(conn, app.state.box)
+        stored = kv_get(conn, ssh.PANEL_KV)
+    assert public.startswith("ssh-ed25519 ") and public.endswith(" denali")
+    assert "BEGIN" not in stored
+    page = admin.get("/terminale").text
+    assert public in page and "BEGIN" not in page and public in admin.get(f"/terminale/{box}").text
+
+
+def test_haslo_dopisuje_klucz_i_w_skarbcu_nie_ma_hasla(app, box, server, admin):
+    COMMANDS.clear()
+    r = open_ssh(app, admin, box, server, remember="1", install_key="1")
+    connect_once(app, admin, int(r.headers["location"].rsplit("/", 1)[1]))
+    with app.state.engine.begin() as conn:
+        public = ssh.panel_public(conn, app.state.box)
+        [saved] = ssh.saved_logins(conn, box)
+        secret = vault.reveal(conn, app.state.box, saved["id"], role="admin", reauth_at=time.time(), user="admin")
+        assert secret == ssh.PANEL_KEY and audit_rows(conn, "ssh_key_install")
+    assert len(COMMANDS) == 1 and public in COMMANDS[0] and "authorized_keys" in COMMANDS[0]
+    # jeden klik: wpis ze znacznikiem loguje kluczem panelu, nie wysyła znacznika jako hasła
+    SEEN.clear()
+    page = admin.get("/terminale").text
+    fresh_reauth(app, admin)
+    r = admin.post(f"/terminale/{box}/ssh", data={"csrf_token": csrf_from(page), "host": "127.0.0.1",
+                                                  "port": saved["port"], "secret_id": saved["id"]})
+    assert r.status_code == 303
+    connect_once(app, admin, int(r.headers["location"].rsplit("/", 1)[1]))
+    assert SEEN == []
+
+
+def test_maszyna_bez_powloki_zostaje_przy_hasle(app, box, server, admin):
+    COMMAND_EXIT["status"] = 1
+    try:
+        r = open_ssh(app, admin, box, server, remember="1", install_key="1")
+        connect_once(app, admin, int(r.headers["location"].rsplit("/", 1)[1]))
+    finally:
+        COMMAND_EXIT["status"] = 0
+    with app.state.engine.begin() as conn:
+        [saved] = ssh.saved_logins(conn, box)
+        secret = vault.reveal(conn, app.state.box, saved["id"], role="admin", reauth_at=time.time(), user="admin")
+        assert secret == PASSWORD and not audit_rows(conn, "ssh_key_install")
+
+
+def test_formularz_klucza_panelu_bez_hasla(app, box, server, admin):
+    SEEN.clear()
+    r = open_ssh(app, admin, box, server, password="", panel_key="1", remember="1")
+    assert r.status_code == 303, r.text
+    connect_once(app, admin, int(r.headers["location"].rsplit("/", 1)[1]))
+    assert SEEN == []
+    with app.state.engine.begin() as conn:
+        [saved] = ssh.saved_logins(conn, box)
+        secret = vault.reveal(conn, app.state.box, saved["id"], role="admin", reauth_at=time.time(), user="admin")
+    assert secret == ssh.PANEL_KEY      # prywatny klucz nie kopiuje się do Skarbca
 
 
 def test_zle_haslo_nie_trafia_do_skarbca(app, box, server, admin):

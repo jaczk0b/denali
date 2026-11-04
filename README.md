@@ -215,6 +215,10 @@ Zakładka VPS pokazuje stan maszyny, termin opłaty, plan, adresy, kopie, zaleg�
 VPS-a w kolejce także przycisk terminala SSH. Przy odnowieniu ręcznym „uwaga” pojawia się 14 dni przed terminem. „Uwaga”
 nie wysyła powiadomienia na Discord; awaria (VPS wyłączony albo wygasły) już tak. Public Cloud nie jest obsługiwany.
 
+**Klucz panelu** to jeden klucz SSH na wszystkie maszyny. Panel tworzy go sam, a przy pierwszym logowaniu hasłem w Terminalach
+dopisuje go na maszynie (pole „Dodaj klucz panelu”) i zapamiętuje sam klucz, nie hasło. Klucz publiczny i gotowe polecenie
+skopiujesz z karty Terminale, gdy panel nie może go dopisać sam, np. przy logowaniu hasłem wyłączonym na serwerze.
+
 **Agent** instaluj tylko tam, gdzie API nie wystarcza — zwykle VM-ki z Dockerem i usługami. Na Proxmoxie, PBS i TrueNAS
 nie. *Integracje → Dodaj: Agent na maszynie → Wygeneruj polecenie* i wklej je na maszynie (Debian/Ubuntu z systemd,
 Python 3.9+). Polecenie pobiera plik, sprawdza jego SHA-256 i dopiero wtedy go uruchamia; kod jest jednorazowy i ważny

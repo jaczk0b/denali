@@ -34,14 +34,21 @@ def _device_or_404(conn, device_id):
     return d
 
 
+def _panel_key(app):
+    with app.state.engine.begin() as conn:
+        public = ssh.panel_public(conn, app.state.box)
+    return {"panel_public": public, "panel_install": ssh.install_command(public)}
+
+
 def _terminals(request, tab):
+    key = _panel_key(request.app)
     with request.app.state.engine.connect() as conn:
         rows = [d for d in consoles.devices(conn) if (d["terminal"] if tab == "ssh" else d["console"])]
         off = set(consoles.hidden(conn, tab))
         marks = status.device_marks(conn)
         ctx = {"history": consoles.recent(conn), "scopes": consoles.scopes(conn), "custom": polecenia.custom_text(conn)}
     return render(request, "terminale.html", {
-        **ctx, "tab": tab, "marks": marks, "shown": [d for d in rows if d["id"] not in off],
+        **ctx, **key, "tab": tab, "marks": marks, "shown": [d for d in rows if d["id"] not in off],
         "hidden": [d for d in rows if d["id"] in off]})
 
 
@@ -78,6 +85,7 @@ async def terminal_presets(request: Request, sess: dict = Depends(require_admin)
 
 @router.get("/terminale/{device_id:int}")
 def terminal_device(request: Request, device_id: int, sess: dict = Depends(require_admin)):
+    key = _panel_key(request.app)
     with request.app.state.engine.connect() as conn:
         d = _device_or_404(conn, device_id)
         opts = actions.for_device(conn, device_id, terminal=True)
@@ -89,7 +97,7 @@ def terminal_device(request: Request, device_id: int, sess: dict = Depends(requi
         secrets = vault.list_secrets(conn, role=sess["role"], device_id=device_id)
         logins = ssh.saved_logins(conn, device_id) if hosts else []
     return render(request, "terminal.html", {
-        "hosts": hosts, "known": known, "secrets": secrets, "logins": logins,
+        **key, "hosts": hosts, "known": known, "secrets": secrets, "logins": logins,
         "d": d, "console": [o for o in opts if o["key"] == consoles.KEY], "agents": [o for o in opts if o["key"] == COMMAND_KEY],
         "commands": polecenia.COMMANDS, "runs": runs, "history": history,
         "active": any(r["status"] in actions.ACTIVE for r in runs), "labels": actions.STATUS_LABEL})
@@ -124,6 +132,8 @@ async def ssh_open(request: Request, device_id: int, sess: dict = Depends(requir
     consoles.forget_unused(app)
     host, login = str(form.get("host") or ""), str(form.get("login") or "").strip()
     secret = str(form.get("key") or "") or str(form.get("password") or "")
+    panel = form.get("panel_key") == "1"
+    install = ""
     try:
         port = int(form.get("port") or 22)
     except ValueError:
@@ -138,6 +148,10 @@ async def ssh_open(request: Request, device_id: int, sess: dict = Depends(requir
                 login = login or row["username"]
                 secret = vault.reveal(conn, app.state.box, row["id"], role=sess["role"], reauth_at=sess["reauth_at"],
                                       user=sess["login"], ip=ip)
+            if panel or secret == ssh.PANEL_KEY:
+                panel, secret = True, ssh.panel_key(conn, app.state.box)
+            elif form.get("install_key") == "1":
+                install = ssh.panel_public(conn, app.state.box)
             if not secret:
                 raise consoles.ConsoleError("Podaj hasło albo wybierz wpis ze Skarbca.")
             console_id = consoles.request_ssh(conn, device_id=device_id, host=host, port=port, login=login, user=sess["login"],
@@ -148,12 +162,18 @@ async def ssh_open(request: Request, device_id: int, sess: dict = Depends(requir
     if error:
         return render(request, "blad.html", {"title": "Terminal niedostępny", "text": error,
                                              "back": f"/terminale/{device_id}"}, 403)
+    keep = form.get("remember") == "1" and not form.get("secret_id")
+
     def remember(good):
         with app.state.engine.begin() as conn:
-            ssh.remember_login(conn, app.state.box, device_id, login, port, good, sess["login"], ip)
+            if good == ssh.PANEL_KEY:
+                auth.audit(conn, "ssh_key_install", user=sess["login"], ip=ip, target=host, params={"login": login})
+            if keep:
+                ssh.remember_login(conn, app.state.box, device_id, login, port, ssh.PANEL_KEY if panel else good,
+                                   sess["login"], ip)
 
-    save = remember if form.get("remember") == "1" and not form.get("secret_id") else None
-    app.state.console_tickets[console_id] = {"adapter": ssh.target(app.state.engine, host, port, login, secret, save),
+    save = remember if keep or install else None
+    app.state.console_tickets[console_id] = {"adapter": ssh.target(app.state.engine, host, port, login, secret, save, install),
                                              "info": None, "at": time.time()}
     return RedirectResponse(f"/terminale/konsola/{console_id}", 303)
 

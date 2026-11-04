@@ -4,9 +4,14 @@ Panel łączy się z maszyną jak zwykły klient SSH i przekazuje znaki. Login i
 administrator przy otwarciu, a po udanym logowaniu trafiają do Skarbca urządzenia, więc następnym razem wystarczy kliknąć.
 Poza Skarbcem nic nie zostaje, a w pamięci hasło żyje tylko do połączenia.
 
+Klucz panelu: jeden klucz na wszystkie maszyny, trzymany zaszyfrowany w ustawieniach. Przy logowaniu z zaznaczonym „Dodaj
+klucz panelu” trafia do authorized_keys, a do Skarbca idzie sam znacznik PANEL_KEY zamiast hasła — kolejne logowania
+przechodzą tą samą drogą co zapisane hasło. Maszyna bez zwykłej powłoki po prostu zostaje przy haśle.
+
 Klucz serwera: przy pierwszym połączeniu panel go zapamiętuje, potem przyjmuje tylko ten sam (jak known_hosts). Zgodność
 sprawdza klient przed wysłaniem hasła, więc podstawiony serwer go nie dostanie.
 """
+import asyncio
 import json
 
 import asyncssh
@@ -19,6 +24,29 @@ EXTERNAL_ID = "ssh"     # console_session.external_id: sesja SSH, bez integracji
 LABEL = "SSH "          # początek nazwy wpisu w Skarbcu, z którego terminal otwiera się jednym kliknięciem
 CONNECT_TIMEOUT = 10
 KEEPALIVE = 30
+PANEL_KEY = "klucz panelu Denali"   # treść wpisu w Skarbcu: logowanie kluczem panelu, bez hasła
+PANEL_KV = "ssh.panel_key"
+INSTALL_TIMEOUT = 10
+
+
+def panel_key(conn, box):
+    """Klucz prywatny panelu w formacie OpenSSH. Powstaje przy pierwszym użyciu."""
+    stored = kv_get(conn, PANEL_KV)
+    if stored:
+        return box.decrypt(stored)
+    private = asyncssh.generate_private_key("ssh-ed25519", comment="denali").export_private_key("openssh").decode()
+    kv_set(conn, PANEL_KV, box.encrypt(private))
+    return private
+
+
+def panel_public(conn, box):
+    return asyncssh.import_private_key(panel_key(conn, box)).export_public_key("openssh").decode().strip()
+
+
+def install_command(public):
+    """Dopisuje klucz raz; pusta linia chroni przed plikiem bez znaku nowej linii na końcu."""
+    return ("umask 077 && mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && "
+            f"(grep -qxF '{public}' ~/.ssh/authorized_keys || printf '\\n%s\\n' '{public}' >> ~/.ssh/authorized_keys)")
 
 
 def saved_logins(conn, device_id):
@@ -77,10 +105,11 @@ class Session:
 class Target:
     """Dokąd i z czym się łączyć. Hasło jest tu tylko do chwili połączenia."""
 
-    def __init__(self, host, port, login, secret, pinned, remember, logged_in=None):
+    def __init__(self, host, port, login, secret, pinned, remember, logged_in=None, install=""):
         self.host, self.port, self.login, self.secret = host, port, login, secret
         self.pinned, self.remember = pinned, remember        # remember(klucz): zapamiętanie klucza nowego serwera
         self.logged_in = logged_in                           # logged_in(hasło): po udanym logowaniu — zapis do Skarbca
+        self.install = install                               # klucz publiczny panelu do dopisania na maszynie
 
     def _auth(self):
         if self.secret.lstrip().startswith("-----BEGIN"):
@@ -89,6 +118,13 @@ class Target:
             except (asyncssh.KeyImportError, ValueError):
                 raise AdapterError("Klucz prywatny jest nieczytelny albo ma hasło.") from None
         return {"password": self.secret, "client_keys": None}
+
+    async def _add_key(self, conn):
+        try:
+            result = await asyncio.wait_for(conn.run(install_command(self.install), check=False), INSTALL_TIMEOUT)
+        except (asyncssh.Error, OSError, TimeoutError):
+            return False
+        return result.exit_status == 0
 
     async def console_connect(self, _info):
         secret = self.secret
@@ -102,8 +138,8 @@ class Target:
             raise AdapterError("Klucz serwera się zmienił. Jeśli maszyna była instalowana od nowa, użyj „Zapomnij klucz” "
                                "na stronie urządzenia. Inaczej ktoś może się pod nią podszywać.") from None
         except asyncssh.PermissionDenied:
-            raise AdapterError("Serwer odrzucił logowanie: zły login lub hasło albo logowanie hasłem jest wyłączone "
-                               "(np. PermitRootLogin dla roota).") from None
+            raise AdapterError("Serwer odrzucił logowanie: zły login lub hasło, brak klucza panelu na maszynie albo "
+                               "logowanie hasłem jest wyłączone (np. PermitRootLogin dla roota).") from None
         except (OSError, TimeoutError):
             raise AdapterError(f"Nie da się połączyć z {self.host}:{self.port} — czy działa tam SSH?") from None
         except asyncssh.Error as e:
@@ -112,15 +148,17 @@ class Target:
             self.secret = ""
         if not self.pinned:
             self.remember(" ".join(conn.get_server_host_key().export_public_key("openssh").decode().split()[:2]))
+        if self.install and await self._add_key(conn):
+            secret = PANEL_KEY
         if self.logged_in:
             self.logged_in(secret)
         return Session(conn, process)
 
 
-def target(engine, host, port, login, secret, logged_in=None):
+def target(engine, host, port, login, secret, logged_in=None, install=""):
     def remember(key):
         with engine.begin() as conn:
             kv_set(conn, key_name(host, port), key)
 
     with engine.connect() as conn:
-        return Target(host, port, login, secret, known_key(conn, host, port), remember, logged_in)
+        return Target(host, port, login, secret, known_key(conn, host, port), remember, logged_in, install)

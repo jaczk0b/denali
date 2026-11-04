@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import console_history, term_tile %}
+{% from "_makra.html" import console_history, panel_key_box, term_tile %}
 {% block title %}Terminale{% endblock %}
 {% block content %}
 <h1>Terminale</h1>
@@ -39,6 +39,11 @@
 {% endif %}
 
 {% if tab == "ssh" %}
+<section class="card mt">
+  <h2>Klucz panelu</h2>
+  <p class="muted small">Przy pierwszym logowaniu hasłem panel dopisze go na maszynie sam. Kolejne logowania to jedno kliknięcie.</p>
+  {{ panel_key_box(panel_public, panel_install) }}
+</section>
 <section class="card mt">
   <h2>Moje polecenia</h2>
   <p class="muted small">Pojawią się z boku terminala. Każde w osobnej linii: <code>Nazwa | polecenie</code></p>

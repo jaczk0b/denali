@@ -121,6 +121,7 @@ details.menu[open] > summary { margin-bottom: 0; }
 .tile.down { border-color: var(--down-border); background: var(--down-bg); }
 .tile-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; }
 .tile-head > span { display: flex; gap: 8px; align-items: center; }
+.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .tile-head small { font-weight: 400; font-size: 13px; color: var(--muted); }
 .meter { margin-top: 10px; font-size: 14px; }
 .meter > div { display: flex; justify-content: space-between; gap: 8px; }

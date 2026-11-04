@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import console_history, run_status %}
+{% from "_makra.html" import console_history, panel_key_box, run_status %}
 {% block title %}Terminal: {{ d.name }}{% endblock %}
 {% block head %}{% if active %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
 {% block content %}
@@ -33,10 +33,25 @@
     <details class="mt"><summary>Klucz prywatny zamiast hasła</summary>
       <label class="field"><span class="sr">Klucz prywatny</span>
         <textarea name="key" rows="5" class="mono" spellcheck="false"></textarea></label></details>
+    <label class="check mt"><input type="checkbox" name="install_key" value="1" checked> Dodaj klucz panelu na tej maszynie: następne logowania bez hasła</label>
     <label class="check mt"><input type="checkbox" name="remember" value="1" checked> Zapamiętaj w Skarbcu po udanym logowaniu</label>
     <button class="btn mt" type="submit">Otwórz terminal</button>
   </form>
   </details>
+  <details class="mt"><summary>Maszyna ma już klucz panelu</summary>
+  <form method="post" action="/terminale/{{ d.id }}/ssh" autocomplete="off" class="mt">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="panel_key" value="1">
+    <input type="hidden" name="remember" value="1">
+    <div class="form-row">
+      <label class="field">Adres
+        <select name="host">{% for h in hosts %}<option>{{ h }}</option>{% endfor %}</select></label>
+      <label class="field">Port<input name="port" value="22" inputmode="numeric" class="small-input"></label>
+      <label class="field">Login<input name="login" spellcheck="false" required></label>
+    </div>
+    <button class="btn mt" type="submit">Połącz kluczem panelu</button>
+  </form>
+  </details>
+  {{ panel_key_box(panel_public, panel_install) }}
   {% for h in known %}
   <form method="post" action="/terminale/{{ d.id }}/ssh/zapomnij" class="mt">
     <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="host" value="{{ h }}">
