@@ -65,8 +65,9 @@ def terminal_device(request: Request, device_id: int, sess: dict = Depends(requi
         hosts = consoles.addresses(conn, device_id) if d["kind"] in consoles.SSH_KINDS else []
         known = [h for h in hosts if kv_get(conn, ssh.key_name(h, 22))]
         secrets = vault.list_secrets(conn, role=sess["role"], device_id=device_id)
+        logins = ssh.saved_logins(conn, device_id) if hosts else []
     return render(request, "terminal.html", {
-        "hosts": hosts, "known": known, "secrets": secrets,
+        "hosts": hosts, "known": known, "secrets": secrets, "logins": logins,
         "d": d, "console": [o for o in opts if o["key"] == consoles.KEY], "agents": [o for o in opts if o["key"] == COMMAND_KEY],
         "commands": polecenia.COMMANDS, "runs": runs, "history": history,
         "active": any(r["status"] in actions.ACTIVE for r in runs), "labels": actions.STATUS_LABEL})
@@ -125,7 +126,12 @@ async def ssh_open(request: Request, device_id: int, sess: dict = Depends(requir
     if error:
         return render(request, "blad.html", {"title": "Terminal niedostępny", "text": error,
                                              "back": f"/terminale/{device_id}"}, 403)
-    app.state.console_tickets[console_id] = {"adapter": ssh.target(app.state.engine, host, port, login, secret),
+    def remember(good):
+        with app.state.engine.begin() as conn:
+            ssh.remember_login(conn, app.state.box, device_id, login, port, good, sess["login"], ip)
+
+    save = remember if form.get("remember") == "1" and not form.get("secret_id") else None
+    app.state.console_tickets[console_id] = {"adapter": ssh.target(app.state.engine, host, port, login, secret, save),
                                              "info": None, "at": time.time()}
     return RedirectResponse(f"/terminale/konsola/{console_id}", 303)
 

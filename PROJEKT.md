@@ -21,7 +21,7 @@ Cel, do którego odnosi się każda decyzja:
 | Sieć | AX23 v1 → OpenWrt (router, pełny adapter); AX10 zostaje na fabrycznym oprogramowaniu (AP, adapter TP-Link tylko do odczytu) |
 | Hasła do urządzeń | Zostają w panelu (skarbiec), tylko dla admina, odsłanianie po haśle/2FA, każde w audycie |
 | Poza zakresem | Asystent AI, panel Start z pogodą/kalendarzem, widok domownika — w [POMYSLY.md](POMYSLY.md) |
-| Shell | Do Etapu 5 żadnego: akcje wyłącznie przez API (Proxmox, Komodo, OpenWrt) albo lokalną białą listę agenta. Decyzja 4.11.2026: od Etapu 6 osobna karta z terminalami i VNC, bo panel nie jest wystawiony do internetu. Terminal SSH: login i hasło przy otwarciu albo ze Skarbca, bez kluczy SSH w bazie |
+| Shell | Do Etapu 5 żadnego: akcje wyłącznie przez API (Proxmox, Komodo, OpenWrt) albo lokalną białą listę agenta. Decyzja 4.11.2026: od Etapu 6 osobna karta z terminalami i VNC, bo panel nie jest wystawiony do internetu. Terminal SSH: dane logowania zaszyfrowane w Skarbcu urządzenia, żeby otwierać jednym kliknięciem (decyzja 4.11.2026, panel tylko w LAN) |
 | Token Proxmoxa | Jeden na wszystko (decyzja 4.11.2026). Zakresy wybiera administrator, panel układa polecenie `pveum` i sprawdza wynik. Dodanie zakresu i zmiana adresu przy nadanych zakresach: po potwierdzeniu hasłem |
 | Powiadomienia | **Discord (webhook)** na start |
 | Ustawienia urządzeń | **Minimum ustawień na pojedynczym urządzeniu** — zasada nadrzędna, patrz niżej (warunek akceptacji projektu) |

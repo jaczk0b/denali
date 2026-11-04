@@ -1,7 +1,8 @@
 """Terminal SSH z karty Terminale: prawdziwa powłoka w xterm.js, dla każdego urządzenia z adresem.
 
 Panel łączy się z maszyną jak zwykły klient SSH i przekazuje znaki. Login i hasło (albo klucz prywatny) podaje
-administrator przy otwarciu albo wybiera wpis ze Skarbca — poza Skarbcem nic nie zostaje, a hasło żyje tylko do połączenia.
+administrator przy otwarciu, a po udanym logowaniu trafiają do Skarbca urządzenia, więc następnym razem wystarczy kliknąć.
+Poza Skarbcem nic nie zostaje, a w pamięci hasło żyje tylko do połączenia.
 
 Klucz serwera: przy pierwszym połączeniu panel go zapamiętuje, potem przyjmuje tylko ten sam (jak known_hosts). Zgodność
 sprawdza klient przed wysłaniem hasła, więc podstawiony serwer go nie dostanie.
@@ -10,12 +11,31 @@ import json
 
 import asyncssh
 
+from . import vault
 from .adapters import AdapterError
 from .db import kv_get, kv_set
 
 EXTERNAL_ID = "ssh"     # console_session.external_id: sesja SSH, bez integracji
+LABEL = "SSH "          # początek nazwy wpisu w Skarbcu, z którego terminal otwiera się jednym kliknięciem
 CONNECT_TIMEOUT = 10
 KEEPALIVE = 30
+
+
+def saved_logins(conn, device_id):
+    """Zapamiętane logowania urządzenia: [{"id", "login", "port"}] — wpisy Skarbca założone przez terminal."""
+    rows = vault.list_secrets(conn, role="admin", device_id=device_id)
+    return [{"id": r["id"], "login": r["username"], "port": int(r["note"]) if r["note"].isdigit() else 22}
+            for r in rows if r["label"].startswith(LABEL) and r["username"]]
+
+
+def remember_login(conn, box, device_id, login, port, secret, user, ip=""):
+    """Wpis w Skarbcu: nowy albo z nowym hasłem, gdy ten login już tam jest."""
+    found = next((s for s in saved_logins(conn, device_id) if s["login"] == login), None)
+    if found:
+        vault.update(conn, box, found["id"], role="admin", user=user, ip=ip, secret=secret, note=str(port))
+    else:
+        vault.add(conn, box, LABEL + login, secret, role="admin", user=user, ip=ip, device_id=device_id, username=login,
+                  note=str(port))
 
 
 def key_name(host, port):
@@ -57,9 +77,10 @@ class Session:
 class Target:
     """Dokąd i z czym się łączyć. Hasło jest tu tylko do chwili połączenia."""
 
-    def __init__(self, host, port, login, secret, pinned, remember):
+    def __init__(self, host, port, login, secret, pinned, remember, logged_in=None):
         self.host, self.port, self.login, self.secret = host, port, login, secret
         self.pinned, self.remember = pinned, remember        # remember(klucz): zapamiętanie klucza nowego serwera
+        self.logged_in = logged_in                           # logged_in(hasło): po udanym logowaniu — zapis do Skarbca
 
     def _auth(self):
         if self.secret.lstrip().startswith("-----BEGIN"):
@@ -70,6 +91,7 @@ class Target:
         return {"password": self.secret, "client_keys": None}
 
     async def console_connect(self, _info):
+        secret = self.secret
         known = asyncssh.import_known_hosts(f"* {self.pinned}\n") if self.pinned else None
         try:
             conn = await asyncssh.connect(
@@ -90,13 +112,15 @@ class Target:
             self.secret = ""
         if not self.pinned:
             self.remember(" ".join(conn.get_server_host_key().export_public_key("openssh").decode().split()[:2]))
+        if self.logged_in:
+            self.logged_in(secret)
         return Session(conn, process)
 
 
-def target(engine, host, port, login, secret):
+def target(engine, host, port, login, secret, logged_in=None):
     def remember(key):
         with engine.begin() as conn:
             kv_set(conn, key_name(host, port), key)
 
     with engine.connect() as conn:
-        return Target(host, port, login, secret, known_key(conn, host, port), remember)
+        return Target(host, port, login, secret, known_key(conn, host, port), remember, logged_in)

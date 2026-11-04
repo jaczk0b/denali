@@ -288,8 +288,8 @@ zamyka też otwarte konsole (w ciągu 15 sekund).
 **Terminal** — prawdziwa powłoka po SSH w przeglądarce (xterm.js), dla każdego urządzenia z adresem na karcie: VM, LXC,
 hosta Proxmoxa, NAS-a. Działa jak cmd: Ctrl+C kopiuje zaznaczenie (bez zaznaczenia przerywa program), Ctrl+V wkleja, prawy
 przycisk robi jedno albo drugie, okno dopasowuje się do ekranu. Z boku są gotowe polecenia: klik wkleja, Enter uruchamia.
-Własne dopiszesz w *Terminale → Moje polecenia*. Login i hasło podajesz przy otwarciu albo wybierasz wpis ze Skarbca
-urządzenia; panel ich nie zapisuje. Klucz serwera zapamiętuje przy pierwszym połączeniu i przy zmianie odmawia. Root po
+Własne dopiszesz w *Terminale → Moje polecenia*. Login i hasło podajesz za pierwszym razem, a po udanym logowaniu trafiają
+zaszyfrowane do Skarbca urządzenia (można to odznaczyć). Potem wystarczy przycisk *Terminal* na liście. Klucz serwera zapamiętuje przy pierwszym połączeniu i przy zmianie odmawia. Root po
 haśle zwykle jest wyłączony (`PermitRootLogin`): zaloguj się zwykłym użytkownikiem albo użyj klucza prywatnego.
 
 **Ekran (VNC)** — ekran VM albo LXC z Proxmoxa w przeglądarce (noVNC), przez panel, bez kluczy SSH w bazie.

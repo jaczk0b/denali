@@ -49,7 +49,9 @@ def devices(conn):
         opts = [o for o in actions.for_device(conn, r.id, terminal=True) if _switched_on(o)]
         terminal = r.kind in SSH_KINDS and bool(addresses(conn, r.id))
         if opts or terminal:
+            logins = ssh.saved_logins(conn, r.id) if terminal else []
             out.append({"id": r.id, "name": r.name, "terminal": terminal, "console": [o for o in opts if o["key"] == KEY],
+                        "login": logins[0] if logins else None, "host": (addresses(conn, r.id) or [""])[0],
                         "commands": [o for o in opts if o["key"] != KEY]})
     return out
 

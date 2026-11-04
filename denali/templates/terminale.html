@@ -15,6 +15,13 @@
       {% if d.terminal %}<span class="small">terminal</span>{% endif %}
       {% if d.console %}<span class="small{% if d.console[0].reason %} muted{% endif %}">ekran</span>{% endif %}
       {% if d.commands %}<span class="small{% if d.commands[0].reason %} muted{% endif %}">polecenia</span>{% endif %}
+      {% if d.login %}
+      <form method="post" action="/terminale/{{ d.id }}/ssh" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="host" value="{{ d.host }}">
+        <input type="hidden" name="port" value="{{ d.login.port }}"><input type="hidden" name="secret_id" value="{{ d.login.id }}">
+        <button class="btn small primary" type="submit">Terminal</button>
+      </form>
+      {% endif %}
       <a class="btn small" href="/terminale/{{ d.id }}">Otwórz</a>
     </li>
     {% else %}

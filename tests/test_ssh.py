@@ -257,3 +257,58 @@ def test_wlasne_polecenia(app, box, admin):
     assert "Logi | journalctl -f" in admin.get("/terminale").text
     with app.state.engine.connect() as conn:
         assert polecenia.presets(conn)[0] == {"label": "Logi", "text": "journalctl -f"}
+
+
+def connect_once(app, client, cid):
+    with client.websocket_connect(f"wss://testserver/terminale/konsola/{cid}/ws", **ws_args(client)) as ws:
+        assert b"witaj" in ws.receive_bytes()
+        ws.send_bytes(b"exit\n")
+        with pytest.raises(WebSocketDisconnect):
+            while True:
+                ws.receive_bytes()
+
+
+def test_haslo_zapamietane_po_udanym_logowaniu_i_jeden_klik(app, box, server, admin):
+    r = open_ssh(app, admin, box, server, remember="1")
+    connect_once(app, admin, int(r.headers["location"].rsplit("/", 1)[1]))
+    with app.state.engine.connect() as conn:
+        [saved] = ssh.saved_logins(conn, box)
+        assert saved["login"] == "jan" and saved["port"] == server["port"]
+        assert audit_rows(conn, "secret_create")
+    # lista i strona urządzenia mają przycisk, a klik wysyła tylko numer wpisu
+    assert "Otwórz terminal: jan" in admin.get(f"/terminale/{box}").text
+    page = admin.get("/terminale").text
+    assert '<button class="btn small primary" type="submit">Terminal</button>' in page
+    assert PASSWORD not in page
+    fresh_reauth(app, admin)
+    r = admin.post(f"/terminale/{box}/ssh", data={"csrf_token": csrf_from(page), "host": "127.0.0.1",
+                                                  "port": saved["port"], "secret_id": saved["id"]})
+    assert r.status_code == 303
+    connect_once(app, admin, int(r.headers["location"].rsplit("/", 1)[1]))
+
+
+def test_zle_haslo_nie_trafia_do_skarbca(app, box, server, admin):
+    r = open_ssh(app, admin, box, server, remember="1", password="zle")
+    cid = int(r.headers["location"].rsplit("/", 1)[1])
+    with pytest.raises(WebSocketDisconnect):
+        with admin.websocket_connect(f"wss://testserver/terminale/konsola/{cid}/ws", **ws_args(admin)) as ws:
+            ws.receive_bytes()
+    with app.state.engine.connect() as conn:
+        assert ssh.saved_logins(conn, box) == []
+
+
+def test_bez_zaznaczenia_nic_nie_zostaje(app, box, server, admin):
+    r = open_ssh(app, admin, box, server)
+    connect_once(app, admin, int(r.headers["location"].rsplit("/", 1)[1]))
+    with app.state.engine.connect() as conn:
+        assert ssh.saved_logins(conn, box) == []
+
+
+def test_nowe_haslo_zastepuje_stare(app, box, pve):
+    with app.state.engine.begin() as conn:
+        ssh.remember_login(conn, app.state.box, box, "jan", 22, "stare", "admin")
+        ssh.remember_login(conn, app.state.box, box, "jan", 2222, "nowe", "admin")
+        [saved] = ssh.saved_logins(conn, box)
+        assert saved["port"] == 2222
+        row = conn.execute(vault.vault_secret.select().where(vault.vault_secret.c.id == saved["id"])).mappings().first()
+        assert app.state.box.decrypt(row["ciphertext"]) == "nowe"

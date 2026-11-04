@@ -9,8 +9,15 @@
 <section class="card">
   <h2>Terminal</h2>
   {% if hosts %}
-  <p class="muted small">Prawdziwa powłoka po SSH: kopiowanie, wklejanie i gotowe polecenia. Hasło nie jest zapisywane, sesja kończy się po 2 godzinach.</p>
-  <form method="post" action="/terminale/{{ d.id }}/ssh" autocomplete="off">
+  {% for l in logins %}
+  <form method="post" action="/terminale/{{ d.id }}/ssh" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="host" value="{{ hosts[0] }}">
+    <input type="hidden" name="port" value="{{ l.port }}"><input type="hidden" name="secret_id" value="{{ l.id }}">
+    <button class="btn primary" type="submit">Otwórz terminal: {{ l.login }}</button>
+  </form>
+  {% endfor %}
+  <details class="mt" {% if not logins %}open{% endif %}><summary>{{ "Inny login albo nowe hasło" if logins else "Pierwsze logowanie" }}</summary>
+  <form method="post" action="/terminale/{{ d.id }}/ssh" autocomplete="off" class="mt">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <div class="form-row">
       <label class="field">Adres
@@ -25,8 +32,10 @@
     <label class="field">Hasło<input name="password" type="password" autocomplete="new-password"></label>
     <details class="mt"><summary>Klucz prywatny zamiast hasła</summary>
       <textarea name="key" rows="5" class="mono" spellcheck="false" aria-label="Klucz prywatny"></textarea></details>
-    <button class="btn primary mt" type="submit">Otwórz terminal</button>
+    <label class="check mt"><input type="checkbox" name="remember" value="1" checked> Zapamiętaj w Skarbcu po udanym logowaniu</label>
+    <button class="btn mt" type="submit">Otwórz terminal</button>
   </form>
+  </details>
   {% for h in known %}
   <form method="post" action="/terminale/{{ d.id }}/ssh/zapomnij" class="mt">
     <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="host" value="{{ h }}">
