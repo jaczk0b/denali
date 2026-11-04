@@ -88,7 +88,9 @@ class ActionSpec:
     targets: tuple              # przedrostki external_id, np. ("qemu/", "lxc/")
     dangerous: bool = False     # wymaga ponownego hasła i kodu 2FA
     when: tuple = ()            # stany obiektu, w których ma sens (puste = zawsze)
-    terminal: bool = False      # tylko z karty Terminale (konsola, gotowe polecenia), nie obok akcji na urządzeniu
+    # Karta Terminale (konsola, gotowe polecenia): nie obok akcji na urządzeniu i poza „Dozwolonymi akcjami” —
+    # zgoda to zakres integracji albo lokalna lista agenta
+    terminal: bool = False
     grant: str = ""             # integracja z jednym tokenem: uprawnienie (Grant.key), którego akcja potrzebuje
 
 

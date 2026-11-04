@@ -122,11 +122,10 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
 - [ ] **Po wdrożeniu akcje Proxmoxa są wyłączone, dopóki tego nie zrobisz:** *Integracje → Proxmox → Uprawnienia*: zaznacz
       „Akcje” i „Konsola”, wklej polecenie w Shell węzła, *Zapisz i sprawdź*. Stary token `denali@pve!akcje` można potem
       usunąć w Proxmoxie.
-- [ ] Profil: „Konsola (VNC)”.
 - [ ] *Terminale* w dolnym pasku pulpitu → testowa VM → *Otwórz konsolę* → potwierdzenie → ekran, klawiatura, *Ctrl+Alt+Del*.
 - [ ] To samo na LXC.
 - [ ] *Akcje → Wyłącz wszystkie akcje* przy otwartej konsoli → rozłącza w ciągu 15 s; w *Ostatnich sesjach* powód.
-- [ ] Agent 1.3 (ponowna instalacja), `pozwol polecenia`, w profilu „Gotowe polecenia” → „Miejsce na dyskach” → wynik po około minucie.
+- [ ] Agent 1.3 (ponowna instalacja), `pozwol polecenia` → „Miejsce na dyskach” → wynik po około minucie.
 - [ ] W *Audycie*: `console_open`, `console_close`, `action_request` z kluczem polecenia.
 - [ ] Akceptacja Etapu 6.
 

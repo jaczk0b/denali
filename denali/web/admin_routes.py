@@ -169,7 +169,7 @@ def _profiles_page(request, conn, error=None, status_code=200):
             usage[p["id"]] += 1
     return render(request, "admin_profile.html", {
         "rows": rows, "usage": usage, "defs": profiles.SETTINGS, "edit_settings": EDIT_SETTINGS, "error": error,
-        "action_catalog": [(k, c, a) for k, (c, a) in actions.catalog().items()],
+        "action_catalog": [(k, c, a) for k, (c, a) in actions.catalog().items() if not a.terminal],
 }, status_code)
 
 

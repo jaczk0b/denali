@@ -22,7 +22,7 @@ from denali.models import action_run
 
 from .conftest import csrf_from, do_login, make_user, new_client
 from .test_agent import agent
-from .test_akcje import admin, agent_on_vm, allow, audit_rows, fresh_reauth, pve, req, run  # noqa: F401
+from .test_akcje import admin, agent_on_vm, audit_rows, fresh_reauth, pve, req, run  # noqa: F401
 from .test_proxmox import CONFIG, SECRETS
 
 
@@ -65,9 +65,8 @@ class FakeConsole:
 
 @pytest.fixture
 def console(app, pve, monkeypatch):
-    """Konsola dozwolona w profilu, zakres nadany, zamiast połączenia z Proxmoxem — FakeConsole."""
+    """Zakres nadany, zamiast połączenia z Proxmoxem — FakeConsole."""
     with app.state.engine.begin() as conn:
-        allow(conn, ["proxmox.console"])
         actions.save_grants(conn, integrations.get(conn, pve["iid"]), ["akcje", "konsola"], "admin")
     app.state.adapter_transport = ticket_api()
     fake = FakeConsole([b"RFB 003.008\n"])
@@ -143,10 +142,6 @@ def test_konsola_wymaga_kolejnych_zamkow(app, pve, console, admin):
     refused("potwierdzenia", reauth_ok=False)
     refused("administrator", role="viewer")
     with app.state.engine.begin() as conn:
-        allow(conn, [])
-    refused("Niedozwolona")
-    with app.state.engine.begin() as conn:
-        allow(conn, ["proxmox.console"])
         actions.set_enabled(conn, False, "admin")
     refused("wyłączone")
     with app.state.engine.begin() as conn:
@@ -168,7 +163,7 @@ def test_konsola_nie_jest_zwykla_akcja(app, pve, console, admin):
     ref_id, dev = pve["docker"]
     with app.state.engine.connect() as conn:
         assert not [o for o in actions.for_device(conn, dev) if o["key"] == "proxmox.console"]
-        assert "proxmox.console" in [k for k, _s, _c in actions.known_for_device(conn, dev)]    # lista „Dozwolone akcje”
+        assert "proxmox.console" not in [k for k, _s, _c in actions.known_for_device(conn, dev)]   # poza „Dozwolonymi”
     assert admin.get(f"/urzadzenia/{dev}/akcje/{ref_id}/proxmox.console").status_code == 404
 
 
@@ -234,9 +229,9 @@ def test_kiedy_trwajaca_sesja_ma_sie_zamknac(app, pve, console, admin):
     with app.state.engine.begin() as conn:
         assert consoles.why_stop(conn, row, token, "") is None
         assert "2 godziny" in consoles.why_stop(conn, row, token, "", now=row["opened_at"] + consoles.MAX_LIFE + 1)
-        allow(conn, [])
-        assert "dozwolona" in consoles.why_stop(conn, row, token, "")
-        allow(conn, ["proxmox.console"])
+        actions.save_grants(conn, integrations.get(conn, pve["iid"]), ["akcje"], "admin")
+        assert "Konsola" in consoles.why_stop(conn, row, token, "")
+        actions.save_grants(conn, integrations.get(conn, pve["iid"]), ["konsola"], "admin")
         actions.set_enabled(conn, False, "admin")
         assert "wyłączono" in consoles.why_stop(conn, row, token, "").lower()
         actions.set_enabled(conn, True, "admin")
@@ -334,6 +329,17 @@ def test_odmowa_vncwebsocket_ma_czytelny_blad(tmp_path):
     run(scenario())
 
 
+def test_terminale_nie_zaleza_od_profili(app, pve, console, admin):
+    """Zakres w integracji wystarcza: VM ma konsolę bez wpisu w profilu, także wyłączona jest na liście."""
+    page = admin.get("/terminale").text
+    assert "docker" in page and "Otwórz" in page
+    assert "Otwórz konsolę" in admin.get(f"/terminale/{pve['docker'][1]}").text
+    assert "Konsola" not in admin.get("/admin/profile").text
+    with app.state.engine.begin() as conn:
+        actions.save_grants(conn, integrations.get(conn, pve["iid"]), [], "admin")
+    assert "Integracje → Proxmox → Uprawnienia" in admin.get("/terminale").text
+
+
 def test_terminale_w_dolnym_pasku(app, pve, console, admin):
     home = admin.get("/").text
     assert '<nav class="dock"' in home and home.count('href="/terminale"') == 1
@@ -350,8 +356,6 @@ def test_lista_polecen_zgadza_sie_z_agentem():
 
 def test_polecenie_od_panelu_do_wyniku(app, pve, monkeypatch, admin):
     iid, target, report = agent_on_vm(app, pve, monkeypatch, local=("polecenia",))
-    with app.state.engine.begin() as conn:
-        allow(conn, ["agent.polecenia"])
     ref_id, dev = target
     html = admin.get(f"/terminale/{dev}").text
     assert "Miejsce na dyskach" in html
@@ -373,8 +377,6 @@ def test_polecenie_od_panelu_do_wyniku(app, pve, monkeypatch, admin):
 def test_polecenie_spoza_listy_i_zwykla_droga(app, pve, monkeypatch, admin):
     _iid, target, _r = agent_on_vm(app, pve, monkeypatch, local=("polecenia",))
     ref_id, dev = target
-    with app.state.engine.begin() as conn:
-        allow(conn, ["agent.polecenia"])
     html = admin.get(f"/terminale/{dev}").text
     r = admin.post(f"/terminale/{dev}/polecenie", data={"csrf_token": csrf_from(html), "ref_id": ref_id,
                                                         "command": "rm -rf /"})
@@ -388,15 +390,12 @@ def test_polecenie_spoza_listy_i_zwykla_droga(app, pve, monkeypatch, admin):
 
 def test_polecenie_bez_lokalnej_zgody_agenta(app, pve, monkeypatch, admin):
     _iid, target, _r = agent_on_vm(app, pve, monkeypatch, local=())
-    with app.state.engine.begin() as conn:
-        allow(conn, ["agent.polecenia"])
     assert "pozwol polecenia" in admin.get(f"/terminale/{target[1]}").text
 
 
 def test_polecenia_nie_czekaja_na_siebie(app, pve, monkeypatch):
     _iid, target, _r = agent_on_vm(app, pve, monkeypatch, local=("polecenia",))
     with app.state.engine.begin() as conn:
-        allow(conn, ["agent.polecenia"])
         for key in ("dyski", "pamiec"):
             req(conn, target, "agent.polecenia", command=key)
         assert len(conn.execute(select(action_run)).all()) == 2

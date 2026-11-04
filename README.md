@@ -282,15 +282,16 @@ Panel nie ma akcji na samym sobie ani na routerze.
 ## Terminale
 
 Karta tylko dla administratora (dolny pasek na pulpicie, górne menu na pozostałych stronach). Dwa narzędzia, oba
-z zamkami z sekcji [Akcje](#akcje): wyłącznik akcji i lista „Dozwolone akcje” w *Profilach*. „Wyłącz wszystkie akcje”
+bez *Profili*: zgodą jest zakres w integracji albo lokalna lista agenta, a kartę wyłącza też wyłącznik akcji. „Wyłącz wszystkie akcje”
 zamyka też otwarte konsole (w ciągu 15 sekund).
 
 **Konsola (VNC)** — ekran VM albo LXC z Proxmoxa w przeglądarce (noVNC), przez panel, bez kluczy SSH w bazie.
 Jednorazowo w Proxmoxie:
 
 1. *Integracje → Proxmox → Uprawnienia*: zaznacz „Konsola”, wklej pokazane polecenie w Shell węzła, *Zapisz i sprawdź*.
-2. *Profile*: zaznacz „Proxmox VE: Konsola (VNC)”.
-3. W Nginx Proxy Manager włącz *Websockets Support*.
+2. W Nginx Proxy Manager włącz *Websockets Support*.
+
+Zakres dotyczy wszystkich VM i LXC tego Proxmoxa.
 
 Otwarcie wymaga hasła i kodu, a sesja kończy się po 2 godzinach albo po wylogowaniu. System w maszynie dalej pyta
 o własne hasło. Treści sesji panel nie zapisuje, w *Audycie* są otwarcie, odmowa i koniec (`console_open`,
@@ -299,8 +300,7 @@ hasła konta na hoście; hosta obsługujesz z panelu Proxmoxa.
 
 **Gotowe polecenia** — stała lista tylko do odczytu (dyski, pamięć, procesy, usługi z błędem, logi, Docker, porty,
 adresy), przez agenta 1.3 lub nowszego. Panel wysyła tylko klucz polecenia, a treść jest w kodzie agenta, więc dowolnego
-polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/denali-agent.py pozwol polecenia`, w
-*Profilach*: „Agent na maszynie: Gotowe polecenia”. Wynik pojawia się po około minucie, z kolejnym raportem agenta.
+polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/denali-agent.py pozwol polecenia`. Wynik pojawia się po około minucie, z kolejnym raportem agenta.
 
 ## Migracja z HLC
 

@@ -1,12 +1,12 @@
 """Konsola maszyny z karty Terminale (Etap 6): ekran VM i LXC przez API Proxmoxa, bez kluczy SSH w bazie.
 
-Otwarcie przechodzi przez te same zamki co akcja (actions.for_device z terminal=True): wyłącznik akcji, „Dozwolone
-akcje” urządzenia („proxmox.console” z profilu albo wyjątek), zakres „Konsola” integracji, stan maszyny — a do tego
-świeże potwierdzenie hasłem i kodem.
+Otwarcie przechodzi przez zamki akcji (actions.for_device z terminal=True): wyłącznik akcji, zakres „Konsola”
+integracji, stan maszyny — a do tego świeże potwierdzenie hasłem i kodem. Profile nie mają tu nic do powiedzenia:
+zakres dotyczy wszystkich VM i LXC tego Proxmoxa.
 
 Przebieg: zgłoszenie (formularz) → strona konsoli → start (bilet od Proxmoxa, raz) → WebSocket przeglądarki, który panel
 przekazuje do Proxmoxa. Działająca sesja jest sprawdzana co CHECK_EVERY sekund: wylogowanie, wyłączenie akcji, odebranie
-zgody albo koniec czasu zamykają ją, nie czekając na przeglądarkę. Otwarcie, odmowa i koniec trafiają do audytu.
+zakresu albo koniec czasu zamykają ją, nie czekając na przeglądarkę. Otwarcie, odmowa i koniec trafiają do audytu.
 Treści sesji nie zapisujemy — to obraz, a przez niego idzie też hasło do maszyny.
 """
 import asyncio
@@ -15,7 +15,7 @@ import time
 
 from sqlalchemy import select
 
-from . import actions, auth, profiles
+from . import actions, auth
 from .models import console_session, device, external_ref, integration, observed_state
 
 log = logging.getLogger("denali.consoles")
@@ -30,13 +30,20 @@ class ConsoleError(ValueError):
     pass
 
 
+def _switched_on(o):
+    if o["cls"].push:
+        return o["spec"].key in ((o["state"]["data"] if o["state"] else {}) or {}).get("actions", [])
+    return actions.has_credentials(o["integration"], o["spec"])
+
+
 def devices(conn):
-    """Urządzenia, na których konsola albo polecenia są dozwolone (lista na karcie Terminale)."""
+    """Urządzenia, na których konsola albo polecenia są włączone (lista na karcie Terminale). Wyłączona maszyna też tu
+    jest — jej strona powie, dlaczego teraz się nie da."""
     rows = conn.execute(select(device.c.id, device.c.name).where(device.c.id.in_(
         select(external_ref.c.device_id).where(external_ref.c.status == "zatwierdzony"))).order_by(device.c.name)).all()
     out = []
     for r in rows:
-        opts = [o for o in actions.for_device(conn, r.id, terminal=True) if o["allowed"]]
+        opts = [o for o in actions.for_device(conn, r.id, terminal=True) if _switched_on(o)]
         if opts:
             out.append({"id": r.id, "name": r.name, "console": [o for o in opts if o["key"] == KEY],
                         "commands": [o for o in opts if o["key"] != KEY]})
@@ -120,8 +127,9 @@ def why_stop(conn, row, token, ip, now=None):
         return "Logowanie wygasło albo zostało cofnięte."
     if not actions.enabled(conn):
         return "Akcje wyłączono."
-    if not row["device_id"] or KEY not in profiles.value(conn, row["device_id"], "actions"):
-        return "Konsola nie jest już dozwolona na tym urządzeniu."
+    integ = conn.execute(select(integration).where(integration.c.id == row["integration_id"])).mappings().first()
+    if not integ or "konsola" not in ((integ["config"] or {}).get("permissions") or []):
+        return "Integracja nie ma już zakresu „Konsola”."
     if now - (row["opened_at"] or now) > MAX_LIFE:
         return "Koniec czasu sesji (2 godziny)."
     return None

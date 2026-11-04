@@ -157,7 +157,7 @@ def _blocker(conn, o, allowed, on):
         return "Akcje są wyłączone (Akcje → Włącz)."
     if not row["enabled"]:
         return f"Integracja „{row['name']}” jest wyłączona."
-    if o["key"] not in allowed:
+    if not spec.terminal and o["key"] not in allowed:
         return "Niedozwolona — nie ma jej na liście „Dozwolone akcje” (profil albo wyjątek na urządzeniu)."
     if not has_credentials(row, spec):
         if o["cls"].grants:
@@ -193,7 +193,7 @@ def known_for_device(conn, device_id):
     """Klucze akcji, które mają sens dla urządzenia (do listy „Dozwolone akcje” na karcie)."""
     seen, out = set(), []
     for o in _options(conn, device_id):
-        if o["key"] not in seen:
+        if o["key"] not in seen and not o["spec"].terminal:
             seen.add(o["key"])
             out.append((o["key"], o["spec"], o["cls"]))
     return out
