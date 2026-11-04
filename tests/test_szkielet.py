@@ -85,16 +85,19 @@ def test_migracja_0013_usuwa_adresy_hassio(settings):
     """Adresy z sieci Home Assistanta dopisane przez integrację znikają; wpisane ręcznie i z LAN zostają."""
     from alembic import command
 
-    from denali import inventory as inv
     from denali.migrate import alembic_config
     cfg = alembic_config(settings)
     command.downgrade(cfg, "0012")
     engine = make_engine(settings.db_url)
     with engine.begin() as conn:
-        did = inv.create_device(conn, "ha", "vm")
+        # surowy SQL: model zna już kolumny z późniejszych migracji
+        did = conn.execute(text("INSERT INTO device (name, kind, role, criticality, place, serial, notes_md, icon, "
+                                "app_url, pulpit_group, created_at, updated_at) VALUES "
+                                "('ha', 'vm', '', 3, '', '', '', '', '', 'brak', 0, 0)")).lastrowid
         for value, source in [("172.30.32.1", "integracja"), ("172.30.33.5", "integracja"),
                               ("192.168.1.40", "integracja"), ("172.30.32.9", "manual")]:
-            inv.add_address(conn, did, "ip", value, source=source)
+            conn.execute(text("INSERT INTO device_address (device_id, kind, value, source, is_primary) "
+                              "VALUES (:d, 'ip', :v, :s, 0)"), {"d": did, "v": value, "s": source})
     command.upgrade(cfg, "head")
     with engine.connect() as conn:
         left = {r.value for r in conn.execute(text("SELECT value FROM device_address WHERE device_id = :d"), {"d": did})}

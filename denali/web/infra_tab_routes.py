@@ -207,7 +207,12 @@ def rack_item_remove(request: Request, item_id: int, wroc: str = Form(""), sess:
 
 # ───────────────────────── mapa ─────────────────────────
 @router.get("/infrastruktura/mapa")
-def tab_map(request: Request, klienci: str = "", sess: dict = Depends(require_user)):
+def tab_map(request: Request, klienci: str = "", co_jesli: str = "", sess: dict = Depends(require_user)):
+    """co_jesli: pusty = zwykła mapa, „0” = wybierz urządzenie, id = symulacja jego awarii."""
+    sim_id = int(co_jesli) if co_jesli.isdigit() else None
     with request.app.state.engine.connect() as conn:
-        m = mapview.build(conn, live.saved(conn), status.device_marks(conn), with_clients=bool(klienci))
-        return render(request, "infra_mapa.html", {"tabs": views.tabs(conn), "m": m, "clients": bool(klienci)})
+        marks, sim = mapview.simulation(conn, sim_id) if sim_id else (None, None)
+        m = mapview.build(conn, live.saved(conn), marks or status.device_marks(conn), with_clients=bool(klienci),
+                          simulate=sim_id if sim else None)
+        return render(request, "infra_mapa.html", {"tabs": views.tabs(conn), "m": m, "clients": bool(klienci),
+                                                   "picking": co_jesli != "", "sim": sim})

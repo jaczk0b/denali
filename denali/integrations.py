@@ -11,7 +11,7 @@ import time
 
 from sqlalchemy import delete, select
 
-from . import discovery, inventory as inv
+from . import discovery, forecast, inventory as inv
 from .adapters import AdapterError, registry
 from .models import dependency, external_ref, integration, observed_state, update_item
 
@@ -118,6 +118,7 @@ def record(conn, integration_id, result, now=None):
             conn.execute(observed_state.update().where(
                 observed_state.c.integration_id == integration_id, observed_state.c.external_id == row.external_id
             ).values(state="unknown", summary="nie ma go już w źródle", observed_at=now))
+    forecast.record(conn, integration_id, result.states, now)
     if result.updates is not None:
         record_updates(conn, integration_id, result.updates, now)
     conn.execute(integration.update().where(integration.c.id == integration_id).values(
@@ -286,11 +287,17 @@ async def poll_one(engine, box, row, transport=None, now=None):
     return error
 
 
-async def poll_due(engine, box, now=None):
+def start_due(engine, box, running, now=None):
+    """Uruchamia w tle odczyty, na które przyszła pora, i nie czeka na nie.
+
+    running: {id integracji: zadanie} — trzyma worker. Integracja, której odczyt jeszcze trwa, nie startuje drugi raz.
+    Router, który nie odpowiada (do POLL_TIMEOUT), nie wstrzymuje pingów, oceny stanu ani powiadomień."""
+    for key in [k for k, t in running.items() if t.done()]:
+        running.pop(key)
     with engine.connect() as conn:
-        rows = due(conn, now)
+        rows = [r for r in due(conn, now) if r["id"] not in running]
     for row in rows:
-        await poll_one(engine, box, row, now=now)
+        running[row["id"]] = asyncio.create_task(poll_one(engine, box, row, now=now), name=f"odczyt-{row['id']}")
     return len(rows)
 
 

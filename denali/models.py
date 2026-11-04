@@ -1,5 +1,6 @@
 """Schemat bazy (SQLAlchemy Core). Zmiany schematu idą przez migracje Alembic w denali/migrations."""
-from sqlalchemy import JSON, Boolean, Column, Float, ForeignKey, Integer, MetaData, String, Table, Text, UniqueConstraint
+from sqlalchemy import (JSON, Boolean, Column, Float, ForeignKey, Index, Integer, MetaData, String, Table, Text,
+                        UniqueConstraint)
 
 metadata = MetaData(naming_convention={
     "ix": "ix_%(column_0_label)s",
@@ -99,6 +100,7 @@ device = Table(
     Column("icon", String(64), nullable=False, default=""),
     Column("app_url", String(500), nullable=False, default=""),
     Column("pulpit_group", String(16), nullable=False, default="brak"),  # codzien | zarzadzanie | brak
+    Column("tcp_ports", String(200), nullable=False, default="", server_default=""),  # „5432, 1883” — sprawdzenia TCP
     Column("created_at", Float, nullable=False),
     Column("updated_at", Float, nullable=False),
 )
@@ -357,6 +359,52 @@ check_state = Table(
     Column("first_fail_at", Float),                          # od kiedy nie odpowiada (do „po ilu sekundach awaria”)
     Column("last_ok_at", Float),
     Column("checked_at", Float, nullable=False),
+)
+
+# Historia: każda zmiana stanu urządzenia (pasek dostępności, migotanie) — wpis tylko przy zmianie.
+state_change = Table(
+    "state_change", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), nullable=False),
+    Column("ts", Float, nullable=False),
+    Column("state", String(16), nullable=False),            # ok | warn | down | off | unknown
+    Column("why", String(300), nullable=False, default=""),
+    Index("ix_state_change_device_ts", "device_id", "ts"),
+)
+
+# Historia czasów odpowiedzi sprawdzeń z LAN — jedna próbka na SAMPLE_EVERY (denali/history.py).
+check_sample = Table(
+    "check_sample", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), nullable=False),
+    Column("kind", String(16), nullable=False),
+    Column("ts", Float, nullable=False),
+    Column("ok", Boolean, nullable=False),
+    Column("ms", Float),
+    Index("ix_check_sample_device_ts", "device_id", "ts"),
+)
+
+# Zajętość magazynów (pule TrueNAS, magazyny PBS) — próbka co godzinę, do prognozy zapełnienia (denali/forecast.py).
+usage_sample = Table(
+    "usage_sample", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("integration_id", Integer, ForeignKey("integration.id", ondelete="CASCADE"), nullable=False),
+    Column("name", String(100), nullable=False),              # „pula tank”, „magazyn backups”
+    Column("ts", Float, nullable=False),
+    Column("used", Float, nullable=False),                    # bajty
+    Column("total", Float, nullable=False),
+    Index("ix_usage_sample_integration_name_ts", "integration_id", "name", "ts"),
+)
+
+# Planowana przerwa: awaria urządzenia (i tego, co od niego twardo zależy) nie otwiera incydentu.
+maintenance = Table(
+    "maintenance", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("starts_at", Float, nullable=False),
+    Column("ends_at", Float, nullable=False),
+    Column("reason", String(200), nullable=False, default=""),
+    Column("created_by", String(64), nullable=False, default=""),
 )
 
 # Kanały powiadomień (na razie Discord). Adres webhooka to sekret — zaszyfrowany.

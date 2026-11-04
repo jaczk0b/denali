@@ -1,9 +1,10 @@
-"""Kanały powiadomień (tylko administrator): Discord — dodanie, wysyłka testowa, włącz/wyłącz, usuń."""
+"""Kanały powiadomień (tylko administrator): Discord — dodanie, wysyłka testowa, włącz/wyłącz, usuń,
+podsumowanie tygodnia na żądanie."""
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import delete
 
-from .. import auth, notify, watchdog
+from .. import auth, notify, watchdog, weekly
 from ..models import notification_channel
 from ..templating import render
 from .deps import client_ip, require_admin
@@ -60,6 +61,18 @@ async def watchdog_set(request: Request, url: str = Form(""), sess: dict = Depen
         if not ok:
             return _page(request, conn, error=f"Zapisane, ale pierwszy meldunek nie doszedł: {st['last_error']}")
         return _page(request, conn, message="Zapisane — pierwszy meldunek doszedł. Od teraz co minutę.")
+
+
+@router.post("/admin/powiadomienia/podsumowanie")
+async def weekly_now(request: Request, sess: dict = Depends(require_admin)):
+    with request.app.state.engine.begin() as conn:
+        sent = await weekly.process(conn, request.app.state.box, request.app.state.settings.base_url,
+                                    _transport(request), force=True)
+        auth.audit(conn, "weekly_send", user=sess["login"], ip=client_ip(request), result="ok" if sent else "blad")
+        if not sent:
+            return _page(request, conn, error="Nie wysłano — brak włączonego kanału albo Discord odrzucił wiadomość.",
+                         status_code=502)
+        return _page(request, conn, message="Wysłano podsumowanie ostatnich 7 dni.")
 
 
 @router.post("/admin/powiadomienia/{channel_id:int}/test")

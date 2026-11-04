@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     # Nigdy "*": port panelu jest otwarty w LAN, więc każdy mógłby podać fałszywy adres klienta.
     trusted_proxies: list[str] = ["127.0.0.1"]
     dev: bool = False
+    # /metrics i /api/stan (Prometheus, Home Assistant): nagłówek „Authorization: Bearer …”. Puste = wyłączone.
+    metrics_token: str = ""
     # Logowanie przez OIDC (Pocket ID). Puste issuer albo client_id = wyłączone; własne konto zostaje zawsze.
     oidc_issuer: str = ""
     oidc_client_id: str = ""

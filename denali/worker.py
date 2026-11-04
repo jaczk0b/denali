@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from . import actions, agents, backup, checks, export, integrations, live, notify, watchdog
+from . import actions, agents, backup, checks, export, forecast, history, integrations, live, notify, watchdog, weekly
 from .config import Settings
 from .crypto import Box
 from .db import kv_get, kv_set, make_engine
@@ -13,6 +13,8 @@ log = logging.getLogger("denali.worker")
 EXPORT_FORCE_EVERY = 3600   # eksport awaryjny: po każdej zmianie, a co godzinę i tak (świeża data na stronie)
 BACKUP_EVERY = 24 * 3600    # kopia bazy i plików do data/backups (14 ostatnich); PBS i tak kopiuje całą VM
 CHECKS_EVERY = 60           # ping i HTTP z LAN
+PRUNE_EVERY = 3600          # stara historia stanów i czasów odpowiedzi
+FORECAST_EVERY = 900        # „kończy się miejsce” i poniedziałkowe podsumowanie tygodnia
 
 
 def tick(engine, settings: Settings, state: dict, now: float | None = None) -> None:
@@ -29,6 +31,14 @@ def tick(engine, settings: Settings, state: dict, now: float | None = None) -> N
             kv_set(conn, "export.last_ok", now)
     except Exception:   # błąd eksportu nie może zatrzymać workera
         log.exception("Eksport statyczny nie powiódł się")
+    if now - state.get("pruned_at", 0) >= PRUNE_EVERY:
+        state["pruned_at"] = now
+        try:
+            with engine.begin() as conn:
+                history.prune(conn, now)
+                forecast.prune(conn, now)
+        except Exception:
+            log.exception("Czyszczenie historii nie powiodło się")
     with engine.connect() as conn:
         last_backup = kv_get(conn, "backup.last_ok", 0)
     if now - last_backup >= BACKUP_EVERY:
@@ -47,12 +57,13 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
     engine = make_engine(settings.db_url)
     box = Box(settings.encryption_key) if settings.encryption_key else None
     state: dict = {}
+    polls: dict = {}            # odczyty integracji w toku: {id integracji: zadanie}
     log.info("worker start")
     try:
         while not stop.is_set():
             if box:
                 try:
-                    await integrations.poll_due(engine, box)
+                    integrations.start_due(engine, box, polls)
                 except Exception:   # błąd odczytu integracji nie może zatrzymać workera
                     log.exception("Odczyt integracji nie powiódł się")
                 try:
@@ -77,6 +88,15 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                         await notify.process(conn, box, settings.base_url)
                 except Exception:
                     log.exception("Wysyłka powiadomień nie powiodła się")
+                if time.time() - state.get("forecast_at", 0) >= FORECAST_EVERY:
+                    state["forecast_at"] = time.time()
+                    try:
+                        with engine.begin() as conn:
+                            await notify.forecast_alerts(conn, box, settings.base_url)
+                        with engine.begin() as conn:
+                            await weekly.process(conn, box, settings.base_url)
+                    except Exception:
+                        log.exception("Prognoza miejsca albo podsumowanie tygodnia nie powiodły się")
                 try:
                     with engine.begin() as conn:
                         await watchdog.ping(conn, box)
@@ -88,5 +108,8 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
             except TimeoutError:
                 pass
     finally:
+        for task in polls.values():
+            task.cancel()
+        await asyncio.gather(*polls.values(), return_exceptions=True)
         engine.dispose()
         log.info("worker stop")

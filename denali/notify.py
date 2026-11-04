@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 import httpx
 from sqlalchemy import select
 
-from . import incidents, profiles
+from . import forecast, incidents, profiles
 from .models import incident, notification_channel
 
 log = logging.getLogger("denali.notify")
@@ -58,23 +58,41 @@ def channels(conn, enabled_only=False):
 
 # ───────────────────────── treść ─────────────────────────
 def message(inc, base_url, resolved=False):
+    """Treść ma odpowiadać na „co się stało”: objaw ze źródła (ping, API, HTTP), skutki i co już wykluczono."""
     names = {r: [d["name"] for d in inc["devices"] if d["role"] == r] for r in ("przyczyna", "skutek", "gorzej")}
     url = f"{base_url.rstrip('/')}/incydenty/{inc['id']}"
+    symptoms = [e["text"] for e in inc["events"] if e["kind"] == "objaw"]
+    cause = ", ".join(names["przyczyna"]) or "—"
     if resolved:
-        title = f"Rozwiązane: {inc['title']}"
-        lines = [f"Trwało od {_hm(inc['started_at'])} do {_hm(inc['ended_at'])}."]
+        title = f"Rozwiązane: {cause} znowu działa" if inc["source"] == "auto" else f"Rozwiązane: {inc['title']}"
+        lines = []
+        if symptoms:
+            lines.append(f"**Było:** {symptoms[0]}")
+        closing = [e["text"] for e in inc["events"] if e["kind"] == "zamkniety"]
+        if closing and closing[-1].startswith("Znowu działa: "):
+            lines.append(f"**Teraz:** {closing[-1].removeprefix('Znowu działa: ')}")
+        if names["skutek"]:
+            lines.append(f"**Wróciło też:** {', '.join(names['skutek'])}")
+        unstable = [e["text"] for e in inc["events"] if e["kind"] == "niestabilne"]
+        if unstable:
+            lines.append(f"_{unstable[0].split('.')[0]} — warto sprawdzić, dlaczego._")
+        lines.append(f"Trwało {_duration(inc['started_at'], inc['ended_at'])} "
+                     f"({_hm(inc['started_at'])}–{_hm(inc['ended_at'])}).")
         color = COLORS["ok"]
     else:
         title = inc["title"]
-        lines = [f"**Przyczyna:** {', '.join(names['przyczyna']) or '—'}"]
+        lines = [f"**Co się stało:** {symptoms[0]}" if symptoms else f"**Przyczyna:** {cause}"]
         if names["skutek"]:
             lines.append(f"**Przez to nie działa:** {', '.join(names['skutek'])} — to skutek, nie osobne awarie")
         if names["gorzej"]:
             lines.append(f"**Działa gorzej:** {', '.join(names['gorzej'])}")
+        before = [e["text"] for e in inc["events"] if e["kind"] == "zmiana"]
+        if before:
+            lines.append("**Wcześniej:** " + "; ".join(before[:3]))
         evidence = [e["text"] for e in inc["events"] if e["kind"] == "dowod"]
         if evidence:
             lines.append("_" + " ".join(evidence[:2]) + "_")
-        lines.append(f"Waga: {SEVERITY_LABEL.get(inc['severity'], inc['severity'])} · od {_hm(inc['started_at'])}")
+        lines.append(f"Od {_hm(inc['started_at'])} · waga: {SEVERITY_LABEL.get(inc['severity'], inc['severity'])}")
         color = COLORS.get(inc["severity"], COLORS["ostrzezenie"])
     return {"username": "Denali", "allowed_mentions": {"parse": []},
             "embeds": [{"title": title[:256], "url": url, "description": "\n".join(lines)[:4000], "color": color}]}
@@ -83,6 +101,16 @@ def message(inc, base_url, resolved=False):
 def _hm(ts):
     from datetime import datetime
     return datetime.fromtimestamp(ts).strftime("%H:%M") if ts else "—"
+
+
+def _duration(start, end):
+    if not start or not end:
+        return "—"
+    minutes = max(1, round((end - start) / 60))
+    if minutes < 60:
+        return f"{minutes} min"
+    h, m = divmod(minutes, 60)
+    return f"{h} h {m} min" if m else f"{h} h"
 
 
 async def send(webhook, payload, transport=None):
@@ -100,12 +128,13 @@ async def send(webhook, payload, transport=None):
         raise NotifyError(f"Discord zwrócił błąd {r.status_code}.")
 
 
-async def deliver(conn, box, payload, severity, transport=None, now=None):
-    """Wysyła do wszystkich włączonych kanałów z odpowiednim progiem. True, gdy choć jeden przyjął."""
+async def deliver(conn, box, payload, severity, transport=None, now=None, any_threshold=False):
+    """Wysyła do wszystkich włączonych kanałów z odpowiednim progiem (any_threshold: do wszystkich — raporty).
+    True, gdy choć jeden przyjął."""
     now = now or time.time()
     delivered = False
     for ch in channels(conn, enabled_only=True):
-        if SEVERITY_RANK.get(severity, 1) < SEVERITY_RANK.get(ch["min_severity"], 1):
+        if not any_threshold and SEVERITY_RANK.get(severity, 1) < SEVERITY_RANK.get(ch["min_severity"], 1):
             continue
         try:
             await send(json.loads(box.decrypt(ch["config_ct"]))["webhook"], payload, transport)
@@ -150,6 +179,24 @@ async def process(conn, box, base_url, transport=None, now=None):
             conn.execute(incident.update().where(incident.c.id == row["id"]).values(closed_notified_at=now))
             sent += 1
     return sent
+
+
+async def forecast_alerts(conn, box, base_url, transport=None, now=None):
+    """Magazyn zapełni się w ciągu kilkunastu dni — osobna wiadomość, raz na tydzień dla tego samego magazynu."""
+    if not channels(conn, enabled_only=True):
+        return 0
+    due = forecast.alerts_due(conn, now)
+    if not due:
+        return 0
+    payload = {"username": "Denali", "allowed_mentions": {"parse": []},
+               "embeds": [{"title": "Kończy się miejsce", "url": base_url.rstrip("/") + "/",
+                           "description": "\n".join(forecast.describe(f) for f in due)
+                           + "\n_Prognoza z przyrostu w ostatnich dwóch tygodniach._",
+                           "color": COLORS["ostrzezenie"]}]}
+    if await deliver(conn, box, payload, "ostrzezenie", transport, now):
+        forecast.mark_alerted(conn, due, now)
+        return 1
+    return 0
 
 
 async def test_channel(conn, box, channel_id, base_url, transport=None):

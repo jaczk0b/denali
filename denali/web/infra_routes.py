@@ -4,13 +4,14 @@ Odczyt: każdy zalogowany. Zmiany: tylko administrator (require_admin sprawdza t
 """
 import time
 from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import func, or_, select
 
-from .. import (actions, auth, checks, configs, discovery, docs, files, incidents, infra_views, integrations,
-               inventory as inv, live, profiles, racks, status, updates, vault)
+from .. import (actions, auth, checks, configs, discovery, docs, files, forecast, history, incidents, infra_views, integrations,
+               inventory as inv, live, maintenance, profiles, racks, status, upcoming, updates, vault)
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook)
 from ..templating import render
@@ -46,14 +47,32 @@ def pulpit(request: Request, sess: dict = Depends(require_user)):
             select(func.count()).select_from(incidents.incident_device)
             .where(incidents.incident_device.c.incident_id == i["id"],
                    incidents.incident_device.c.role.in_(("skutek", "gorzej")))).scalar() for i in open_inc}
+        last_closed = conn.execute(select(incident.c.ended_at).where(incident.c.status == "zamkniety")
+                                   .order_by(incident.c.ended_at.desc()).limit(1)).mappings().first()
         ctx = {
             "apps": status.pulpit_apps(conn), "marks": marks, "open_incidents": open_inc, "effects": effects,
-            "layers": status.layers(devices, marks, states), "recent": status.recent_events(conn),
+            "layers": [l for l in status.layers(devices, marks, states) if l["state"] != "none"],
+            "recent": status.recent_events(conn),
             "no_devices": not devices, "has_live": bool(states),
+            "verdict": status.verdict(devices, states, open_inc, maintenance.active(conn), last_closed),
+            "upcoming": upcoming.items(conn),
+            "suggest": conn.execute(select(device.c.id, device.c.name, device.c.app_url).where(
+                device.c.app_url != "", device.c.pulpit_group == "brak").order_by(device.c.name).limit(8)
+            ).mappings().all(),
         }
     now = datetime.now()
     ctx.update(clock=now.strftime("%H:%M"), date=f"{DAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]}")
     return render(request, "pulpit.html", ctx)
+
+
+@router.post("/urzadzenia/{device_id}/na-pulpit")
+def pin_to_desk(request: Request, device_id: int, group: str = Form("codzien"), sess: dict = Depends(require_admin)):
+    with request.app.state.engine.begin() as conn:
+        if not inv.get_device(conn, device_id):
+            raise NotFound("Nie ma takiego urządzenia.")
+        inv.update_device(conn, device_id, pulpit_group=group if group in inv.PULPIT_GROUPS else "codzien")
+        auth.audit(conn, "device_pin", user=sess["login"], ip=client_ip(request), target=str(device_id))
+    return _back("/")
 
 
 # ───────────────────────── aktualizacje ─────────────────────────
@@ -132,8 +151,26 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "action_runs": actions.recent(conn, device_id, 5) if is_admin else [],
         "action_labels": {k: f"{c.label}: {a.label}" for k, (c, a) in actions.catalog().items()},
         "actions_on": actions.enabled(conn),
+        "history": _history(conn, device_id),
+        "storage": [f for f in forecast.forecasts(conn) if f["device_id"] == device_id],
+        "breaks": [m for m in maintenance.active(conn).values() if m["device_id"] == device_id],
+        "break_choices": maintenance.CHOICES,
     }
     return render(request, "urzadzenie.html", ctx, status_code)
+
+
+def _history(conn, device_id, now=None):
+    """Pasek dostępności (24 h i 7 dni) i wykres czasu odpowiedzi z ostatniej doby."""
+    now = now or time.time()
+    lines = []
+    for kind, label in (("ping", "Ping z LAN"), ("http", "Aplikacja (HTTP)"), ("tcp", "Porty TCP")):
+        spark = history.sparkline(history.response_times(conn, device_id, kind, 24, now), now - 86400, now)
+        if spark:
+            lines.append({"kind": kind, "label": label, **spark})
+    day, week = history.availability(conn, device_id, 24, now), history.availability(conn, device_id, 168, now)
+    if day["pct"] is None and not lines:
+        return None
+    return {"day": day, "week": week, "lines": lines}
 
 
 @router.get("/urzadzenia/{device_id:int}")
@@ -156,7 +193,8 @@ def device_new_form(request: Request, sess: dict = Depends(require_admin)):
     with request.app.state.engine.connect() as conn:
         return _edit_form(request, conn, {"id": None, "name": "", "kind": "usluga", "role": "", "criticality": 3,
                                           "parent_id": None, "profile_id": None, "place": "", "serial": "",
-                                          "notes_md": "", "icon": "", "app_url": "", "pulpit_group": "brak"})
+                                          "notes_md": "", "icon": "", "app_url": "", "pulpit_group": "brak",
+                                          "tcp_ports": ""})
 
 
 def _device_fields(form):
@@ -166,6 +204,7 @@ def _device_fields(form):
         "profile_id": _int(form.get("profile_id")), "place": form.get("place", ""),
         "serial": form.get("serial", ""), "notes_md": form.get("notes_md", ""), "icon": form.get("icon", ""),
         "app_url": form.get("app_url", ""), "pulpit_group": form.get("pulpit_group", "brak"),
+        "tcp_ports": form.get("tcp_ports", ""),
     }
 
 
@@ -231,6 +270,37 @@ def _card_change(request, device_id, fn, audit_action, sess, target=""):
             return _card(request, conn, device_id, error=str(e), status_code=400)
         auth.audit(conn, audit_action, user=sess["login"], ip=client_ip(request), target=target or str(device_id))
     return _back(f"/urzadzenia/{device_id}")
+
+
+@router.get("/urzadzenia/{device_id:int}/restart-hosta")
+def host_restart(request: Request, device_id: int, sess: dict = Depends(require_admin)):
+    """Lista kroków bezpiecznego restartu serwera. Każde wyłączenie i uruchomienie idzie zwykłą akcją
+    (te same zamki i potwierdzenia); sam restart węzła robisz w Proxmoxie — panel nie ma do tego uprawnień."""
+    with request.app.state.engine.connect() as conn:
+        d = inv.get_device(conn, device_id)
+        if not d or d["kind"] != "host":
+            raise NotFound("To nie jest serwer fizyczny.")
+        g = inv.load_graph(conn)
+        plan = maintenance.host_plan(conn, g, device_id)
+        acts = {}
+        for guest in plan["shutdown"]:
+            acts[guest["id"]] = {o["key"].split(".")[-1]: o for o in actions.for_device(conn, guest["id"])
+                                 if o["key"].split(".")[-1] in ("shutdown", "start") and not o["reason"]}
+        ctx = {"d": d, "plan": plan, "acts": acts, "live": live.saved(conn),
+               "breaks": [m for m in maintenance.active(conn).values() if m["device_id"] == device_id]}
+    return render(request, "restart_hosta.html", ctx)
+
+
+@router.post("/urzadzenia/{device_id}/przerwa")
+def break_start(request: Request, device_id: int, minutes: str = Form(""), reason: str = Form(""),
+                sess: dict = Depends(require_admin)):
+    return _card_change(request, device_id, lambda c: maintenance.start(c, device_id, minutes, reason, sess["login"]),
+                        "maintenance_start", sess, f"{device_id}: {minutes} min")
+
+
+@router.post("/urzadzenia/{device_id}/przerwa/{break_id}/koniec")
+def break_end(request: Request, device_id: int, break_id: int, sess: dict = Depends(require_admin)):
+    return _card_change(request, device_id, lambda c: maintenance.end(c, break_id, device_id), "maintenance_end", sess)
 
 
 @router.post("/urzadzenia/{device_id}/adresy")
@@ -484,29 +554,67 @@ def _like(q):
     return "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
+def _search(conn, q):
+    res = {"devices": [], "procedures": [], "runbooks": [], "incidents": []}
+    if not q:
+        return res
+    pat = _like(q)
+    by_addr = select(device_address.c.device_id).where(device_address.c.value.ilike(pat, escape="\\"))
+    res["devices"] = conn.execute(select(device).where(or_(
+        device.c.name.ilike(pat, escape="\\"), device.c.role.ilike(pat, escape="\\"),
+        device.c.place.ilike(pat, escape="\\"), device.c.id.in_(by_addr))).order_by(device.c.name).limit(30)
+    ).mappings().all()
+    in_steps = select(procedure_step.c.procedure_id).where(or_(
+        procedure_step.c.title.ilike(pat, escape="\\"), procedure_step.c.body_md.ilike(pat, escape="\\")))
+    res["procedures"] = conn.execute(select(procedure).where(or_(
+        procedure.c.title.ilike(pat, escape="\\"), procedure.c.intro_md.ilike(pat, escape="\\"),
+        procedure.c.id.in_(in_steps))).order_by(procedure.c.title).limit(20)).mappings().all()
+    res["runbooks"] = conn.execute(select(runbook).where(or_(
+        runbook.c.title.ilike(pat, escape="\\"), runbook.c.body_md.ilike(pat, escape="\\")))
+        .order_by(runbook.c.title).limit(20)).mappings().all()
+    res["incidents"] = conn.execute(select(incident).where(or_(
+        incident.c.title.ilike(pat, escape="\\"), incident.c.cause_md.ilike(pat, escape="\\"),
+        incident.c.fix_md.ilike(pat, escape="\\"))).order_by(incident.c.started_at.desc()).limit(20)
+    ).mappings().all()
+    return res
+
+
 @router.get("/szukaj")
 def search(request: Request, q: str = "", sess: dict = Depends(require_user)):
     q = q.strip()[:100]
-    res = {"devices": [], "procedures": [], "runbooks": [], "incidents": []}
-    if q:
-        pat = _like(q)
-        with request.app.state.engine.connect() as conn:
-            by_addr = select(device_address.c.device_id).where(device_address.c.value.ilike(pat, escape="\\"))
-            res["devices"] = conn.execute(select(device).where(or_(
-                device.c.name.ilike(pat, escape="\\"), device.c.role.ilike(pat, escape="\\"),
-                device.c.place.ilike(pat, escape="\\"), device.c.id.in_(by_addr))).order_by(device.c.name).limit(30)
-            ).mappings().all()
-            in_steps = select(procedure_step.c.procedure_id).where(or_(
-                procedure_step.c.title.ilike(pat, escape="\\"), procedure_step.c.body_md.ilike(pat, escape="\\")))
-            res["procedures"] = conn.execute(select(procedure).where(or_(
-                procedure.c.title.ilike(pat, escape="\\"), procedure.c.intro_md.ilike(pat, escape="\\"),
-                procedure.c.id.in_(in_steps))).order_by(procedure.c.title).limit(20)).mappings().all()
-            res["runbooks"] = conn.execute(select(runbook).where(or_(
-                runbook.c.title.ilike(pat, escape="\\"), runbook.c.body_md.ilike(pat, escape="\\")))
-                .order_by(runbook.c.title).limit(20)).mappings().all()
-            res["incidents"] = conn.execute(select(incident).where(or_(
-                incident.c.title.ilike(pat, escape="\\"), incident.c.cause_md.ilike(pat, escape="\\"),
-                incident.c.fix_md.ilike(pat, escape="\\"))).order_by(incident.c.started_at.desc()).limit(20)
-            ).mappings().all()
+    with request.app.state.engine.connect() as conn:
+        res = _search(conn, q)
     return render(request, "szukaj.html", {"q": q, "res": res, "total": sum(len(v) for v in res.values())})
+
+
+# Strony do szybkiego przejścia (Ctrl+K) — pasują po nazwie, zanim cokolwiek się wpisze w bazie.
+PAGES = [("Pulpit", "/"), ("Mapa", "/infrastruktura/mapa"), ("Lista urządzeń", "/urzadzenia"),
+         ("Incydenty", "/incydenty"), ("Aktualizacje", "/aktualizacje"), ("Procedury", "/procedury"),
+         ("Co jeśli…? (symulacja awarii)", "/infrastruktura/mapa?co_jesli=0"), ("Konto i sesje", "/konto")]
+ADMIN_PAGES = [("Do zatwierdzenia", "/zatwierdz"), ("Integracje", "/admin/integracje"),
+               ("Powiadomienia", "/admin/powiadomienia"), ("Akcje", "/akcje"), ("Terminale", "/terminale"),
+               ("Audyt", "/admin/audyt"), ("Nowe urządzenie", "/urzadzenia/nowe")]
+
+
+@router.get("/szukaj/szybko")
+def quick_search(request: Request, q: str = "", sess: dict = Depends(require_user)):
+    """Ctrl+K: krótka lista [{label, sub, url}] — strony panelu, urządzenia, procedury, runbooki, incydenty."""
+    q = q.strip()[:100]
+    low = q.lower()
+    pages = PAGES + (ADMIN_PAGES if sess["role"] == "admin" else [])
+    out = [{"label": label, "sub": "strona", "url": url} for label, url in pages if not q or low in label.lower()]
+    if q:
+        with request.app.state.engine.connect() as conn:
+            res = _search(conn, q)
+            states = live.saved(conn)
+        out += [{"label": d["name"], "sub": inv.KINDS.get(d["kind"], d["kind"]) + {"down": " · nie działa", "warn": " · uwaga"}.get(
+                     (states.get(d["id"]) or {}).get("state"), ""), "url": f"/urzadzenia/{d['id']}"}
+                for d in res["devices"][:8]]
+        out += [{"label": p["title"], "sub": "procedura", "url": f"/procedury/{p['id']}"} for p in res["procedures"][:4]]
+        out += [{"label": r["title"], "sub": "runbook", "url": f"/runbooki/{r['id']}"} for r in res["runbooks"][:4]]
+        out += [{"label": i["title"], "sub": "incydent", "url": f"/incydenty/{i['id']}"} for i in res["incidents"][:4]]
+        out += [{"label": f"Szukaj wszędzie: {q}", "sub": "wyniki", "url": f"/szukaj?q={quote(q)}"}]
+    return JSONResponse(out[:20])
+
+
 

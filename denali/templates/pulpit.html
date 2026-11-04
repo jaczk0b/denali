@@ -16,19 +16,23 @@
         {{ search_icon() }}
         <label class="sr" for="q-desk">Szukaj</label>
         <input id="q-desk" type="search" name="q" placeholder="Szukaj aplikacji, urządzenia, IP, procedury…">
+      <button type="button" class="kbd" data-palette title="Szybkie przejście">Ctrl K</button>
       </form>
-      {% if sess.kind != "kiosk" %}{{ account_menu(sess, counts, csrf) }}{% endif %}
+      {% if sess.kind != "kiosk" %}{{ account_menu(sess, counts, csrf, theme, path) }}{% endif %}
     </div>
   </div>
 
-  {% for i in open_incidents[:2] %}
-  <a class="banner {{ 'down' if i.severity == 'krytyczny' else '' }}" href="/incydenty/{{ i.id }}">
-    {{ st("down" if i.severity == "krytyczny" else "warn", 26) }}
-    <span class="banner-text"><strong>{{ i.title }} od {{ i.started_at | hm }}.</strong>
-      {% if effects[i.id] %}<span class="sub">{{ effects[i.id] }} {{ "urządzenie to skutek" if effects[i.id] == 1 else "urządzeń to skutek" }}, nie osobne awarie.</span>{% endif %}</span>
-    <span class="cta">Co się stało →</span>
-  </a>
-  {% endfor %}
+  {% set v = verdict %}
+  <section class="verdict {{ v.state }}" aria-live="polite">
+    {{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(v.state, "unknown"), 34) }}
+    <div class="verdict-text">
+      {% if v.link %}<a class="verdict-head" href="{{ v.link }}">{{ v.headline }}</a>{% else %}<span class="verdict-head">{{ v.headline }}</span>{% endif %}
+      <span class="verdict-sub">{% if v.since %}od {{ v.since | hm }}{% if v.sub %} · {% endif %}{% endif %}{{ v.sub }}</span>
+      {% for i in v["items"] %}<a class="verdict-more" href="{{ i.link }}">+ {{ i.title }} · od {{ i.since | hm }}{% if i.acked %} · ktoś się zajmuje{% endif %}</a>{% endfor %}
+      {% for p in v.pauses %}<span class="verdict-pause">{{ st("warn", 13) }} Planowana przerwa: {{ p }}</span>{% endfor %}
+    </div>
+    {% if v.link %}<a class="cta" href="{{ v.link }}">Co się stało →</a>{% endif %}
+  </section>
 
   <div class="desk-grid">
     <div class="desk-apps">
@@ -39,9 +43,14 @@
           {% if sess.role == "admin" %}<a class="btn primary" href="/urzadzenia/nowe">Dodaj urządzenie</a>{% endif %}
         </div>
       {% elif not apps %}
-        <div class="widget">
-          <h2>Tu będą ikony aplikacji</h2>
-          <p class="muted">Na karcie urządzenia → <em>Edytuj</em> ustaw adres aplikacji i „Na pulpicie: na co dzień” albo „zarządzanie”.</p>
+        <div class="hint">
+          <span><b>Ikony aplikacji</b> — urządzenia z adresem aplikacji możesz przypiąć tutaj.</span>
+          {% if suggest and sess.role == "admin" %}
+          <div class="hint-pins">
+            {% for d in suggest %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/na-pulpit">
+              <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="pin" type="submit">+ {{ d.name }}</button></form>{% endfor %}
+          </div>
+          {% elif not suggest %}<span class="muted small">Najpierw ustaw adres aplikacji na karcie urządzenia (Edytuj).</span>{% endif %}
         </div>
       {% endif %}
       {% for group, label in [("codzien", "Na co dzień"), ("zarzadzanie", "Zarządzanie")] %}
@@ -81,8 +90,15 @@
           </li>
           {% endfor %}
         </ol>
-        {% if not has_live %}<p class="muted small mt">Brak stanu na żywo — podłącz integrację (menu konta → Integracje) albo sprawdź, czy działa worker.</p>{% endif %}
       </section>
+      {% if upcoming %}
+      <section class="widget" aria-labelledby="nadchodzace">
+        <h2 id="nadchodzace">Nadchodzące</h2>
+        <ul class="upcoming">
+          {% for u in upcoming %}<li class="{{ u.level }}">{{ st(u.level, 14) }}<a href="{{ u.link }}">{{ u.text }}</a></li>{% endfor %}
+        </ul>
+      </section>
+      {% endif %}
       <section class="widget" aria-labelledby="ostatnio">
         <h2 id="ostatnio">Ostatnio</h2>
         {% if recent %}

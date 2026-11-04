@@ -122,7 +122,8 @@ class Pbs(Adapter):
             else:
                 parts.append(store)
         out.states.append(State("server", worst, "magazyny: " + ", ".join(parts) if parts else "brak magazynów",
-                                {"stores": stores}))
+                                {"stores": stores, "usage": {s: {"used": usage[s].get("used", 0), "total": usage[s]["total"]}
+                                                             for s in stores if (usage.get(s) or {}).get("total")}}))
         latest = {}
         for store, items in groups.items():
             for g in items:

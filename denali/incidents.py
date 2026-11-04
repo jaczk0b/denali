@@ -36,6 +36,11 @@ def _add_devices(conn, incident_id, device_ids, role):
     return new
 
 
+def add_event(conn, incident_id, kind, text, user="", now=None):
+    """Wpis w przebiegu z zewnątrz modułu (np. „co się zmieniło przed awarią” z changes.py)."""
+    _event(conn, incident_id, kind, text, user, now)
+
+
 def open_manual(conn, title, user, device_id=None, severity="ostrzezenie", text="", now=None):
     title = (title or "").strip()
     if not title:
@@ -96,8 +101,9 @@ def _open_auto(conn, root_device_id):
                         ).mappings().first()
 
 
-def record_finding(conn, graph, finding, now=None):
+def record_finding(conn, graph, finding, now=None, why=""):
     """Zapisuje wynik analizy (rca.Finding) jako incydent. Ta sama przyczyna = ten sam otwarty incydent.
+    why: co dokładnie zgłosiło źródło (np. „ping 10.0.0.5 nie odpowiada”) — trafia do przebiegu i powiadomienia.
     Zwraca (id, czy_nowy)."""
     now = now or time.time()
     names = graph.name
@@ -120,6 +126,8 @@ def record_finding(conn, graph, finding, now=None):
     _add_devices(conn, iid, finding.effects, "skutek")
     _add_devices(conn, iid, finding.degraded, "gorzej")
     _event(conn, iid, "otwarty", f"Wykryto: {names(finding.cause)} nie działa.", now=now)
+    if why:
+        _event(conn, iid, "objaw", why, now=now)
     for d, via in finding.upstream_ok:
         _event(conn, iid, "dowod", f"{names(d)} działa ({VIA.get(via, via)}), więc przyczyna nie jest wyżej.", now=now)
     for d, via in finding.upstream_unknown:
@@ -132,12 +140,24 @@ def record_finding(conn, graph, finding, now=None):
     return iid, True
 
 
-def recover(conn, device_id, now=None):
-    """Przyczyna znowu działa — zamyka jej automatyczny incydent. Opis przyczyny i naprawy można dopisać później."""
+def recover(conn, device_id, now=None, why=""):
+    """Przyczyna znowu działa — zamyka jej automatyczny incydent. Opis przyczyny i naprawy można dopisać później.
+    why: co teraz zgłasza źródło (np. „odpowiada w 3 ms”)."""
     inc = _open_auto(conn, device_id)
     if inc:
-        close(conn, inc["id"], "system", now=now, text="Przyczyna znowu działa — zamknięty automatycznie.")
+        close(conn, inc["id"], "system", now=now,
+              text=f"Znowu działa: {why}" if why else "Przyczyna znowu działa — zamknięty automatycznie.")
     return inc["id"] if inc else None
+
+
+def mark_unstable(conn, incident_id, flaps, window, calm, now=None):
+    """Przyczyna wróciła, ale migocze — incydent zostaje otwarty (raz wpis w przebiegu)."""
+    have = conn.execute(select(incident_event.c.id).where(incident_event.c.incident_id == incident_id,
+                                                          incident_event.c.kind == "niestabilne")).first()
+    if not have:
+        _event(conn, incident_id, "niestabilne",
+               f"Niestabilne: {flaps} przerw w {window // 60} min. Zamknę, gdy będzie działać {calm // 60} min "
+               "bez przerwy.", now=now)
 
 
 # ───────────────────────── odczyt ─────────────────────────

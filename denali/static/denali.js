@@ -55,6 +55,27 @@
   }
   [].forEach.call(document.querySelectorAll("[data-grants]"), grantCommands);
 
+  // Mapa: najechanie (albo fokus z klawiatury) na urządzenie podświetla jego łańcuch zależności, reszta przygasa.
+  // Delegacja na document — po odświeżeniu na żywo treść jest podmieniana, a obsługa zostaje.
+  function mapFocus(e) {
+    var svg = document.querySelector(".map-wrap svg");
+    if (!svg) { return; }
+    var node = e.target.closest && e.target.closest(".map-wrap [data-rel]");
+    [].forEach.call(svg.querySelectorAll(".lit"), function (el) { el.classList.remove("lit"); });
+    if (!node || e.type === "mouseout" || e.type === "focusout") { svg.classList.remove("focus"); return; }
+    var ids = (node.dataset.rel + " " + node.dataset.id).split(" ");
+    var set = {};
+    ids.forEach(function (i) { if (i) { set[i] = true; } });
+    [].forEach.call(svg.querySelectorAll("[data-id]"), function (el) {
+      if (set[el.dataset.id]) { el.classList.add("lit"); }
+    });
+    [].forEach.call(svg.querySelectorAll("[data-a]"), function (el) {
+      if (set[el.dataset.a] && set[el.dataset.b]) { el.classList.add("lit"); }
+    });
+    svg.classList.add("focus");
+  }
+  ["mouseover", "mouseout", "focusin", "focusout"].forEach(function (t) { document.addEventListener(t, mapFocus); });
+
   // Tablet raz na godzinę ładuje stronę od nowa — po wdrożeniu dostaje nowy wygląd.
   if (body.classList.contains("kiosk")) {
     setTimeout(reloadWhenUp, HOUR);
@@ -116,6 +137,7 @@
         body.dataset.live = current;
         document.title = doc.title;
         inlineStyles();
+        document.dispatchEvent(new Event("denali:odswiezone"));
         window.scrollTo(0, y);
         clock();
       })
@@ -157,3 +179,119 @@ document.addEventListener("click", async (e) => {
   }
   setTimeout(() => { button.textContent = label; }, 1500);
 });
+
+// Ctrl+K (albo „/” poza polem tekstowym): szybkie przejście do strony, urządzenia, procedury albo incydentu.
+(function () {
+  "use strict";
+  if (document.body.classList.contains("kiosk") || !document.querySelector(".menu")) { return; }
+  var box, input, list, items = [], active = 0, timer = null, seq = 0;
+
+  function build() {
+    box = document.createElement("div");
+    box.className = "palette";
+    box.hidden = true;
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", "Szybkie przejście");
+    box.innerHTML = '<div class="palette-panel"><input type="search" class="palette-input" ' +
+      'placeholder="Dokąd? Urządzenie, IP, procedura, strona…" aria-label="Szukaj" autocomplete="off">' +
+      '<ul class="palette-list" role="listbox"></ul><p class="palette-help">↑↓ wybierz · Enter otwórz · Esc zamknij</p></div>';
+    document.body.appendChild(box);
+    input = box.querySelector("input");
+    list = box.querySelector("ul");
+    input.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(load, 120); });
+    input.addEventListener("keydown", keys);
+    box.addEventListener("click", function (e) {
+      var li = e.target.closest("li[data-url]");
+      if (li) { location.href = li.dataset.url; } else if (e.target === box) { close(); }
+    });
+  }
+
+  function load() {
+    var mine = ++seq;
+    fetch("/szukaj/szybko?q=" + encodeURIComponent(input.value))
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (data) { if (mine === seq) { items = data; active = 0; draw(); } })
+      .catch(function () {});
+  }
+
+  function draw() {
+    list.textContent = "";
+    items.forEach(function (it, i) {
+      var li = document.createElement("li");
+      li.dataset.url = it.url;
+      li.setAttribute("role", "option");
+      if (i === active) { li.className = "on"; li.setAttribute("aria-selected", "true"); }
+      var b = document.createElement("b"); b.textContent = it.label;
+      var s = document.createElement("span"); s.textContent = it.sub;
+      li.appendChild(b); li.appendChild(s);
+      list.appendChild(li);
+    });
+    var on = list.querySelector(".on");
+    if (on) { on.scrollIntoView({ block: "nearest" }); }
+  }
+
+  function keys(e) {
+    if (e.key === "ArrowDown") { active = Math.min(items.length - 1, active + 1); draw(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { active = Math.max(0, active - 1); draw(); e.preventDefault(); }
+    else if (e.key === "Enter" && items[active]) { location.href = items[active].url; e.preventDefault(); }
+    else if (e.key === "Escape") { close(); }
+  }
+
+  function open() {
+    if (!box) { build(); }
+    box.hidden = false;
+    input.value = "";
+    input.focus();
+    load();
+  }
+  function close() { if (box) { box.hidden = true; } }
+
+  document.addEventListener("keydown", function (e) {
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || "");
+    if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); open(); }
+    else if (e.key === "/" && !typing) { e.preventDefault(); open(); }
+  });
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("[data-palette]")) { e.preventDefault(); open(); }
+  });
+})();
+
+// Karta urządzenia: zakładki przełączają widok (bez JavaScriptu widać wszystko, a linki przewijają do sekcji).
+// Ostatnio wybrana zakładka zostaje zapamiętana w tej przeglądarce.
+(function () {
+  "use strict";
+  var KEY = "denali.zakladka";
+
+  function saved() {
+    try { return localStorage.getItem(KEY) || "przeglad"; } catch (e) { return "przeglad"; }
+  }
+
+  function show(tab) {
+    var nav = document.querySelector(".device-tabs");
+    if (!nav) { return; }
+    if (!nav.querySelector('[data-tab-link="' + tab + '"]')) { tab = "przeglad"; }
+    [].forEach.call(nav.querySelectorAll("[data-tab-link]"), function (a) {
+      if (a.dataset.tabLink === tab) { a.setAttribute("aria-current", "page"); } else { a.removeAttribute("aria-current"); }
+    });
+    [].forEach.call(document.querySelectorAll("[data-tab]"), function (el) {
+      el.classList.toggle("tab-off", el.dataset.tab !== tab);
+    });
+  }
+
+  function fromHash() {
+    var el = location.hash && document.getElementById(location.hash.slice(1));
+    var sec = el && el.closest("[data-tab]");
+    return sec ? sec.dataset.tab : null;
+  }
+
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest("[data-tab-link]");
+    if (!a) { return; }
+    e.preventDefault();
+    try { localStorage.setItem(KEY, a.dataset.tabLink); } catch (err) { /* prywatne okno */ }
+    show(a.dataset.tabLink);
+  });
+  document.addEventListener("denali:odswiezone", function () { show(saved()); });
+  window.addEventListener("hashchange", function () { var t = fromHash(); if (t) { show(t); } });
+  show(fromHash() || saved());
+})();

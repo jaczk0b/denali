@@ -16,6 +16,8 @@
       {% if mark == "przyczyna" %}<span class="chip down">{{ st("down", 13) }}Przyczyna trwającej awarii</span>
       {% elif mark == "skutek" %}<span class="chip">{{ st("effect", 13) }}Skutek awarii innego urządzenia</span>
       {% elif mark == "gorzej" %}<span class="chip warn">{{ st("warn", 13) }}Działa gorzej przez awarię</span>
+      {% elif breaks %}<span class="chip warn">{{ st("warn", 13) }}Planowana przerwa do {{ breaks[0].ends_at | hm }}</span>
+      {% elif live and live.pending_until %}<span class="chip warn">{{ st("warn", 13) }}Nie odpowiada — jeśli nie wróci do {{ live.pending_until | hm }}, będzie awaria</span>
       {% elif live %}{% set s = live.state %}<span class="chip {{ {'down': 'down', 'warn': 'warn'}.get(s, '') }}">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(s, "unknown"), 13) }}{{ {"ok": "Działa", "down": "Nie działa", "warn": "Uwaga", "off": "Wyłączone", "unknown": "Stan niepewny"}[s] }}</span>{% endif %}
       <span class="chip">{{ KINDS.get(d.kind, d.kind) }}</span>
       <span class="chip">{{ {1: "P1 — krytyczne", 2: "P2 — ważne", 3: "P3 — może poczekać"}[d.criticality] }}</span>
@@ -28,6 +30,7 @@
   </div>
   <div class="actions">
     {% if d.app_url %}<a class="btn" href="{{ d.app_url }}" target="_blank" rel="noopener noreferrer">Otwórz {{ d.name }} ↗</a>{% endif %}
+    {% if admin and d.kind == "host" %}<a class="btn" href="/urzadzenia/{{ d.id }}/restart-hosta">Bezpieczny restart…</a>{% endif %}
     {% if admin %}<a class="btn" href="/urzadzenia/{{ d.id }}/edycja">Edytuj</a>
       <a class="btn" href="/incydenty/nowy?urzadzenie={{ d.id }}">Zapisz problem</a>{% endif %}
   </div>
@@ -38,23 +41,17 @@
   {{ g.last_seen | dt }}. {% if admin %}<a href="/zatwierdz">Zdecyduj w kolejce</a>: usunąć z Denali czy zostawić w dokumentacji.{% endif %}</span></div>
 {% endfor %}
 
-<nav class="tabs" aria-label="Sekcje urządzenia">
-  <a href="#zaleznosci">Zależności</a>
-  <a href="#co-robic">Co robić</a>
-  <a href="#historia">Log problemów ({{ incidents | length }})</a>
-  {% if updates.rows or updates.reboot %}<a href="#aktualizacje">Aktualizacje ({{ updates.rows | length }})</a>{% endif %}
-  <a href="#adresy">Adresy</a>
-  <a href="#pliki">Pliki</a>
-  {% if admin %}<a href="#skarbiec">Hasła</a>{% endif %}
-  {% if admin and (dev_actions or action_runs) %}<a href="#akcje">Akcje</a>{% endif %}
-  {% if admin and config_backups %}<a href="#kopie">Kopie konfiguracji</a>{% endif %}
-  <a href="#ustawienia">Ustawienia</a>
+<nav class="tabs device-tabs" aria-label="Sekcje urządzenia">
+  <a href="#zaleznosci" data-tab-link="przeglad">Przegląd</a>
+  <a href="#historia" data-tab-link="historia">Historia i problemy{% if incidents %} ({{ incidents | length }}){% endif %}</a>
+  <a href="#adresy" data-tab-link="dane">Adresy, pliki{% if admin %}, hasła{% endif %}</a>
+  <a href="#ustawienia" data-tab-link="ustawienia">Ustawienia</a>
 </nav>
 
 {{ alerts(error, message) }}
 
 {% if sources or checks %}
-<section aria-labelledby="zrodla">
+<section data-tab="przeglad" aria-labelledby="zrodla">
   <h2 id="zrodla">Stan ze źródeł</h2>
   <div class="source-grid">
     {% for s in sources %}
@@ -68,10 +65,11 @@
     {% for c in checks %}
     {% set soon = c.ok and c.cert_expires_at and c.cert_expires_at - now < 14 * 86400 %}
     <div class="card source">
-      <div class="source-head"><span>{{ {"ping": "Ping z LAN", "internet": "Z internetu (przez publiczny DNS)"}.get(c.kind, "Aplikacja (HTTP)") }}</span><span>{{ c.checked_at | hm }}</span></div>
-      <div class="source-state">{{ st("warn" if soon else ("ok" if c.ok else "down"), 15) }}
-        {{ ("Działa — uwaga" if soon else "Działa") if c.ok else "Nie odpowiada" }}</div>
-      <div class="small">{{ c.summary }}{% if not c.ok and c.first_fail_at %} · od {{ c.first_fail_at | hm }}{% endif %}</div>
+      <div class="source-head"><span>{{ {"ping": "Ping z LAN", "internet": "Z internetu (przez publiczny DNS)", "tcp": "Port TCP", "dns": "Nazwa w DNS"}.get(c.kind, "Aplikacja (HTTP)") }}</span><span>{{ c.checked_at | hm }}</span></div>
+      {% set waiting = not c.ok and c.first_fail_at and live and live.pending_until and c.kind not in ("internet", "dns") %}
+      <div class="source-state">{{ st("warn" if soon or waiting else ("ok" if c.ok else "down"), 15) }}
+        {{ ("Działa — uwaga" if soon else "Działa") if c.ok else ("Nie odpowiada — jeszcze nie awaria" if waiting else "Nie odpowiada") }}</div>
+      <div class="small">{{ c.summary }}{% if not c.ok and c.first_fail_at %} · od {{ c.first_fail_at | hm }}{% endif %}{% if waiting %} · awaria, jeśli nie wróci do {{ live.pending_until | hm }}{% endif %}</div>
       <div class="muted small mono">{{ c.target }}</div>
     </div>
     {% endfor %}
@@ -79,9 +77,65 @@
 </section>
 {% endif %}
 
+{% if breaks or admin %}
+<section data-tab="przeglad" class="card break-card" aria-labelledby="przerwa">
+  <h2 id="przerwa">Planowana przerwa</h2>
+  {% for b in breaks %}
+  <div class="row-between">
+    <p>{{ st("warn", 13) }} Trwa do <b>{{ b.ends_at | hm }}</b>{% if b.reason %} — {{ b.reason }}{% endif %}
+      <span class="muted small">· {{ b.created_by }}. Awaria tego urządzenia i tego, co od niego zależy, nie otworzy incydentu.</span></p>
+    {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/przerwa/{{ b.id }}/koniec">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Zakończ teraz</button></form>{% endif %}
+  </div>
+  {% endfor %}
+  {% if admin and not breaks %}
+  <form class="break-form" method="post" action="/urzadzenia/{{ d.id }}/przerwa">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label>Na <select name="minutes">{% for m in break_choices %}<option value="{{ m }}"{% if m == 30 %} selected{% endif %}>{{ m if m < 60 else m // 60 }} {{ "min" if m < 60 else "h" }}</option>{% endfor %}</select></label>
+    <label class="grow"><span class="sr">Powód</span><input name="reason" maxlength="200" placeholder="Powód, np. aktualizacja Proxmoxa"></label>
+    <button class="btn" type="submit">Zacznij przerwę</button>
+  </form>
+  <p class="muted small">Restart, aktualizacja, przeprowadzka: przez ten czas awaria nie otworzy incydentu ani nie wyśle powiadomienia.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if storage %}
+<section data-tab="przeglad" class="card" aria-labelledby="miejsce">
+  <h2 id="miejsce">Miejsce na dyskach</h2>
+  <ul class="list-rows">
+    {% for f in storage %}<li><span class="grow"><b>{{ f.name }}</b> <span class="muted small">· zajęte {{ (f.pct * 100) | round | int }}%</span></span>
+      <span class="small {{ 'down-text' if f.days is not none and f.days < 14 else 'muted' }}">{% if f.days is none %}{% if f.per_day is none %}za mało danych do prognozy (potrzeba 2 dni){% else %}nie przybywa{% endif %}{% elif f.days < 1 %}prawie pełna{% else %}pełna za ok. {{ f.days | round | int }} dni{% endif %}</span>
+      <span class="meter"><i data-style="width: {{ (f.pct * 100) | round(1) }}%"{% if f.pct > 0.85 %} class="hi"{% endif %}></i></span></li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if history %}
+<section data-tab="historia" class="card" aria-labelledby="dostepnosc">
+  <h2 id="dostepnosc">Historia stanu</h2>
+  {% for label, a in (("Ostatnie 24 h", history.day), ("Ostatnie 7 dni", history.week)) %}
+  <div class="avail">
+    <div class="avail-head"><span>{{ label }}</span><span class="muted small">{% if a.pct is not none %}{{ a.pct }}% bez awarii{% if a.down_s %} · nie działało {{ (a.down_s / 60) | round | int }} min{% endif %}{% else %}brak danych{% endif %}</span></div>
+    <div class="avail-bar" role="img" aria-label="{{ label }}: {{ a.pct if a.pct is not none else 'brak danych' }}">{% for sl in a.slots %}<i class="sl-{{ sl }}"></i>{% endfor %}</div>
+  </div>
+  {% endfor %}
+  {% for l in history.lines %}
+  <div class="spark">
+    <div class="avail-head"><span>{{ l.label }} — czas odpowiedzi, 24 h</span><span class="muted small mono">{% if l.avg is not none %}śr. {{ l.avg }} ms · maks. {{ l.max }} ms{% endif %}{% if l.fails %} · bez odpowiedzi: {{ l.fails | length }}×{% endif %}</span></div>
+    <svg viewBox="0 0 {{ l.w }} {{ l.h + 6 }}" preserveAspectRatio="none" role="img" aria-label="{{ l.label }}: czas odpowiedzi">
+      <path d="{{ l.d }}" fill="none" stroke="#6aa8ff" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+      {% for x, y in l.dots %}<rect x="{{ x - 2 }}" y="{{ y - 2 }}" width="4" height="4" fill="#6aa8ff"/>{% endfor %}
+      {% for x in l.fails %}<rect x="{{ x }}" y="{{ l.h + 1 }}" width="3" height="5" fill="#ff6b6b"/>{% endfor %}
+    </svg>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
 <div class="cols">
 <div class="col">
-  <section class="card" aria-labelledby="zaleznosci">
+  <section data-tab="przeglad" class="card" aria-labelledby="zaleznosci">
     <h2 id="zaleznosci">Zależności</h2>
     <div class="cols">
       <div class="col">
@@ -127,7 +181,8 @@
       <span>Gdy {{ d.name }} padnie:
         {% if impact_hard %}<strong>przestanie działać</strong> {{ impact_hard | join(", ") }}{% endif %}
         {%- if impact_hard and impact_soft %}; {% endif %}
-        {% if impact_soft %}<strong>będzie działać gorzej</strong> {{ impact_soft | join(", ") }}{% endif %}.</span>
+        {% if impact_soft %}<strong>będzie działać gorzej</strong> {{ impact_soft | join(", ") }}{% endif %}.
+        <a href="/infrastruktura/mapa?co_jesli={{ d.id }}">Pokaż na mapie</a></span>
     </div>
     {% endif %}
     {% if admin %}
@@ -160,7 +215,7 @@
     {% endif %}
   </section>
 
-  <section class="card" aria-labelledby="co-robic">
+  <section data-tab="przeglad" class="card" aria-labelledby="co-robic">
     <h2 id="co-robic">Co robić</h2>
     {% if procedures or runbooks %}
     <ul class="list-rows">
@@ -171,7 +226,7 @@
     {% if admin %}<div class="actions mt"><a class="btn small" href="/runbooki/nowy?urzadzenie={{ d.id }}">Dodaj runbook</a><a class="btn small" href="/procedury/nowa">Dodaj procedurę</a></div>{% endif %}
   </section>
 
-  <section class="card" aria-labelledby="historia">
+  <section data-tab="historia" class="card" aria-labelledby="historia">
     <h2 id="historia">Log problemów</h2>
     {% if incidents %}
     <ul class="list-rows">
@@ -180,12 +235,12 @@
     {% else %}<p class="muted">Nic nie zapisano.</p>{% endif %}
   </section>
 
-  {% if d.notes_md %}<section class="card md" aria-label="Notatki">{{ d.notes_md | md }}</section>{% endif %}
+  {% if d.notes_md %}<section data-tab="przeglad" class="card md" aria-label="Notatki">{{ d.notes_md | md }}</section>{% endif %}
 </div>
 
 <div class="col">
   {% if updates.rows or updates.reboot %}
-  <section class="card" aria-labelledby="aktualizacje">
+  <section data-tab="przeglad" class="card" aria-labelledby="aktualizacje">
     <h2 id="aktualizacje">Aktualizacje</h2>
     {% if updates.reboot %}<p><span class="pill warn">{{ st("warn", 12) }} wymagany restart</span>
       <span class="muted small">według: {{ updates.reboot | join(", ") }}</span>
@@ -198,7 +253,7 @@
     {% endif %}
   </section>
   {% endif %}
-  <section class="card" aria-labelledby="adresy">
+  <section data-tab="dane" class="card" aria-labelledby="adresy">
     <h2 id="adresy">Adresy</h2>
     {% if addresses %}
     <ul class="list-rows">
@@ -224,7 +279,7 @@
     {% endif %}
   </section>
 
-  <section class="card" aria-labelledby="pliki">
+  <section data-tab="dane" class="card" aria-labelledby="pliki">
     <h2 id="pliki">Pliki</h2>
     {% if files %}
     <ul class="list-rows">
@@ -247,7 +302,7 @@
   </section>
 
   {% if admin %}
-  <section class="card" aria-labelledby="skarbiec-h" id="skarbiec">
+  <section data-tab="dane" class="card" aria-labelledby="skarbiec-h" id="skarbiec">
     <h2 id="skarbiec-h">Hasła</h2>
     {% if secrets %}
     <ul class="list-rows">
@@ -277,7 +332,7 @@
 
   {% if admin and (dev_actions or action_runs) %}
   {% set allowed = settings.actions.value %}
-  <section class="card" aria-labelledby="akcje">
+  <section data-tab="przeglad" class="card" aria-labelledby="akcje">
     <h2 id="akcje">Akcje</h2>
     {% if not actions_on %}<p class="muted small">Akcje są wyłączone w <a href="/akcje">Akcjach</a>.</p>{% endif %}
     {% if dev_actions %}
@@ -313,7 +368,7 @@
   {% endif %}
 
   {% if admin and config_backups %}
-  <section class="card" aria-labelledby="kopie">
+  <section data-tab="dane" class="card" aria-labelledby="kopie">
     <h2 id="kopie">Kopie konfiguracji</h2>
     <ul class="list-rows">
       {% for b in config_backups %}
@@ -328,7 +383,7 @@
   </section>
   {% endif %}
 
-  <section class="card" aria-labelledby="ustawienia">
+  <section data-tab="ustawienia" class="card" aria-labelledby="ustawienia">
     <h2 id="ustawienia">Ustawienia</h2>
     <p class="muted small">Z profilu <strong>{{ profile_name }}</strong> — zmieniasz je raz dla wszystkich{% if admin %} w <a href="/admin/profile">Profilach</a>{% endif %}. Tutaj tylko świadome wyjątki.</p>
     <table>
@@ -353,7 +408,7 @@
     </table>
   </section>
 
-  <section class="card" aria-labelledby="szczegoly">
+  <section data-tab="ustawienia" class="card" aria-labelledby="szczegoly">
     <h2 id="szczegoly">Szczegóły</h2>
     <table>
       {% if d.serial %}<tr><td>Numer seryjny</td><td class="mono">{{ d.serial }}</td></tr>{% endif %}

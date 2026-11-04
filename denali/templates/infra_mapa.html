@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import infra_nav %}
+{% from "_makra.html" import infra_nav, st %}
 {% block title %}Mapa · Infrastruktura{% endblock %}
 {# Kolory wpisane w SVG (fill/stroke), żeby mapa była czytelna nawet bez arkusza stylów; CSS tylko je nadpisuje. #}
 {% set FILL = {"down": "#2a1517", "effect": "#151a1f", "off": "#151a1f"} %}
@@ -11,26 +11,51 @@
   {%- elif state == "effect" %}<circle cx="{{ cx }}" cy="{{ cy }}" r="5.5" fill="none" stroke="#b3bcc6" stroke-width="1.6" stroke-dasharray="2.5 2"/>
   {%- else %}<circle cx="{{ cx }}" cy="{{ cy }}" r="5" fill="none" stroke="#6b7580" stroke-width="1.6"/>{% endif -%}
 {%- endmacro %}
+{% macro href(id) %}{% if picking %}/infrastruktura/mapa?co_jesli={{ id }}{% if clients %}&amp;klienci=1{% endif %}{% else %}/urzadzenia/{{ id }}{% endif %}{% endmacro %}
 {% block content %}
 <div class="row-between">
   <h1>Infrastruktura</h1>
   <div class="actions">
+    {% if picking %}<a class="btn small" href="/infrastruktura/mapa">Zakończ „co jeśli”</a>
+    {% else %}<a class="btn small" href="/infrastruktura/mapa?co_jesli=0">Co jeśli…?</a>{% endif %}
     {% if m.hidden_clients %}
     <a class="btn small" href="/infrastruktura/mapa{% if not clients %}?klienci=1{% endif %}">{{ "Schowaj klientów sieci" if clients else "Pokaż klientów sieci (" ~ m.hidden_clients ~ ")" }}</a>
     {% endif %}
   </div>
 </div>
 {{ infra_nav(tabs, "mapa") }}
+{% if sim %}
+<div class="sim card">
+  <h2>{{ st("down", 15) }} Gdyby padło {{ sim.name }}</h2>
+  {% if sim.hard %}<p><b>Przestanie działać ({{ sim.hard | length }}):</b> {{ sim.hard | join(", ") }}</p>
+  {% else %}<p>Nic innego nie przestanie działać — nikt twardo od tego nie zależy.</p>{% endif %}
+  {% if sim.soft %}<p><b>Będzie działać gorzej:</b> {{ sim.soft | join(", ") }}</p>{% endif %}
+  <p class="muted small">Symulacja z zależności w dokumentacji — nic nie zostało wyłączone. Kliknij inne urządzenie, żeby sprawdzić je.</p>
+</div>
+{% elif picking %}
+<div class="alert warn">{{ st("warn") }}<span>Kliknij urządzenie na mapie, żeby zobaczyć, co przestanie działać, gdy ono padnie (np. przed restartem albo przeprowadzką).</span></div>
+{% endif %}
 {% if not m.nodes and not m.boxes %}
 <div class="card"><p class="muted">Mapa rysuje się sama z dokumentacji — dodaj urządzenia (albo podłącz integracje),
   a pojawią się tutaj.</p></div>
 {% else %}
+<section class="map-list" aria-label="Warstwy infrastruktury">
+  {% for l in m.layers %}
+  <h2>{{ l.label }}</h2>
+  <ul class="plain">
+    {% for n in l["items"] %}
+    <li{% if n.nested %} class="nested"{% endif %}><a href="{{ href(n.id) }}">{{ st({"ok": "ok", "down": "down", "warn": "warn", "effect": "effect"}.get(n.state, "unknown"), 13) }}{{ n.name }}</a>
+      <span class="muted small">{{ n.label }}{% if n.sub %} · {{ n.sub }}{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  {% endfor %}
+</section>
 <section class="map-wrap" aria-label="Mapa infrastruktury">
   <svg width="{{ m.width }}" height="{{ m.height }}" viewBox="0 0 {{ m.width }} {{ m.height }}" role="img"
        aria-label="Mapa: {{ m.nodes | length }} urządzeń" font-family="IBM Plex Sans, system-ui, sans-serif">
     {% for c in m.columns %}<text class="map-col" x="{{ c.x }}" y="20" fill="#9ba5b0" font-size="12">{{ c.label | upper }}</text>{% endfor %}
     {% for b in m.boxes %}
-    <a href="/urzadzenia/{{ b.id }}" class="map-box-link">
+    <a href="{{ href(b.id) }}" class="map-box-link" data-id="{{ b.id }}" data-rel="{{ b.rel }}">
       <title>{{ b.name }} — {{ b.label }} · {{ b.count }} maszyn</title>
       <rect class="map-box {{ b.state }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="14"
             fill="#151c24" stroke="{{ STROKE.get(b.state, '#33404f') }}"/>
@@ -38,11 +63,11 @@
       <text class="map-box-label" x="{{ b.x + 34 }}" y="{{ b.y + 22 }}" fill="#c9d0d7" font-size="14" font-weight="600">{{ b.name }}{% if b.ip %} <tspan fill="#9ba5b0" font-weight="400" font-family="IBM Plex Mono, monospace" font-size="12">· {{ b.ip }}</tspan>{% endif %}</text>
     </a>
     {% endfor %}
-    {% for e in m.lines %}<path class="map-edge {{ e.cls }}" d="{{ e.d }}" fill="none"
+    {% for e in m.lines %}<path class="map-edge {{ e.cls }}" d="{{ e.d }}" fill="none" data-a="{{ e.a }}" data-b="{{ e.b }}"
       stroke="{{ '#ff6b6b' if 'broken' in e.cls else ('#6aa8ff' if e.dane else '#6b7682') }}" stroke-width="{{ 1.2 if e.cls == 'app' else 1.8 }}"
       {% if e.dane or 'soft' in e.cls %}stroke-dasharray="6 5"{% endif %}/>{% endfor %}
     {% for n in m.nodes %}
-    <a href="/urzadzenia/{{ n.id }}" class="map-node {{ n.state }}">
+    <a href="{{ href(n.id) }}" class="map-node {{ n.state }}" data-id="{{ n.id }}" data-rel="{{ n.rel }}">
       <title>{{ n.name }} — {{ KINDS.get(n.kind, n.kind) }} · {{ n.label }}</title>
       <rect x="{{ n.x }}" y="{{ n.y }}" width="{{ m.w }}" height="{{ m.h }}" rx="9"
             fill="{{ FILL.get(n.state, '#1b2128') }}" stroke="{{ STROKE.get(n.state, '#2c343e') }}"

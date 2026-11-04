@@ -36,14 +36,14 @@ Kod sprawdzony testami na udawanym dostawcy; z prawdziwym Pocket ID nie był uru
 
 ## 2. Bezpieczeństwo — do domknięcia
 
-- [ ] Hasło `Khuba123` trafiło do logu Komodo i do rozmowy — jeśli używasz go gdziekolwiek, zmień je tam.
+- [ ] Hasło, które trafiło do logu Komodo i do rozmowy — jeśli używasz go gdziekolwiek, zmień je tam.
 - [ ] `HLC_FERNET_KEY` trafił do rozmowy — po wyłączeniu HLC usuń jego stare kopie (`/var/lib/hlc/backups`).
 - [ ] **Usuń zasób `hlc.serwispowers.com` z Pangolina** (audyt, problem B0), gdy Denali zastąpi HLC.
 - [ ] Wyłącz HLC (kontener `hlc-dom`), gdy upewnisz się, że w Denali niczego nie brakuje.
 - [ ] Razem z HLC **usuń stare agenty HLC** z maszyn (usługa `hlc-agent` jako root, token w `/etc/hlc-agent/`):
       `sudo python3 /opt/hlc-agent/agent.py --uninstall` (usuwa usługę, program, konfigurację i bufor). Instalator
       nowego agenta Denali sam ostrzega, gdy znajdzie stary.
-- [ ] Wyjaśnij, czym było „627379008” (jeśli to hasło routera — wpisz je tylko w formularzu Denali).
+- [ ] Wyjaśnij, czym była liczba z notatek HLC (jeśli to hasło routera — zmień je i wpisz tylko w formularzu Denali).
 
 ## 3. Etap 4 — sprawdzenie na prawdziwych serwerach
 

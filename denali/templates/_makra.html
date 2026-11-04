@@ -131,7 +131,7 @@
 {% endmacro %}
 
 {# menu konta: login, admin, liczniki — bez JavaScriptu (details) #}
-{% macro account_menu(sess, counts, csrf) %}
+{% macro account_menu(sess, counts, csrf, theme='grafit', path='/') %}
 <details class="menu">
   <summary>{% if counts.queue and sess.role == "admin" %}<span class="badge">{{ counts.queue }}</span>{% endif %}
     <span class="menu-who">{{ sess.login }} · {{ "admin" if sess.role == "admin" else "podgląd" }}</span>
@@ -148,6 +148,11 @@
     <hr>
     {% endif %}
     <a href="/konto">Konto i sesje</a>
+    <form class="theme-pick" method="post" action="/motyw">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="next" value="{{ path }}">
+      <span class="muted small">Motyw</span>
+      {% for key, label in THEME_LABELS.items() %}<button type="submit" name="motyw" value="{{ key }}" class="swatch sw-{{ key }}"{% if theme == key %} aria-pressed="true"{% endif %} title="{{ label }}"><span class="sr">{{ label }}</span></button>{% endfor %}
+    </form>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <button type="submit">Wyloguj</button>

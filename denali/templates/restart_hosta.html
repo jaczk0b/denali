@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st %}
+{% block title %}Restart {{ d.name }}{% endblock %}
+{% macro state(id) %}{% set s = (live.get(id) or {}).get("state", "unknown") %}<span class="pill {{ {'down': 'down', 'warn': 'warn'}.get(s, '') }}">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(s, "unknown"), 12) }} {{ {"ok": "działa", "down": "nie działa", "warn": "uwaga", "off": "wyłączone"}.get(s, "brak danych") }}</span>{% endmacro %}
+{% macro act(g, key, label) %}{% set o = acts[g.id].get(key) %}{% if o %}<a class="btn small" href="/urzadzenia/{{ g.id }}/akcje/{{ o.ref_id }}/{{ o.key }}">{{ label }}…</a>{% else %}<span class="muted small">zrób w Proxmoxie (akcja niedozwolona w profilu)</span>{% endif %}{% endmacro %}
+{% block content %}
+<p class="crumbs"><a href="/urzadzenia">Infrastruktura</a> / <a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a> / bezpieczny restart</p>
+<h1>Bezpieczny restart {{ d.name }}</h1>
+<p class="lead">Kolejność liczy się sama z zależności: najpierw wyłączasz to, co korzysta z innych maszyn, na końcu to, od czego one zależą. Uruchamiasz odwrotnie.</p>
+
+<ol class="steps">
+  <li class="step"><span class="step-no">1</span><div class="grow card">
+    <h2>Planowana przerwa</h2>
+    {% if breaks %}<p>{{ st("ok", 14) }} Trwa do <b>{{ breaks[0].ends_at | hm }}</b> — awarie {{ d.name }} i maszyn na nim nie otworzą incydentu.</p>
+    {% else %}
+    <form class="break-form" method="post" action="/urzadzenia/{{ d.id }}/przerwa">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="reason" value="Restart serwera">
+      <label>Na <select name="minutes"><option value="30">30 min</option><option value="60" selected>1 h</option><option value="120">2 h</option></select></label>
+      <button class="btn primary" type="submit">Zacznij przerwę</button>
+    </form>{% endif %}
+  </div></li>
+
+  <li class="step"><span class="step-no">2</span><div class="grow card">
+    <h2>Wyłącz maszyny w tej kolejności</h2>
+    {% if plan.shutdown %}
+    <ol class="list-rows plan-list">
+      {% for g in plan.shutdown %}<li><span class="grow"><a href="/urzadzenia/{{ g.id }}">{{ g.name }}</a>
+        {% if g.needs %}<span class="muted small">· korzysta z: {{ g.needs | join(", ") }}</span>{% endif %}
+        {% if g.apps %}<span class="muted small">· wyłączy też: {{ g.apps | join(", ") }}</span>{% endif %}</span>
+        {{ state(g.id) }} {{ act(g, "shutdown", "Wyłącz") }}</li>{% endfor %}
+    </ol>
+    {% else %}<p class="muted">Na tym serwerze nie ma maszyn w dokumentacji.</p>{% endif %}
+  </div></li>
+
+  <li class="step"><span class="step-no">3</span><div class="grow card">
+    <h2>Zrestartuj serwer</h2>
+    <p>W Proxmoxie: <i>{{ d.name }} → Reboot</i>{% if d.app_url %} (<a href="{{ d.app_url }}" target="_blank" rel="noopener noreferrer">otwórz Proxmox ↗</a>){% endif %}. Panel celowo nie ma uprawnień do restartu węzła.</p>
+    <p>Teraz: {{ state(d.id) }}</p>
+  </div></li>
+
+  <li class="step"><span class="step-no">4</span><div class="grow card">
+    <h2>Uruchom w tej kolejności</h2>
+    <p class="muted small">Maszyny z autostartem wstaną same — wtedy tylko sprawdź, czy mają „działa”.</p>
+    <ol class="list-rows plan-list">
+      {% for g in plan.start %}<li><span class="grow"><a href="/urzadzenia/{{ g.id }}">{{ g.name }}</a></span>{{ state(g.id) }} {{ act(g, "start", "Uruchom") }}</li>{% endfor %}
+    </ol>
+  </div></li>
+
+  <li class="step"><span class="step-no">5</span><div class="grow card">
+    <h2>Sprawdź i zakończ przerwę</h2>
+    <p>Gdy wszystko wyżej ma „działa”, zakończ przerwę na <a href="/urzadzenia/{{ d.id }}">karcie {{ d.name }}</a>. Jeśli coś nie wstanie, po końcu przerwy panel otworzy incydent i dopisze, że przerwa właśnie się skończyła.</p>
+  </div></li>
+</ol>
+{% endblock %}

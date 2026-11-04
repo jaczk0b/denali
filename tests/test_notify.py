@@ -53,8 +53,25 @@ def test_jedno_powiadomienie_po_zebraniu_skutkow_i_rozwiazane(conn, app):
     assert msg["allowed_mentions"] == {"parse": []}                  # bez @everyone
     incidents.recover(conn, truenas, now=1200)
     assert run(notify.process(conn, app.state.box, "https://denali.lan", discord.transport, now=1210)) == 1
-    assert discord.sent[1]["embeds"][0]["title"] == "Rozwiązane: truenas nie działa"
+    assert discord.sent[1]["embeds"][0]["title"] == "Rozwiązane: truenas znowu działa"
     assert run(notify.process(conn, app.state.box, "https://denali.lan", discord.transport, now=1300)) == 0
+
+
+def test_powiadomienie_mowi_co_sie_stalo(conn, app):
+    """Objaw ze źródła w otwarciu, a w „rozwiązane” — co było, co jest teraz i ile trwało."""
+    discord = FakeDiscord()
+    pve = inv.create_device(conn, "pve", "host", criticality=1)
+    notify.save_channel(conn, app.state.box, "Discord", WEBHOOK)
+    g = inv.load_graph(conn)
+    [f] = g.analyze({pve: "down"})
+    iid, _ = incidents.record_finding(conn, g, f, now=1000, why="192.168.1.10 nie odpowiada")
+    run(notify.process(conn, app.state.box, "https://denali.lan", discord.transport, now=1070))
+    assert "**Co się stało:** 192.168.1.10 nie odpowiada" in discord.sent[0]["embeds"][0]["description"]
+    incidents.recover(conn, pve, now=1180, why="odpowiada w 2 ms")
+    run(notify.process(conn, app.state.box, "https://denali.lan", discord.transport, now=1200))
+    text = discord.sent[1]["embeds"][0]["description"]
+    assert "**Było:** 192.168.1.10 nie odpowiada" in text and "**Teraz:** odpowiada w 2 ms" in text
+    assert "Trwało 3 min" in text
 
 
 def test_zajmuje_sie_tym_przed_wyslaniem_wycisza(conn, app):

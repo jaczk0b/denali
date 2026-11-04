@@ -1,6 +1,6 @@
 <!doctype html>
 {% from "_makra.html" import search_icon, account_menu %}
-<html lang="pl">
+<html lang="pl" data-theme="{{ theme or 'grafit' }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -32,8 +32,9 @@
       {{ search_icon() }}
       <label class="sr" for="q-top">Szukaj</label>
       <input id="q-top" type="search" name="q" placeholder="Szukaj: urządzenie, IP, MAC, procedura…" value="{{ q or '' }}">
+      <button type="button" class="kbd" data-palette title="Szybkie przejście">Ctrl K</button>
     </form>
-    {% if sess.kind != "kiosk" %}{{ account_menu(sess, counts, csrf) }}{% endif %}
+    {% if sess.kind != "kiosk" %}{{ account_menu(sess, counts, csrf, theme, path) }}{% endif %}
   </div>
 </header>
 {% endif %}

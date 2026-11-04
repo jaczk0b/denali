@@ -25,7 +25,7 @@ DEP_TYPES = {"zasilanie": "Zasilanie", "siec": "Sieć", "dane": "Dane", "usluga"
 ADDRESS_KINDS = ("ip", "mac", "hostname")
 PULPIT_GROUPS = ("codzien", "zarzadzanie", "brak")
 EDITABLE = ("name", "kind", "role", "criticality", "parent_id", "profile_id", "place", "serial", "notes_md", "icon",
-            "app_url", "pulpit_group")
+            "app_url", "pulpit_group", "tcp_ports")
 
 _MAC = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 _HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
@@ -64,6 +64,13 @@ def _clean(conn, fields, device_id=None, kind=None):
         raise InventoryError("Krytyczność to P1, P2 albo P3.")
     if "pulpit_group" in out and out["pulpit_group"] not in PULPIT_GROUPS:
         raise InventoryError("Nieznana grupa pulpitu.")
+    if "tcp_ports" in out:
+        raw = [p for p in re.split(r"[\s,;]+", (out["tcp_ports"] or "").strip()) if p]
+        if any(not p.isdigit() or not 0 < int(p) < 65536 for p in raw):
+            raise InventoryError("Porty TCP: liczby od 1 do 65535, oddzielone przecinkami.")
+        if len(set(raw)) > 10:
+            raise InventoryError("Najwyżej 10 portów TCP na urządzenie.")
+        out["tcp_ports"] = ", ".join(str(p) for p in sorted({int(p) for p in raw}))
     if out.get("app_url") and not re.match(r"^https?://", out["app_url"]):
         raise InventoryError("Adres aplikacji musi zaczynać się od http:// albo https://")
     if out.get("parent_id") is not None:

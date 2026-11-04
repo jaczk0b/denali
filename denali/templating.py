@@ -20,7 +20,7 @@ STATIC_V = hashlib.sha256(b"".join((Path(__file__).resolve().parent / "static" /
 # Markdown bez surowego HTML; markdown-it sam odrzuca linki javascript: i data:
 # Strony odświeżane na żywo (SSE). Tylko widoki do patrzenia — nie strona po wysłaniu formularza (błąd albo
 # odsłonięte hasło zniknęłyby przy podmianie) ani karta urządzenia ze skarbcem.
-LIVE_TEMPLATES = {"pulpit.html", "urzadzenia.html", "incydenty.html", "incydent.html", "infra_proxmox.html",
+LIVE_TEMPLATES = {"pulpit.html", "restart_hosta.html", "urzadzenia.html", "incydenty.html", "incydent.html", "infra_proxmox.html",
                   "infra_truenas.html", "infra_docker.html", "infra_siec.html", "infra_vps.html", "infra_adresy.html",
                   "infra_mapa.html"}
 _md = MarkdownIt("commonmark", {"html": False}).enable("table").enable("strikethrough")
@@ -90,10 +90,20 @@ def _counts(request: Request) -> dict:
         }
 
 
+THEME_COOKIE = "denali_motyw"
+THEMES = ("grafit", "zorza")            # pierwszy = domyślny
+THEME_LABELS = {"grafit": "Grafit", "zorza": "Zorza (noc nad Denali)"}
+
+
+templates.env.globals["THEME_LABELS"] = THEME_LABELS
+
+
 def render(request: Request, name: str, ctx: dict | None = None, status: int = 200):
     sess = getattr(request.state, "sess", None)
     signed_in = bool(sess) and sess["kind"] != "pending"
+    theme = request.cookies.get(THEME_COOKIE, "")
     base = {"sess": sess, "csrf": sess["csrf"] if sess else "", "path": request.url.path,
+            "theme": theme if theme in THEMES else THEMES[0],
             "counts": _counts(request) if signed_in else {}, "live_version": ""}
     if signed_in and request.method == "GET" and name in LIVE_TEMPLATES and status == 200:
         with request.app.state.engine.connect() as conn:

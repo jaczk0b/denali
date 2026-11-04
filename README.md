@@ -23,6 +23,7 @@ Spis treści:
 [Agent i aktualizacje](#agent-i-aktualizacje) ·
 [Akcje](#akcje) ·
 [Terminale](#terminale) ·
+[Monitorowanie](#monitorowanie) ·
 [Migracja z HLC](#migracja-z-hlc) ·
 [Kopia zapasowa](#kopia-zapasowa) ·
 [Odtworzenie](#odtworzenie) ·
@@ -331,6 +332,49 @@ hasła konta na hoście; hosta obsługujesz z panelu Proxmoxa.
 **Gotowe polecenia** — stała lista tylko do odczytu (dyski, pamięć, procesy, usługi z błędem, logi, Docker, porty,
 adresy), przez agenta 1.3 lub nowszego. Panel wysyła tylko klucz polecenia, a treść jest w kodzie agenta, więc dowolnego
 polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/denali-agent.py pozwol polecenia`. Wynik pojawia się po około minucie, z kolejnym raportem agenta.
+
+## Monitorowanie
+
+- **Sprawdzenia liczą się same** z adresów urządzenia: ping (IP albo nazwa hosta), HTTP (adres aplikacji), „z internetu”
+  (domena w publicznym DNS), **DNS** (nazwa hosta z kropką, np. `nas.lan`, ma wskazywać IP urządzenia — najwyżej „uwaga”)
+  i **porty TCP** wpisane w *Edytuj → Porty do sprawdzania* (np. `5432, 1883` dla bazy i MQTT).
+- **Historia** na karcie urządzenia: pasek dostępności (24 h i 7 dni) i czas odpowiedzi z ostatniej doby.
+  Zmiany stanu zostają 180 dni, próbki czasu odpowiedzi (co 5 min) 30 dni.
+- **Planowana przerwa** — karta urządzenia → *Zacznij przerwę* (15 min – 4 h). Awaria urządzenia i tego, co od niego
+  twardo zależy, nie otworzy incydentu ani nie wyśle powiadomienia. Kończy się sama albo *Zakończ teraz*.
+- **Migotanie** — gdy przyczyna padnie 3 razy w 30 minut, incydent zostaje otwarty i zamyka się dopiero po 10 minutach
+  spokoju: jedno powiadomienie i jedno „rozwiązane” zamiast serii.
+- **Powiadomienia** mówią, co dokładnie zgłosiło źródło (np. „192.168.1.10 nie odpowiada”, „port 5432 zamknięty”),
+  a „rozwiązane” — co było, co jest teraz i ile trwało.
+- **Pulpit** zaczyna się od jednego zdania: „Wszystko działa”, „Nie odpowiada: … (jeszcze nie awaria)” albo
+  „1 problem: …” z linkiem do incydentu. Obok widżet **Nadchodzące**: wygasające certyfikaty, opłaty OVH,
+  aktualizacje bezpieczeństwa czekające ponad 7 dni, stara kopia Denali i magazyny, które się zapełniają.
+- **Co się zmieniło przed awarią** — nowy incydent sam dostaje listę zmian z ostatnich 2 godzin przy przyczynie i tym,
+  od czego zależy: akcje z panelu, zmieniona konfiguracja routera, wahania stanu, koniec przerwy, edycja dokumentacji.
+  Te same zmiany idą w powiadomieniu („Wcześniej: …”).
+- **Restart z panelu** (Proxmox, agent, Komodo) sam zakłada planowaną przerwę (10–60 min, zależnie od akcji).
+  Serwer fizyczny ma *Bezpieczny restart…*: kolejność wyłączania i uruchamiania maszyn liczona z zależności,
+  przerwa jednym kliknięciem, stan na żywo. Sam restart węzła robisz w Proxmoxie — panel nie ma do tego uprawnień.
+- **Mapa**: najechanie na urządzenie podświetla cały łańcuch zależności; *Co jeśli…?* pokazuje, co przestanie
+  działać, gdy wybrane urządzenie padnie (symulacja, nic nie jest wyłączane).
+- **Prognoza miejsca** — pule TrueNAS i magazyny PBS: zajętość co godzinę, prognoza z przyrostu w ostatnich 14 dniach
+  (potrzeba min. 2 dni danych). Poniżej 14 dni do zapełnienia — wiadomość na Discord (raz na tydzień).
+- **Podsumowanie tygodnia** na Discord w poniedziałek od 8:00 (albo *Powiadomienia → Wyślij teraz*).
+- **Ctrl+K** (albo `/`) — szybkie przejście do urządzenia, procedury, incydentu albo strony panelu.
+- **Motyw**: menu konta → kółka obok „Motyw”: *Grafit* albo *Zorza* (noc nad Denali). Zapamiętany w przeglądarce.
+- **Dla innych programów**: ustaw `DENALI_METRICS_TOKEN` w `.env`, a panel wystawi `/metrics` (Prometheus) i
+  `/api/stan` (JSON). Oba wymagają nagłówka `Authorization: Bearer <token>`; bez tokenu w `.env` ich nie ma.
+  Home Assistant, `configuration.yaml`:
+
+  ```yaml
+  rest:
+    - resource: https://denali.serwispowers.com/api/stan
+      headers: { Authorization: !secret denali_token }   # w secrets.yaml: "Bearer <token>"
+      scan_interval: 60
+      sensor:
+        - name: Denali otwarte incydenty
+          value_template: "{{ value_json.incidents | length }}"
+  ```
 
 ## Migracja z HLC
 

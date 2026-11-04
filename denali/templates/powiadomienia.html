@@ -27,6 +27,13 @@
     </ul>
     {% else %}<p class="muted">Brak kanałów — awarie widać tylko w panelu.</p>{% endif %}
   </section>
+  {% if rows %}
+  <section class="card">
+    <h2>Podsumowanie tygodnia</h2>
+    <p class="muted small">W poniedziałek od 8:00 na wszystkie włączone kanały: dostępność, incydenty, co migocze, nadchodzące terminy, aktualizacje.</p>
+    <form method="post" action="/admin/powiadomienia/podsumowanie"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Wyślij teraz</button></form>
+  </section>
+  {% endif %}
 </div>
 <div class="col">
   <form class="card" method="post" action="/admin/powiadomienia/straznik" autocomplete="off">

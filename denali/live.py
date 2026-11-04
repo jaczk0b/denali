@@ -4,7 +4,7 @@ Stan urządzenia łączy wszystkie źródła:
 - integracje (np. Proxmox): ok | warn | down | off | unknown,
 - sprawdzenia z LAN (ping, HTTP): „nie działa” dopiero, gdy nie odpowiada dłużej niż próg z profilu
   (down_after_s) — krótka czkawka nie robi alarmu,
-- sprawdzenie z internetu: najwyżej „uwaga” — w domu aplikacja działa, więc nie jest przyczyną awarii;
+- sprawdzenie z internetu i DNS: najwyżej „uwaga” — w domu aplikacja działa, więc nie jest przyczyną awarii;
   zwykle winny jest Pangolin, DNS albo certyfikat.
 
 Pierwszeństwo: off (wyłączone celowo — wtedy milczący ping nie jest awarią) → down → warn → ok → unknown.
@@ -17,12 +17,18 @@ import time
 
 from sqlalchemy import func, select
 
-from . import incidents, inventory as inv, profiles
+from . import changes, history, incidents, inventory as inv, maintenance, profiles
 from .db import kv_get, kv_set
 from .models import check_state, device, external_ref, incident, incident_event, observed_state
 
 STATES_KEY = "live.states"
+WARN_ONLY = ("internet", "dns")     # urządzenie działa — zawodzi droga do niego, więc najwyżej „uwaga”
 STALE_AFTER = 300           # stan starszy niż 5 min = worker nie działa → nie pokazujemy go jako aktualnego
+# Migotanie: tyle przejść w „nie działa” w oknie = niestabilne. Wtedy incydent zamyka się dopiero po FLAP_CALM
+# spokoju — jedno powiadomienie i jedno „rozwiązane” zamiast serii.
+FLAP_WINDOW = 1800
+FLAP_COUNT = 3
+FLAP_CALM = 600
 
 
 def compute(conn, now=None):
@@ -44,6 +50,7 @@ def compute(conn, now=None):
             continue
         down_after = profiles.value(conn, d, "down_after_s")
         states = list(from_sources.get(d, []))
+        pending_until = None    # najwcześniejsza chwila, w której niedziałające sprawdzenie zostanie uznane za awarię
         for c in from_checks.get(d, []):
             if c["ok"]:
                 soon = c["cert_expires_at"] and c["cert_expires_at"] - now < 14 * 86400
@@ -51,15 +58,20 @@ def compute(conn, now=None):
             elif not c["first_fail_at"]:
                 states.append(("unknown", c["summary"]))
             elif now - c["first_fail_at"] >= down_after:
-                states.append(("warn" if c["kind"] == "internet" else "down", c["summary"]))
+                states.append(("warn" if c["kind"] in WARN_ONLY else "down", c["summary"]))
             else:
-                states.append(("unknown", f"{c['summary']} (czekam {down_after} s, zanim uznam za awarię)"))
+                until = c["first_fail_at"] + down_after
+                pending_until = min(pending_until or until, until)
+                states.append(("unknown", f"{c['summary']} (jeśli nie wróci do "
+                                          f"{time.strftime('%H:%M', time.localtime(until))}, uznam to za awarię)"))
         if not states:
             continue
         kinds = [s for s, _ in states]
         for wanted in ("off", "down", "warn", "ok", "unknown"):
             if wanted in kinds:
                 out[d] = {"state": wanted, "why": "; ".join(w for s, w in states if s == wanted)[:300]}
+                if wanted == "unknown" and pending_until:
+                    out[d]["pending_until"] = pending_until
                 break
     return out
 
@@ -94,14 +106,23 @@ def version(conn, now=None):
 def evaluate(conn, now=None):
     """Liczy stany, zapisuje je i aktualizuje incydenty. Zwraca listę ustaleń analizy przyczyny."""
     now = now or time.time()
+    before = {int(k): v for k, v in ((kv_get(conn, STATES_KEY) or {}).get("devices") or {}).items()}
     live = compute(conn, now)
-    kv_set(conn, STATES_KEY, {"at": now, "devices": {str(k): v for k, v in live.items()}})
     g = inv.load_graph(conn)
+    planned = maintenance.covered(conn, g, now)
+    for d, m in planned.items():
+        if d in live and live[d]["state"] in ("down", "unknown"):
+            live[d] = {"state": "off", "why": maintenance.describe(m, g if m["device_id"] != d else None)}
+    history.record_changes(conn, before, live, now)
+    kv_set(conn, STATES_KEY, {"at": now, "devices": {str(k): v for k, v in live.items()}})
     findings = g.analyze({d: v["state"] for d, v in live.items()})
     causes = {f.cause for f in findings}
     effect_of = {e: f.cause for f in findings for e in f.effects}
     for f in findings:
-        incidents.record_finding(conn, g, f, now)
+        iid, new = incidents.record_finding(conn, g, f, now, why=live.get(f.cause, {}).get("why", ""))
+        if new:
+            for ts, text in reversed(changes.before(conn, g, f.cause, now)):
+                incidents.add_event(conn, iid, "zmiana", text, now=now)
     open_auto = conn.execute(select(incident.c.id, incident.c.root_device_id).where(
         incident.c.source == "auto", incident.c.status != "zamkniety")).all()
     for inc in open_auto:
@@ -112,6 +133,14 @@ def evaluate(conn, now=None):
             # przyczyna leży wyżej — ten incydent jest teraz skutkiem większej awarii
             incidents.close(conn, inc.id, "system", now=now,
                             text=f"Teraz to skutek awarii: {g.name(effect_of[root])} — zobacz nowy incydent.")
+        elif root in planned:
+            continue    # incydent sprzed przerwy zostaje — przerwa nie znaczy, że naprawione
         elif live.get(root, {}).get("state") != "down":
-            incidents.recover(conn, root, now=now)
+            last = history.last_change(conn, root)
+            back_at = last["ts"] if last and last["state"] != "down" else now
+            flaps = history.down_episodes(conn, root, now - FLAP_WINDOW)
+            if flaps >= FLAP_COUNT and now - back_at < FLAP_CALM:
+                incidents.mark_unstable(conn, inc.id, flaps, FLAP_WINDOW, FLAP_CALM, now)
+                continue
+            incidents.recover(conn, root, now=back_at, why=live.get(root, {}).get("why", ""))
     return findings

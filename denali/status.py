@@ -3,6 +3,8 @@
 Stan na żywo przyjdzie z integracjami (Etap 3). Do tego czasu jedynym źródłem są otwarte incydenty,
 a reszta jest pokazana uczciwie jako „brak danych”.
 """
+import time
+
 from sqlalchemy import select
 
 from .models import device, incident, incident_device, incident_event
@@ -74,6 +76,58 @@ def layers(devices, marks, live=None):
             state, text = "none", "nic tu nie ma"
         out.append({"key": key, "label": label, "title": title, "state": state, "text": text, "count": len(devs),
                     "link": (causes or effects or [None])[0]})
+    return out
+
+
+def _devices_word(n):
+    """1 urządzenie, 2–4 urządzenia, 5+ urządzeń (12–14 też „urządzeń”)."""
+    if n == 1:
+        return "urządzenie"
+    return "urządzenia" if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) else "urządzeń"
+
+
+def verdict(devices, states, open_inc, breaks, last_closed=None, now=None):
+    """Jedno zdanie na górę pulpitu: czy wszystko działa, a jeśli nie — co i od kiedy.
+
+    states: stan na żywo, open_inc: otwarte incydenty (najnowsze pierwsze), breaks: {device_id: przerwa},
+    last_closed: ostatni zamknięty incydent (do „spokojnie od …”)."""
+    names = {d["id"]: d["name"] for d in devices}
+    pauses = [f"{names.get(d, d)} do {time.strftime('%H:%M', time.localtime(m['ends_at']))}"
+              for d, m in breaks.items() if d in names]
+    out = {"pauses": pauses, "items": []}
+    if open_inc:
+        n = len(open_inc)
+        first = open_inc[-1]                    # najstarszy — od niego zwykle wszystko się zaczęło
+        word = "problem" if n == 1 else ("problemy" if n < 5 else "problemów")
+        out.update(state="down" if any(i["severity"] == "krytyczny" for i in open_inc) else "warn",
+                   headline=f"{n} {word}: {first['title']}",
+                   sub=(states.get(first["root_device_id"]) or {}).get("why", ""),
+                   since=first["started_at"], link=f"/incydenty/{first['id']}",
+                   items=[{"title": i["title"], "since": i["started_at"], "link": f"/incydenty/{i['id']}",
+                           "acked": i["status"] == "potwierdzony"} for i in open_inc[:-1][:3]])
+        return out
+    if not states:
+        out.update(state="unknown", headline="Nie wiem, co działa",
+                   sub="Brak stanu na żywo — podłącz integrację albo sprawdź, czy działa worker.")
+        return out
+    waiting = sorted(((v["pending_until"], names[d]) for d, v in states.items() if v.get("pending_until") and d in names))
+    if waiting:
+        until = time.strftime("%H:%M", time.localtime(waiting[0][0]))
+        who = ", ".join(n for _, n in waiting[:3]) + (" i inne" if len(waiting) > 3 else "")
+        out.update(state="warn", headline=f"Nie odpowiada: {who}",
+                   sub=f"jeszcze nie awaria — jeśli nie wróci do {until}, otworzę incydent")
+        return out
+    warn = [names[d] for d, v in states.items() if v["state"] == "warn" and d in names]
+    checked = sum(1 for v in states.values() if v["state"] in ("ok", "warn"))
+    if warn:
+        out.update(state="warn", headline="Działa, ale " + ("jest uwaga" if len(warn) == 1 else f"są {len(warn)} uwagi"),
+                   sub=", ".join(sorted(warn)[:4]) + (" i inne" if len(warn) > 4 else ""))
+        return out
+    calm = ""
+    if last_closed and last_closed.get("ended_at"):
+        days = int(((now or time.time()) - last_closed["ended_at"]) // 86400)
+        calm = " · bez awarii od " + ("dziś" if days == 0 else ("wczoraj" if days == 1 else f"{days} dni"))
+    out.update(state="ok", headline="Wszystko działa", sub=f"sprawdzono {checked} {_devices_word(checked)}{calm}")
     return out
 
 

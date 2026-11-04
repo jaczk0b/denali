@@ -22,7 +22,7 @@ import time
 
 from sqlalchemy import select
 
-from . import auth, configs, polecenia, profiles
+from . import auth, configs, maintenance, polecenia, profiles
 from .adapters import AdapterError, registry
 from .db import kv_get, kv_set
 from .models import (action_run, device, external_ref, incident, incident_device, incident_event, integration,
@@ -37,6 +37,10 @@ STUCK_AFTER = 5 * 60            # „trwa” bez zadania w źródle (panel padł
 AGENT_ACK_TIMEOUT = 15 * 60     # agent nie potwierdził przyjęcia zlecenia
 AGENT_RUN_TIMEOUT = 2 * 3600    # agent nie podał wyniku
 ACTIVE = ("czeka", "zlecona", "trwa")
+# Akcje, po których urządzenie celowo na chwilę przestaje działać: zlecenie samo zakłada planowaną przerwę (minuty),
+# żeby własny restart nie otworzył incydentu ani nie wysłał powiadomienia.
+PLANNED_BREAK = {"proxmox.reboot": 15, "proxmox.shutdown": 60, "proxmox.stop": 60, "agent.reboot": 15,
+                 "komodo.restart": 10, "komodo.deploy": 15, "komodo.stop": 60}
 STATUS_LABEL = {"czeka": "czeka", "zlecona": "zlecona", "trwa": "trwa", "ok": "wykonana", "blad": "błąd"}
 
 
@@ -302,6 +306,11 @@ def request(conn, *, device_id, ref_id, key, user, role, ip="", reauth_ok=False,
         auth.audit(conn, "action_request", user=user, ip=ip, target=dev.name,
                    params={"run": last, "action": reboot["key"], "external_id": reboot["external_id"],
                            "after": run_id, "if_required": True})
+    pause = PLANNED_BREAK.get(o["key"])
+    if reboot:
+        pause = max(pause or 0, 30)
+    if pause and device_id not in maintenance.active(conn, now):
+        maintenance.start(conn, device_id, pause, f"{o['spec'].label} z panelu", user, now=now)
     _incident_note(conn, device_id, f"Akcja zlecona: {o['spec'].label} ({o['integration']['name']})"
                    + (" — najpierw snapshot" if first else "") + (" — potem restart, jeśli wymagany" if reboot else ""),
                    user, now)

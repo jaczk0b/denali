@@ -8,9 +8,14 @@ do serwera. Linie:
 - niebieska przerywana: zależność „dane” (czerwona, gdy źródło danych nie działa),
 - cienka szara: aplikacja → maszyna, na której działa.
 Klienci sieci (komputery, telefony) domyślnie schowani; po włączeniu stoją pod routerem / AP.
+
+Każde urządzenie ma w data-rel listę tego, od czego zależy i co od niego zależy (przechodnio) — przeglądarka
+podświetla po najechaniu cały łańcuch (static/denali.js). Tryb „co jeśli” (simulate=id) rysuje stan, jaki byłby,
+gdyby to urządzenie padło: zamiast stanu na żywo — przyczyna, skutki twarde i to, co będzie działać gorzej.
 """
 from sqlalchemy import select
 
+from . import inventory as inv
 from .models import cable, dependency, device, device_address
 
 INTERNET = {"vps", "modem"}
@@ -35,7 +40,20 @@ def _state(did, live, marks):
     return (live.get(did) or {}).get("state", "unknown")
 
 
-def build(conn, live, marks, with_clients=False):
+def simulation(conn, device_id):
+    """Co by się stało, gdyby device_id padło: (znaczniki jak z incydentu, podsumowanie) albo (None, None)."""
+    g = inv.load_graph(conn)
+    if not inv.get_device(conn, device_id):
+        return None, None
+    hard, soft = g.impact(device_id)
+    marks = {device_id: "przyczyna", **{d: "skutek" for d in hard}, **{d: "gorzej" for d in soft}}
+    return marks, {"id": device_id, "name": g.name(device_id), "hard": sorted(g.name(d) for d in hard),
+                   "soft": sorted(g.name(d) for d in soft)}
+
+
+def build(conn, live, marks, with_clients=False, simulate=None):
+    if simulate:
+        live = {}                                   # w symulacji liczy się tylko to, co wynika z grafu
     devs = {d["id"]: dict(d) for d in conn.execute(
         select(device.c.id, device.c.name, device.c.kind, device.c.parent_id).order_by(device.c.name)).mappings()}
     ips = {}
@@ -58,18 +76,25 @@ def build(conn, live, marks, with_clients=False):
             (inside[d["parent_id"]] if d["parent_id"] in host_ids else loose).append(d)
     apps = [d for d in devs.values() if kind(d) in APPS]
     nodes, rect = [], {}                            # rect: device_id → (x, y, w, h)
+    layers = []                                     # to samo jako lista warstw — na wąski ekran telefonu
 
-    def node(d, x, y, sub=None):
+    def node(d, x, y, sub=None, nested=False):
         rect[d["id"]] = (x, y, W, H)
         s = _state(d["id"], live, marks)
         nodes.append({"id": d["id"], "x": x, "y": y, "name": d["name"], "short": _short(d["name"], 24),
                       "sub": sub or ips.get(d["id"]) or "", "kind": kind(d), "state": s, "label": STATE_LABEL.get(s, s)})
+        layers[-1]["items"].append({**nodes[-1], "nested": nested})
+
+    def column(x, label):
+        columns.append({"x": x, "label": label})
+        if label:
+            layers.append({"label": label, "items": []})
 
     columns, x = [], LEFT
     # 1: internet
     col = [d for d in devs.values() if kind(d) in INTERNET]
     if col:
-        columns.append({"x": x, "label": "Internet"})
+        column(x, "Internet")
         for j, d in enumerate(col):
             node(d, x, TOP + j * (H + GAP_Y))
         x += W + GAP_X
@@ -80,7 +105,7 @@ def build(conn, live, marks, with_clients=False):
     if clients and not levels:
         levels = [[]]
     for depth, level in enumerate(levels):
-        columns.append({"x": x, "label": "Sieć" if depth == 0 else ""})
+        column(x, "Sieć" if depth == 0 else "")
         y = TOP
         for d, up in sorted(level, key=lambda p: (rect[p[1]][1] if p[1] in rect else 0, p[0]["name"].lower())):
             y = max(y, rect[up][1] if up in rect else TOP)
@@ -95,7 +120,7 @@ def build(conn, live, marks, with_clients=False):
     boxes, y = [], TOP
     servers_x = x
     if hosts or loose:
-        columns.append({"x": x, "label": "Serwery i maszyny"})
+        column(x, "Serwery i maszyny")
     for h in sorted(hosts, key=lambda h: (-len(inside[h["id"]]), h["name"].lower())):
         # maszyny z aplikacjami na koniec — w ramce z dwiema kolumnami trafiają do prawej, bliżej kolumny aplikacji
         has_apps = {d["parent_id"] for d in apps}
@@ -112,9 +137,11 @@ def build(conn, live, marks, with_clients=False):
         boxes.append({"id": h["id"], "x": x, "y": y, "w": bw, "h": bh, "name": h["name"], "ip": ips.get(h["id"], ""),
                       "state": s, "label": STATE_LABEL.get(s, s), "count": len(kids)})
         rect[h["id"]] = (x, y, bw, bh)
+        layers[-1]["items"].append({"id": h["id"], "name": h["name"], "sub": ips.get(h["id"], ""), "kind": kind(h),
+                                    "state": s, "label": STATE_LABEL.get(s, s), "nested": False})
         for i, d in enumerate(kids):
             c, r = divmod(i, per_col)
-            node(d, x + BOX_PAD + c * (W + BOX_PAD), y + BOX_HEAD + BOX_PAD + r * (H + GAP_Y))
+            node(d, x + BOX_PAD + c * (W + BOX_PAD), y + BOX_HEAD + BOX_PAD + r * (H + GAP_Y), nested=True)
         y += bh + BOX_GAP
     for d in loose:
         node(d, x, y)
@@ -123,7 +150,7 @@ def build(conn, live, marks, with_clients=False):
     x = servers_x + servers_w + (GAP_X if servers_w else 0)
     # 4: aplikacje na wysokości maszyny, na której działają
     if apps:
-        columns.append({"x": x, "label": "Aplikacje"})
+        column(x, "Aplikacje")
         def at(d):
             r = rect.get(d["parent_id"])
             return (r[1] if r else 1e9, d["name"].lower())
@@ -156,11 +183,17 @@ def build(conn, live, marks, with_clients=False):
             cls += " broken"
         if not hard and typ != "dane":
             cls += " soft"
-        lines.append({"d": _path(rect[a], rect[b]), "cls": cls.strip(), "dane": typ == "dane"})
+        lines.append({"d": _path(rect[a], rect[b]), "cls": cls.strip(), "dane": typ == "dane", "a": a, "b": b})
     lines.sort(key=lambda e: e["dane"])             # dane na wierzchu
+    g = inv.load_graph(conn)
+    for n in nodes + boxes:
+        hard, soft = g.impact(n["id"])
+        n["rel"] = " ".join(str(x) for x in sorted(g.ancestors(n["id"], hard_only=False) | hard | soft
+                                                    | {e[0] for e in edges if e[1] == n["id"]}
+                                                    | {e[1] for e in edges if e[0] == n["id"]}))
     height = max([n["y"] + H for n in nodes] + [b["y"] + b["h"] for b in boxes] + [TOP]) + 12
     hidden = sum(1 for d in devs.values() if kind(d) in CLIENTS)
-    return {"nodes": nodes, "boxes": boxes, "lines": lines, "columns": columns, "width": max(x - GAP_X + LEFT + 60, 300),
+    return {"nodes": nodes, "boxes": boxes, "lines": lines, "columns": columns, "layers": layers, "width": max(x - GAP_X + LEFT + 60, 300),
             "height": height, "w": W, "h": H, "hidden_clients": hidden}
 
 

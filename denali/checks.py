@@ -4,6 +4,10 @@
 - każde urządzenie z adresem aplikacji dostaje sprawdzenie HTTP z LAN (i datę ważności certyfikatu dla https),
 - adres aplikacji na domenie, która w publicznym DNS wskazuje adres publiczny, dostaje też sprawdzenie
   „z internetu” (niżej) — tak, jak łączy się ktoś spoza domu,
+- porty wpisane na urządzeniu (np. „5432, 1883”) dostają sprawdzenie TCP — usługi bez strony WWW,
+- nazwa hosta z kropką (np. nas.lan) przy urządzeniu z IP dostaje sprawdzenie DNS: czy domowy DNS ją zna i wskazuje
+  adres IP urządzenia
+  (najwyżej „uwaga” — urządzenie działa, tylko nazwa prowadzi donikąd),
 - profil „Monitoruj stan: nie” wyłącza sprawdzenia dla typu albo pojedynczego urządzenia.
 
 Ping działa bez uprawnień roota (gniazdo ICMP „datagramowe”, które Docker domyślnie pozwala otworzyć).
@@ -24,7 +28,7 @@ import httpx
 from cryptography import x509
 from sqlalchemy import delete, select
 
-from . import profiles
+from . import history, profiles
 from .models import check_state, device, device_address
 
 PING_TIMEOUT = 2.0
@@ -37,8 +41,9 @@ CONCURRENCY = 20
 @dataclass(frozen=True)
 class Spec:
     device_id: int
-    kind: str          # ping | http
+    kind: str          # ping | http | internet | tcp | dns
     target: str
+    expect: str = ""   # dns: adres IP, który nazwa powinna wskazywać
 
 
 @dataclass
@@ -54,7 +59,8 @@ class Result:
 
 # ───────────────────────── co sprawdzać ─────────────────────────
 def plan(conn):
-    devices = conn.execute(select(device.c.id, device.c.app_url, device.c.kind, device.c.profile_id)).mappings().all()
+    devices = conn.execute(select(device.c.id, device.c.app_url, device.c.kind, device.c.profile_id,
+                                  device.c.tcp_ports)).mappings().all()
     addrs = {}
     for a in conn.execute(select(device_address).order_by(device_address.c.is_primary.desc(), device_address.c.id)):
         addrs.setdefault(a.device_id, []).append(a)
@@ -67,11 +73,25 @@ def plan(conn):
         host = next((a.value for a in own if a.kind == "hostname"), None)
         if ip or host:
             specs.append(Spec(d["id"], "ping", ip or host))
+            for port in ports(d["tcp_ports"]):
+                specs.append(Spec(d["id"], "tcp", f"{ip or host}:{port}"))
+        for a in own:       # bez IP nie ma z czym porównać — samą nazwę i tak sprawdza ping
+            if ip and a.kind == "hostname" and "." in a.value:
+                specs.append(Spec(d["id"], "dns", a.value, ip))
         if d["app_url"]:
             specs.append(Spec(d["id"], "http", d["app_url"]))
             if public_candidate(d["app_url"]):
                 specs.append(Spec(d["id"], "internet", d["app_url"]))
     return specs
+
+
+def ports(text):
+    """„5432, 1883” → [1883, 5432]; śmieci pomijane (walidacja jest w inventory)."""
+    out = set()
+    for p in (text or "").replace(";", ",").replace(" ", ",").split(","):
+        if p.strip().isdigit() and 0 < int(p) < 65536:
+            out.add(int(p))
+    return sorted(out)
 
 
 # ───────────────────────── ping ─────────────────────────
@@ -158,6 +178,42 @@ def cert_expiry(host, port=443, timeout=5.0):
         der = s.getpeercert(binary_form=True)
     cert = x509.load_der_x509_certificate(der)
     return cert.not_valid_after_utc.timestamp()
+
+
+def _tcp_connect(host, port, timeout):
+    start = time.perf_counter()
+    with socket.create_connection((host, port), timeout=timeout):
+        return (time.perf_counter() - start) * 1000
+
+
+async def tcp(target, timeout=5.0):
+    """Usługa słucha na porcie. Tu odmowa połączenia = usługa nie działa (host żyje, ale nic nie słucha)."""
+    host, _, port = target.rpartition(":")
+    try:
+        ms = await asyncio.to_thread(_tcp_connect, host, int(port), timeout)
+    except ConnectionRefusedError:
+        return Result(False, f"port {port} zamknięty — usługa nie słucha")
+    except socket.timeout:
+        return Result(False, f"port {port} nie odpowiada (przekroczony czas)")
+    except OSError as e:
+        if e.errno == errno.ECONNREFUSED:
+            return Result(False, f"port {port} zamknięty — usługa nie słucha")
+        return Result(False, f"port {port}: brak połączenia")
+    return Result(True, f"port {port} otwarty · {ms:.0f} ms", ms)
+
+
+async def dns(name, expect=""):
+    """Domowy DNS zna nazwę i (gdy znamy IP urządzenia) wskazuje właśnie ten adres."""
+    start = time.perf_counter()
+    try:
+        infos = await asyncio.to_thread(socket.getaddrinfo, name, None, socket.AF_INET)
+    except socket.gaierror:
+        return Result(False, f"DNS nie zna nazwy {name}")
+    ms = (time.perf_counter() - start) * 1000
+    found = sorted({i[4][0] for i in infos})
+    if expect and expect not in found:
+        return Result(False, f"{name} wskazuje {', '.join(found)}, a urządzenie ma {expect}", ms)
+    return Result(True, f"{name} → {', '.join(found)}", ms)
 
 
 async def http(url, transport=None, now=None):
@@ -301,6 +357,10 @@ async def run_all(specs, transport=None, now=None):
                 return spec, await ping(spec.target)
             if spec.kind == "internet":
                 return spec, await internet(spec.target, transport, now)
+            if spec.kind == "tcp":
+                return spec, await tcp(spec.target)
+            if spec.kind == "dns":
+                return spec, await dns(spec.target, spec.expect)
             return spec, await http(spec.target, transport, now)
     return await asyncio.gather(*(one(s) for s in specs))
 
@@ -339,6 +399,8 @@ async def run(engine, transport=None, now=None):
     results = await run_all(specs, transport, now) if specs else []
     with engine.begin() as conn:
         record(conn, results, specs, now)
+        history.record_samples(conn, [(s.device_id, s.kind, r.ok, r.ms) for s, r in results
+                                      if not r.skip and not r.unknown], now)
     return len(specs)
 
 
