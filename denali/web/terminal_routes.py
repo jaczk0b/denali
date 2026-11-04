@@ -36,7 +36,8 @@ def terminals(request: Request, sess: dict = Depends(require_admin)):
     with request.app.state.engine.connect() as conn:
         rows = consoles.devices(conn)
         history = consoles.recent(conn)
-    return render(request, "terminale.html", {"devices": rows, "history": history})
+        scopes = consoles.scopes(conn)
+    return render(request, "terminale.html", {"devices": rows, "history": history, "scopes": scopes})
 
 
 @router.get("/terminale/{device_id:int}")

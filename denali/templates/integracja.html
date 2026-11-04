@@ -25,8 +25,10 @@
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <input type="hidden" name="type" value="{{ cls.type }}">
     <h2>Ustawienia</h2>
-    {% if cls.grants and not row %}
-    {{ grant_picker(cls, values.get("permissions") or [], commands, "Wklej w Shell węzła Proxmoxa (węzeł → Shell). Polecenie założy konto i wypisze sekret tokenu oraz certyfikat — wklej je niżej.") }}
+    {% if cls.grants %}
+    <h3 id="uprawnienia">Uprawnienia</h3>
+    {% if row %}<p class="small">Zapisane: <strong>{{ cls.grants | selectattr("key", "in", row.config.get("permissions") or []) | map(attribute="label") | join(", ") or "tylko odczyt" }}</strong></p>{% endif %}
+    {{ grant_picker(cls, values.get("permissions") or [], commands, "Po zmianie wklej to polecenie w Shell węzła Proxmoxa i zapisz na dole. Panel sprawdzi, czy token dostał te uprawnienia." if row else "Wklej w Shell węzła Proxmoxa (węzeł → Shell). Polecenie założy konto i wypisze sekret tokenu oraz certyfikat — wklej je niżej.") }}
     {% endif %}
     <label class="field">Nazwa<input name="name" value="{{ values.name or '' }}" required maxlength="100"></label>
     {% for f in cls.fields %}
@@ -53,16 +55,6 @@
       <a class="btn" href="/admin/integracje">Anuluj</a>
     </div>
   </form>
-
-  {% if row and cls.grants %}
-  <form class="card" id="uprawnienia" method="post" action="/admin/integracje/{{ row.id }}/uprawnienia">
-    <h2>Uprawnienia</h2>
-    <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    {{ grant_picker(cls, row.config.get("permissions") or [], commands, "Po zmianie wklej to polecenie w Shell węzła Proxmoxa i zapisz. Panel sprawdzi, czy token dostał te uprawnienia.") }}
-    <button class="btn mt" type="submit">Zapisz i sprawdź</button>
-    <p class="muted small mt">Dodanie zakresu wymaga potwierdzenia hasłem, odebranie działa od razu. Które akcje są dozwolone na których urządzeniach, ustawiasz w <a href="/admin/profile">Profilach</a>.</p>
-  </form>
-  {% endif %}
 
   {% if row and cls.action_fields %}
   <section class="card" aria-labelledby="akcje">

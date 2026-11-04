@@ -17,7 +17,13 @@
       <a class="btn small" href="/terminale/{{ d.id }}">Otwórz</a>
     </li>
     {% else %}
-    <li class="muted">Konsola: w <a href="/admin/integracje">Integracje → Proxmox → Uprawnienia</a> zaznacz „Konsola”. Gotowe polecenia: na maszynie z agentem <code>sudo python3 /opt/denali-agent/denali-agent.py pozwol polecenia</code>.</li>
+    {% for s in scopes %}
+    <li><a class="grow" href="/admin/integracje/{{ s.id }}#uprawnienia">{{ s.name }}</a>
+      <span class="small muted">{{ "„Konsola” zapisana, ale nie ma zatwierdzonych VM ani LXC" if s.console else "„Konsola” nie jest zapisana: zaznacz ją i kliknij Zapisz na dole formularza" }}</span></li>
+    {% else %}
+    <li class="muted">Dodaj <a href="/admin/integracje">integrację Proxmox</a> z zakresem „Konsola”.</li>
+    {% endfor %}
+    <li class="muted small">Gotowe polecenia: na maszynie z agentem <code>sudo python3 /opt/denali-agent/denali-agent.py pozwol polecenia</code></li>
     {% endfor %}
   </ul>
 </section>

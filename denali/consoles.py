@@ -16,6 +16,7 @@ import time
 from sqlalchemy import select
 
 from . import actions, auth
+from .adapters import registry
 from .models import console_session, device, external_ref, integration, observed_state
 
 log = logging.getLogger("denali.consoles")
@@ -48,6 +49,15 @@ def devices(conn):
             out.append({"id": r.id, "name": r.name, "console": [o for o in opts if o["key"] == KEY],
                         "commands": [o for o in opts if o["key"] != KEY]})
     return out
+
+
+def scopes(conn):
+    """Integracje z zakresami i to, co jest w nich naprawdę zapisane — pusta karta mówi, czego brakuje."""
+    rows = conn.execute(select(integration).order_by(integration.c.name)).mappings().all()
+    types = registry()
+    return [{"id": r["id"], "name": r["name"], "console": actions.has_credentials(r, next(
+        a for a in types[r["type"]].actions if a.grant == "konsola"))}
+        for r in rows if r["type"] in types and types[r["type"]].grants]
 
 
 def get(conn, console_id):

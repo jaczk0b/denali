@@ -10,6 +10,13 @@ from .test_akcje import admin, allow, fresh_reauth, pve, pve_actions  # noqa: F4
 from .test_proxmox import CONFIG
 
 
+def form_of(client, pve):
+    """Główny formularz integracji Proxmox, tak jak wysyła go przeglądarka."""
+    page = client.get(f"/admin/integracje/{pve['iid']}").text
+    return {"csrf_token": csrf_from(page), "type": "proxmox", "name": "pve", "url": CONFIG["url"],
+            "token_id": CONFIG["token_id"], "verify_tls": "1"}
+
+
 def confirm(app, client, location):
     """Okno z hasłem: to, co pokaże przeglądarka po przekierowaniu."""
     assert location == f"/potwierdz?next={RESUME_PATH}"
@@ -35,7 +42,8 @@ def test_zmiana_adresu_pyta_o_haslo_i_zapisuje_bez_ponownego_wypelniania(app, pv
     url = f"/admin/integracje/{pve['iid']}"
     page = admin.get(url).text
     r = admin.post(url, data={"csrf_token": csrf_from(page), "type": "proxmox", "name": "pve", "url": "https://nowy.host:8006",
-                              "token_id": CONFIG["token_id"], "token_secret": "NOWY-SEKRET", "verify_tls": "1"})
+                              "token_id": CONFIG["token_id"], "token_secret": "NOWY-SEKRET", "verify_tls": "1",
+                              "grant": "akcje"})
     assert r.status_code == 303
     with app.state.engine.connect() as conn:
         assert integrations.get(conn, pve["iid"])["config"]["url"] == CONFIG["url"]     # jeszcze nic nie zapisane
@@ -51,9 +59,8 @@ def test_zmiana_adresu_pyta_o_haslo_i_zapisuje_bez_ponownego_wypelniania(app, pv
 
 
 def test_wielokrotne_pola_wracaja_w_calosci(app, pve, admin):
-    url = f"/admin/integracje/{pve['iid']}/uprawnienia"
-    page = admin.get(f"/admin/integracje/{pve['iid']}").text
-    r = admin.post(url, data={"csrf_token": csrf_from(page), "grant": ["akcje", "konsola"]})
+    url = f"/admin/integracje/{pve['iid']}"
+    r = admin.post(url, data={**form_of(admin, pve), "grant": ["akcje", "konsola"]})
     replay(admin, confirm(app, admin, r.headers["location"]))
     with app.state.engine.connect() as conn:
         assert integrations.get(conn, pve["iid"])["config"]["permissions"] == ["akcje", "konsola"]
@@ -84,9 +91,9 @@ def test_formularze_widac_bez_potwierdzenia(app, pve, admin):
 
 
 def test_dokonczenie_jest_jednorazowe_i_wygasa(app, pve, admin, monkeypatch):
-    url = f"/admin/integracje/{pve['iid']}/uprawnienia"
-    page = admin.get(f"/admin/integracje/{pve['iid']}").text
-    admin.post(url, data={"csrf_token": csrf_from(page), "grant": ["akcje", "konsola"]})
+    url = f"/admin/integracje/{pve['iid']}"
+    base = form_of(admin, pve)
+    admin.post(url, data={**base, "grant": ["akcje", "konsola"]})
     fresh_reauth(app, admin)
     admin_get = admin.get(RESUME_PATH)
     assert "data-autosubmit" in admin_get.text
@@ -94,7 +101,7 @@ def test_dokonczenie_jest_jednorazowe_i_wygasa(app, pve, admin, monkeypatch):
     # po czasie zapamiętane działanie przepada
     with app.state.engine.begin() as conn:
         auth.mark_reauth(conn, admin.cookies.get("denali_session"), 0)
-    admin.post(url, data={"csrf_token": csrf_from(page), "grant": ["konsola"]})
+    admin.post(url, data={**base, "grant": ["akcje", "konsola"]})
     fresh_reauth(app, admin)
     import denali.web.deps as deps
     now = deps.time.time() + PENDING_VALID + 1

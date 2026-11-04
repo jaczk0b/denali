@@ -148,9 +148,13 @@ async def integration_update(request: Request, integration_id: int, sess: dict =
         raise NotFound("Agent nie ma ustawień do zmiany.")
     config, secrets = integrations.split_form(cls, form, integrations.secrets_of(row, box))
     old = row["config"] or {}
+    before = old.get("permissions") or []
     if cls.grants:
-        config["permissions"] = old.get("permissions") or []         # zakresy zmienia się osobno
-    if config.get("permissions") and _moved(cls, old, config):       # token z prawem do akcji nie pójdzie gdzie indziej
+        chosen = set(form.getlist("grant"))
+        config["permissions"] = [g.key for g in cls.grants if g.key in chosen]
+    after = config.get("permissions") or []
+    # dodanie zakresu i wysłanie tokenu z zakresem gdzie indziej — po haśle; odebranie działa od razu, jak wyłącznik
+    if set(after) - set(before) or (after and _moved(cls, old, config)):
         await require_fresh(request, sess)
     with request.app.state.engine.begin() as conn:
         try:
@@ -161,6 +165,8 @@ async def integration_update(request: Request, integration_id: int, sess: dict =
                                                          "poll_seconds": form.get("poll_seconds")},
                          error=str(e), objects=_objects(conn, integration_id), status_code=400)
         auth.audit(conn, "integration_update", user=sess["login"], ip=client_ip(request), target=row["name"])
+        if cls.grants and after != before:
+            actions.save_grants(conn, integrations.get(conn, integration_id), after, sess["login"], client_ip(request))
     return RedirectResponse(f"/admin/integracje/{integration_id}?sprawdz=1", 303)
 
 

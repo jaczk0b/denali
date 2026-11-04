@@ -337,7 +337,8 @@ def test_terminale_nie_zaleza_od_profili(app, pve, console, admin):
     assert "Konsola" not in admin.get("/admin/profile").text
     with app.state.engine.begin() as conn:
         actions.save_grants(conn, integrations.get(conn, pve["iid"]), [], "admin")
-    assert "Integracje → Proxmox → Uprawnienia" in admin.get("/terminale").text
+    empty = admin.get("/terminale").text
+    assert "nie jest zapisana" in empty and f"/admin/integracje/{pve['iid']}#uprawnienia" in empty
 
 
 def test_terminale_w_dolnym_pasku(app, pve, console, admin):

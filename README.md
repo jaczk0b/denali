@@ -288,7 +288,7 @@ zamyka też otwarte konsole (w ciągu 15 sekund).
 **Konsola (VNC)** — ekran VM albo LXC z Proxmoxa w przeglądarce (noVNC), przez panel, bez kluczy SSH w bazie.
 Jednorazowo w Proxmoxie:
 
-1. *Integracje → Proxmox → Uprawnienia*: zaznacz „Konsola”, wklej pokazane polecenie w Shell węzła, *Zapisz i sprawdź*.
+1. *Integracje → Proxmox*, sekcja *Uprawnienia*: zaznacz „Konsola”, wklej pokazane polecenie w Shell węzła, *Zapisz i sprawdź* na dole formularza.
 2. W Nginx Proxy Manager włącz *Websockets Support*.
 
 Zakres dotyczy wszystkich VM i LXC tego Proxmoxa.

@@ -98,12 +98,16 @@ def test_nowa_integracja_z_zakresami(app, admin):
 
 
 def test_dodanie_zakresu_wymaga_potwierdzenia_a_odebranie_nie(app, pve, admin):
-    url = f"/admin/integracje/{pve['iid']}/uprawnienia"
-    page = admin.get(f"/admin/integracje/{pve['iid']}").text
+    url = f"/admin/integracje/{pve['iid']}"
+    page = admin.get(url).text
     assert 'id="uprawnienia"' in page and "--tokens &#39;denali@pve!odczyt&#39;" in page
     assert "Akcje — osobny token" not in page
+    assert page.count("Zapisz i sprawdź") == 1                  # jeden przycisk: nie da się zapisać nie tego formularza
+    assert "Zapisane: <strong>Akcje</strong>" in page
     csrf = csrf_from(page)
-    r = admin.post(url, data={"csrf_token": csrf, "grant": ["akcje", "konsola"]})
+    base = {"csrf_token": csrf, "type": "proxmox", "name": "pve", "url": CONFIG["url"], "token_id": CONFIG["token_id"],
+            "verify_tls": "1"}
+    r = admin.post(url, data={**base, "grant": ["akcje", "konsola"]})
     assert r.headers["location"].startswith("/potwierdz")
 
     def chosen():
@@ -111,20 +115,21 @@ def test_dodanie_zakresu_wymaga_potwierdzenia_a_odebranie_nie(app, pve, admin):
             return integrations.get(conn, pve["iid"])["config"]["permissions"]
 
     assert chosen() == ["akcje"]
-    assert admin.post(url, data={"csrf_token": csrf}).status_code == 303
+    assert admin.post(url, data=base).status_code == 303
     assert chosen() == []
     fresh_reauth(app, admin)
-    admin.post(url, data={"csrf_token": csrf, "grant": ["akcje", "konsola"]})
+    admin.post(url, data={**base, "grant": ["akcje", "konsola"]})
     assert chosen() == ["akcje", "konsola"]
     with app.state.engine.connect() as conn:
         assert [a["params"]["permissions"] for a in audit_rows(conn, "integration_grants")][-2:] == [[], ["akcje", "konsola"]]
 
 
-def test_zapis_ustawien_nie_rusza_zakresow(app, pve, admin):
+def test_zapis_nazwy_nie_rusza_zaznaczonych_zakresow(app, pve, admin):
     page = admin.get(f"/admin/integracje/{pve['iid']}").text
+    assert re.search(r'name="grant" value="akcje" checked', page)
     r = admin.post(f"/admin/integracje/{pve['iid']}", data={
         "csrf_token": csrf_from(page), "type": "proxmox", "name": "nowa nazwa", "url": CONFIG["url"],
-        "token_id": CONFIG["token_id"], "verify_tls": "1", "grant": ["konsola"]})
+        "token_id": CONFIG["token_id"], "verify_tls": "1", "grant": ["akcje"]})
     assert r.status_code == 303
     with app.state.engine.connect() as conn:
         row = integrations.get(conn, pve["iid"])
@@ -134,7 +139,7 @@ def test_zapis_ustawien_nie_rusza_zakresow(app, pve, admin):
 def test_token_z_zakresem_nie_pojdzie_na_inny_adres_bez_potwierdzenia(app, pve, admin):
     page = admin.get(f"/admin/integracje/{pve['iid']}").text
     data = {"csrf_token": csrf_from(page), "type": "proxmox", "name": "pve", "url": "https://zly.host:8006",
-            "token_id": CONFIG["token_id"], "verify_tls": "1"}
+            "token_id": CONFIG["token_id"], "verify_tls": "1", "grant": ["akcje"]}
     r = admin.post(f"/admin/integracje/{pve['iid']}", data=data)
     assert r.status_code == 303 and r.headers["location"].startswith("/potwierdz")
     with app.state.engine.connect() as conn:
