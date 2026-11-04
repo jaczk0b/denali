@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import delete, select
 
-from .. import actions, auth, consoles, inventory as inv, polecenia, ssh, vault
+from .. import actions, auth, consoles, inventory as inv, polecenia, ssh, status, vault
 from ..adapters import AdapterError
 from ..db import kv_get
 from ..models import action_run, setting
@@ -34,14 +34,36 @@ def _device_or_404(conn, device_id):
     return d
 
 
+def _terminals(request, tab):
+    with request.app.state.engine.connect() as conn:
+        rows = [d for d in consoles.devices(conn) if (d["terminal"] if tab == "ssh" else d["console"])]
+        off = set(consoles.hidden(conn, tab))
+        marks = status.device_marks(conn)
+        ctx = {"history": consoles.recent(conn), "scopes": consoles.scopes(conn), "custom": polecenia.custom_text(conn)}
+    return render(request, "terminale.html", {
+        **ctx, "tab": tab, "marks": marks, "shown": [d for d in rows if d["id"] not in off],
+        "hidden": [d for d in rows if d["id"] in off]})
+
+
 @router.get("/terminale")
 def terminals(request: Request, sess: dict = Depends(require_admin)):
-    with request.app.state.engine.connect() as conn:
-        rows = consoles.devices(conn)
-        history = consoles.recent(conn)
-        scopes = consoles.scopes(conn)
-        custom = polecenia.custom_text(conn)
-    return render(request, "terminale.html", {"devices": rows, "history": history, "scopes": scopes, "custom": custom})
+    return _terminals(request, "ssh")
+
+
+@router.get("/terminale/vnc")
+def terminals_vnc(request: Request, sess: dict = Depends(require_admin)):
+    return _terminals(request, "vnc")
+
+
+@router.post("/terminale/ukryj")
+async def terminals_hide(request: Request, sess: dict = Depends(require_admin)):
+    form = await request.form()
+    tab = form.get("tab")
+    if tab not in consoles.TABS or not str(form.get("device_id") or "").isdigit():
+        raise NotFound("Nie ma takiej zakładki.")
+    with request.app.state.engine.begin() as conn:
+        consoles.set_hidden(conn, tab, int(form["device_id"]), form.get("hide") == "1")
+    return RedirectResponse("/terminale" if tab == "ssh" else "/terminale/vnc", 303)
 
 
 @router.post("/terminale/polecenia")

@@ -457,6 +457,20 @@ body.kiosk .clock { font-size: 64px; }
 }
 /* polecenie do skopiowania (instalacja agenta) */
 pre[data-command] { word-break: normal; overflow-wrap: anywhere; }
+.term-tabs { margin: 12px 0 18px; }
+.term-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.term-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.term-tile:hover { border-color: var(--border-strong); }
+.term-tile.off .term-open { opacity: .6; }
+.term-open { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 14px 8px; border: 0; background: none; color: var(--text);
+  font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.term-open:hover { color: var(--text); }
+.term-open .icon { flex: none; width: 48px; height: 48px; border-radius: 14px; font-size: 16px; }
+.term-text { min-width: 0; }
+.term-text b { display: block; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.term-text span { display: block; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.term-tools { display: flex; justify-content: space-between; align-items: center; padding: 0 14px 10px 74px; font-size: 13px; }
+.term-tools .link { font-size: 13px; }
 .command-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .command-result pre { width: 100%; margin: 0; max-height: 360px; overflow: auto; user-select: text; }
 .console-page { position: fixed; inset: 0; display: flex; flex-direction: column; background: #07090b; }

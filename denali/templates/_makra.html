@@ -71,6 +71,36 @@
 </div>
 {% endmacro %}
 
+{# kafelek na karcie Terminale: klik otwiera sesję, gdy to możliwe, inaczej prowadzi do strony urządzenia #}
+{% macro term_tile(d, tab, mark, csrf, hide) %}
+{% set o = d.console[0] if tab == "vnc" and d.console else none %}
+{% set url = "/terminale/%d/ssh" % d.id if tab == "ssh" and d.login else ("/terminale/%d/konsola/%d" % (d.id, o.ref_id) if o and not o.reason else "") %}
+{% macro inside() %}
+  <span class="icon {{ d.name | tile_color }}">{{ d.icon or (d.name | initials) }}{% if mark %}<span class="icon-badge">{{ st({"przyczyna": "down", "skutek": "effect", "gorzej": "warn"}[mark], 18) }}</span>{% endif %}</span>
+  <span class="term-text"><b>{{ d.name }}</b>
+    <span>{% if tab == "ssh" %}{{ d.login.login if d.login else "pierwsze logowanie" }} · {{ d.host }}{% else %}{% if o.reason and o.state and "stanie" in o.reason %}{{ o.state.summary }}{% else %}{{ o.reason or KINDS.get(d.kind, d.kind) }}{% endif %}{% endif %}</span></span>
+{% endmacro %}
+<div class="term-tile{% if o and o.reason %} off{% endif %}">
+  {% if url %}
+  <form method="post" action="{{ url }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    {% if tab == "ssh" %}<input type="hidden" name="host" value="{{ d.host }}"><input type="hidden" name="port" value="{{ d.login.port }}"><input type="hidden" name="secret_id" value="{{ d.login.id }}">{% endif %}
+    <button class="term-open" type="submit">{{ inside() }}</button>
+  </form>
+  {% else %}
+  <a class="term-open" href="/terminale/{{ d.id }}">{{ inside() }}</a>
+  {% endif %}
+  <div class="term-tools">
+    <a href="/terminale/{{ d.id }}">Szczegóły</a>
+    <form method="post" action="/terminale/ukryj">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="tab" value="{{ tab }}">
+      <input type="hidden" name="device_id" value="{{ d.id }}"><input type="hidden" name="hide" value="{{ '1' if hide else '0' }}">
+      <button class="link" type="submit">{{ "Ukryj" if hide else "Pokaż" }}</button>
+    </form>
+  </div>
+</div>
+{% endmacro %}
+
 {# sesje konsoli na karcie Terminale #}
 {% macro console_history(rows) %}
 <table>

@@ -18,10 +18,13 @@ from sqlalchemy import select
 
 from . import actions, auth, ssh
 from .adapters import registry
+from .db import kv_get, kv_set
 from .models import console_session, device, device_address, integration, observed_state
 
 log = logging.getLogger("denali.consoles")
 KEY = "proxmox.console"
+TABS = ("ssh", "vnc")
+HIDDEN_KEY = "terminal.hidden."
 SSH_KINDS = ("host", "vm", "lxc", "vps", "nas", "komputer")     # tam zwykle jest SSH
 LOGIN = re.compile(r"^[\w.@-]{1,64}$")
 START_WITHIN = 60       # tyle po zgłoszeniu strona może zacząć połączenie
@@ -45,15 +48,26 @@ def devices(conn):
     """Urządzenia z terminalem, konsolą albo poleceniami (lista na karcie Terminale). Wyłączona maszyna też tu jest —
     jej strona powie, dlaczego teraz się nie da."""
     out = []
-    for r in conn.execute(select(device.c.id, device.c.name, device.c.kind).order_by(device.c.name)).all():
+    for r in conn.execute(select(device.c.id, device.c.name, device.c.kind, device.c.icon).order_by(device.c.name)).all():
         opts = [o for o in actions.for_device(conn, r.id, terminal=True) if _switched_on(o)]
         terminal = r.kind in SSH_KINDS and bool(addresses(conn, r.id))
         if opts or terminal:
             logins = ssh.saved_logins(conn, r.id) if terminal else []
-            out.append({"id": r.id, "name": r.name, "terminal": terminal, "console": [o for o in opts if o["key"] == KEY],
+            out.append({"id": r.id, "name": r.name, "kind": r.kind, "icon": r.icon, "terminal": terminal,
+                        "console": [o for o in opts if o["key"] == KEY],
                         "login": logins[0] if logins else None, "host": (addresses(conn, r.id) or [""])[0],
                         "commands": [o for o in opts if o["key"] != KEY]})
     return out
+
+
+def hidden(conn, tab):
+    """Urządzenia ukryte na zakładce: maszyna potrzebna po SSH może być zbędna w VNC."""
+    return kv_get(conn, HIDDEN_KEY + tab, [])
+
+
+def set_hidden(conn, tab, device_id, hide):
+    ids = set(hidden(conn, tab)) - {device_id}
+    kv_set(conn, HIDDEN_KEY + tab, sorted(ids | {device_id}) if hide else sorted(ids))
 
 
 def addresses(conn, device_id):

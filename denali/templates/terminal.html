@@ -31,7 +31,8 @@
     {% endif %}
     <label class="field">Hasło<input name="password" type="password" autocomplete="new-password"></label>
     <details class="mt"><summary>Klucz prywatny zamiast hasła</summary>
-      <textarea name="key" rows="5" class="mono" spellcheck="false" aria-label="Klucz prywatny"></textarea></details>
+      <label class="field"><span class="sr">Klucz prywatny</span>
+        <textarea name="key" rows="5" class="mono" spellcheck="false"></textarea></label></details>
     <label class="check mt"><input type="checkbox" name="remember" value="1" checked> Zapamiętaj w Skarbcu po udanym logowaniu</label>
     <button class="btn mt" type="submit">Otwórz terminal</button>
   </form>

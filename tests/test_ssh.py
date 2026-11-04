@@ -7,7 +7,7 @@ import asyncssh
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from denali import actions, consoles, polecenia, ssh, vault
+from denali import actions, consoles, integrations, polecenia, ssh, vault
 from denali import inventory as inv
 from denali.adapters import AdapterError
 
@@ -245,7 +245,7 @@ def test_trwajaca_sesja_ssh_konczy_wylacznik(app, box, server, admin):
 
 def test_lista_pokazuje_urzadzenia_z_adresem(app, box, admin):
     page = admin.get("/terminale").text
-    assert f'href="/terminale/{box}"' in page and ">terminal<" in page
+    assert f'href="/terminale/{box}"' in page and "pierwsze logowanie" in page
 
 
 def test_wlasne_polecenia(app, box, admin):
@@ -278,7 +278,7 @@ def test_haslo_zapamietane_po_udanym_logowaniu_i_jeden_klik(app, box, server, ad
     # lista i strona urządzenia mają przycisk, a klik wysyła tylko numer wpisu
     assert "Otwórz terminal: jan" in admin.get(f"/terminale/{box}").text
     page = admin.get("/terminale").text
-    assert '<button class="btn small primary" type="submit">Terminal</button>' in page
+    assert f'action="/terminale/{box}/ssh"' in page and '<button class="term-open"' in page
     assert PASSWORD not in page
     fresh_reauth(app, admin)
     r = admin.post(f"/terminale/{box}/ssh", data={"csrf_token": csrf_from(page), "host": "127.0.0.1",
@@ -312,3 +312,20 @@ def test_nowe_haslo_zastepuje_stare(app, box, pve):
         assert saved["port"] == 2222
         row = conn.execute(vault.vault_secret.select().where(vault.vault_secret.c.id == saved["id"])).mappings().first()
         assert app.state.box.decrypt(row["ciphertext"]) == "nowe"
+
+
+def test_zakladki_i_ukrywanie(app, box, pve, admin):
+    with app.state.engine.begin() as conn:
+        actions.save_grants(conn, integrations.get(conn, pve["iid"]), ["konsola"], "admin")
+    page = admin.get("/terminale").text
+    assert 'href="/terminale/vnc"' in page and "Moje polecenia" in page
+    vnc = admin.get("/terminale/vnc").text
+    assert "Moje polecenia" not in vnc and f'/terminale/{box}/konsola/' in vnc
+    r = admin.post("/terminale/ukryj", data={"csrf_token": csrf_from(page), "tab": "ssh", "device_id": box, "hide": "1"})
+    assert r.headers["location"] == "/terminale"
+    hidden = admin.get("/terminale").text
+    assert "Ukryte (1)" in hidden and ">Pokaż<" in hidden
+    assert "Ukryte" not in admin.get("/terminale/vnc").text                  # każda zakładka ma swoją listę
+    admin.post("/terminale/ukryj", data={"csrf_token": csrf_from(page), "tab": "ssh", "device_id": box, "hide": "0"})
+    assert "Ukryte" not in admin.get("/terminale").text
+    assert admin.post("/terminale/ukryj", data={"csrf_token": csrf_from(page), "tab": "zla", "device_id": box}).status_code == 404
