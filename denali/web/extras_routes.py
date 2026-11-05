@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from sqlalchemy import select
 
-from .. import alerts, auth, changes, checks, export_md, inventory as inv, terms
+from .. import alerts, auth, changes, checks, export_md, inventory as inv, status, terms, updates
 from ..models import device
 from ..templating import render
 from .deps import NotFound, client_ip, require_admin, require_user
@@ -22,6 +22,18 @@ def _device(conn, device_id):
     if not d:
         raise NotFound("Nie ma takiego urządzenia.")
     return d
+
+
+# ───────────────────────── dział Powiadomienia ─────────────────────────
+@router.get("/powiadomienia")
+def notices(request: Request, sess: dict = Depends(require_user)):
+    """Wejście do działu: tam, gdzie teraz coś jest. Awaria ma pierwszeństwo przed alertem, a alert przed aktualizacją."""
+    with request.app.state.engine.connect() as conn:
+        if status.open_incidents(conn):
+            return RedirectResponse("/incydenty", 303)
+        if any(not a["silenced"] for a in alerts.active(conn)):
+            return RedirectResponse("/alerty", 303)
+        return RedirectResponse("/aktualizacje" if updates.count(conn) else "/incydenty", 303)
 
 
 # ───────────────────────── alerty ─────────────────────────

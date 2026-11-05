@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% from "_makra.html" import severity, inc_status %}
+{% from "_makra.html" import severity, inc_status, notice_nav %}
 {% block title %}Incydenty{% endblock %}
 {% block content %}
+{{ notice_nav(counts, "incydenty") }}
 <div class="row-between">
   <div>
     <h1>{{ "Wszystkie problemy" if all else "Trwające problemy" }}</h1>

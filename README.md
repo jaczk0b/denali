@@ -191,7 +191,7 @@ Zasady:
    urządzenia będą przychodzić same z integracji i wystarczy je zatwierdzić.
 3. **Kopia awaryjna na VPS** — według [deploy/vps/README.md](deploy/vps/README.md).
 4. **Tablet** — *Tablet → Utwórz kod*, na tablecie otwórz `https://denali.serwispowers.com/tablet` i wpisz kod.
-5. **Strażnik z VPS-a** i powiadomienia na Discord — *Powiadomienia*.
+5. **Strażnik z VPS-a** i powiadomienia na Discord — menu konta → *Kanały powiadomień*.
 6. **Agent** na VM-kach z Dockerem i usługami — niżej.
 
 ---
@@ -342,7 +342,7 @@ polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/dena
 
 ## Alerty
 
-Incydent znaczy „urządzenie nie działa”. Alert znaczy „działa, ale coś wymaga reakcji”. Lista jest w *Alerty*, skrót na
+Incydent znaczy „urządzenie nie działa”. Alert znaczy „działa, ale coś wymaga reakcji”. Lista jest w *Powiadomienia → Alerty*, skrót na
 pulpicie i na karcie urządzenia. Sam stan „uwaga” niczego nie wysyła, bo uwagą jest też np. lista pakietów sprzed
 tygodnia: powiadomienie dostają tylko rzeczy z tej listy.
 
@@ -366,10 +366,10 @@ tygodnia: powiadomienie dostają tylko rzeczy z tej listy.
 **Brak internetu w domu.** Panel co pół minuty łączy się z 1.1.1.1, 8.8.8.8 i 9.9.9.9. Po dwóch porażkach VPS i adresy
 publiczne dostają „nie da się sprawdzić” zamiast fałszywej awarii. Wiadomość o przerwie przychodzi po powrocie łącza.
 
-**Oś czasu** (*Alerty → Oś czasu*): zmiany z ostatnich 90 dni, także te spoza panelu: nowy obraz, nowy lub usunięty
+**Oś czasu** (*Powiadomienia → Oś czasu*): zmiany z ostatnich 90 dni, także te spoza panelu: nowy obraz, nowy lub usunięty
 kontener, restart systemu i kontenera, zmiana adresu, instalacja pakietów. Zmiany z 24 h przed awarią trafiają do incydentu.
 
-**Eksport Markdown** (*Alerty → Eksport Markdown*, na karcie urządzenia w *Ustawieniach*): stan do diagnozy, dla siebie
+**Eksport Markdown** (*Powiadomienia → Alerty*, na karcie urządzenia w *Ustawieniach*): stan do diagnozy, dla siebie
 albo dla modelu językowego. Bez skarbca i plików, sekrety w notatkach są maskowane według wzorców. Maskowanie zmniejsza
 ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
 
@@ -409,8 +409,8 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
   działać, gdy wybrane urządzenie padnie (symulacja, nic nie jest wyłączane).
 - **Prognoza miejsca** — pule TrueNAS i magazyny PBS: zajętość co godzinę, prognoza z przyrostu w ostatnich 14 dniach
   (potrzeba min. 2 dni danych). Poniżej 14 dni do zapełnienia — wiadomość na Discord (raz na tydzień).
-- **Podsumowanie tygodnia** w poniedziałek od 8:00 (albo *Powiadomienia → Wyślij teraz*), a dostępność za miesiąc pierwszego dnia miesiąca.
-- **Kanały**: Discord, ntfy, Telegram, e-mail (*Powiadomienia*). Krytyczny incydent bez reakcji może wracać co 1–24 h (*Powtórki*).
+- **Podsumowanie tygodnia** w poniedziałek od 8:00 (albo *Kanały powiadomień → Wyślij teraz*), a dostępność za miesiąc pierwszego dnia miesiąca.
+- **Kanały**: Discord, ntfy, Telegram, e-mail (menu konta → *Kanały powiadomień*). Krytyczny incydent bez reakcji może wracać co 1–24 h (*Powtórki*).
 - **Producent po MAC** na zakładce *Sieć*: lista IEEE, pobierana raz na miesiąc do katalogu danych.
 - **Ctrl+K** (albo `/`) — szybkie przejście do urządzenia, procedury, incydentu albo strony panelu.
 - **Motyw**: menu konta → kółka obok „Motyw”: *Grafit* albo *Zorza* (noc nad Denali). Zapamiętany w przeglądarce.

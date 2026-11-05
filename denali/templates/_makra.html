@@ -140,7 +140,7 @@
     {% if sess.role == "admin" %}
     <a href="/zatwierdz">Do zatwierdzenia {% if counts.queue %}<span class="badge">{{ counts.queue }}</span>{% endif %}</a>
     <a href="/admin/integracje">Integracje</a>
-    <a href="/admin/powiadomienia">Powiadomienia</a>
+    <a href="/admin/powiadomienia">Kanały powiadomień</a>
     <a href="/admin/profile">Profile urządzeń</a>
     <a href="/akcje">Akcje</a>
     <a href="/admin/udostepnianie">Udostępnianie</a>
@@ -168,6 +168,21 @@
   {% for key, label, url in tabs %}<a href="{{ url }}"{% if key == active %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
 </nav>
 {% endmacro %}
+
+{# Dział Powiadomienia: zakładki z licznikami. Czerwony licznik w menu tylko przy awarii. #}
+{% macro notice_nav(counts, active) %}
+<nav class="tabs infra-tabs" aria-label="Powiadomienia">
+  <a href="/incydenty"{% if active == "incydenty" %} aria-current="page"{% endif %}>Incydenty{% if counts.incidents %} <span class="badge down">{{ counts.incidents }}</span>{% endif %}</a>
+  <a href="/alerty"{% if active == "alerty" %} aria-current="page"{% endif %}>Alerty{% if counts.alerts %} <span class="badge">{{ counts.alerts }}</span>{% endif %}</a>
+  <a href="/aktualizacje"{% if active == "aktualizacje" %} aria-current="page"{% endif %}>Aktualizacje{% if counts.updates %} <span class="badge">{{ counts.updates }}</span>{% endif %}</a>
+  <a href="/os-czasu"{% if active == "os-czasu" %} aria-current="page"{% endif %}>Oś czasu</a>
+</nav>
+{% endmacro %}
+
+{% macro notice_badge(counts) -%}
+  {%- if counts.incidents %}<span class="badge down">{{ counts.incidents }}</span>
+  {%- elif counts.alerts or counts.updates %}<span class="badge">{{ counts.alerts + counts.updates }}</span>{% endif -%}
+{%- endmacro %}
 
 {# Pasek zajętości: v = 0…1 #}
 {% macro bar(v) -%}

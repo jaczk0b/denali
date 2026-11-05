@@ -1,13 +1,14 @@
 {% extends "base.html" %}
-{% from "_makra.html" import st %}
+{% from "_makra.html" import st, notice_nav %}
 {% block title %}Alerty{% endblock %}
 {% block content %}
+{{ notice_nav(counts, "alerty") }}
 <div class="row-between">
   <div>
     <h1>Alerty</h1>
     <p class="lead">Urządzenie działa, ale coś wymaga reakcji. Powiadomienie idzie po 5 minutach, „rozwiązane” po 10 minutach spokoju.</p>
   </div>
-  <div class="actions"><a class="btn" href="/os-czasu">Oś czasu</a>{% if sess.role == "admin" %}<a class="btn" href="/eksport.md">Eksport Markdown</a>{% endif %}</div>
+  {% if sess.role == "admin" %}<div class="actions"><a class="btn" href="/eksport.md">Eksport Markdown</a></div>{% endif %}
 </div>
 <section class="card" aria-label="Otwarte alerty">
   <h2>Otwarte <span class="muted">· {{ rows | length }}</span></h2>

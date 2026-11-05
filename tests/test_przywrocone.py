@@ -674,3 +674,34 @@ def test_bez_websocketu_zostaje_wskazowka_o_proxy(app, client):
                                    reauth_ok=True)
     app.state.console_tickets[cid] = {"adapter": None, "info": None, "at": time.time()}
     assert "Websockets Support" in client.get(f"/terminale/konsola/{cid}/koniec").json()["reason"]
+
+
+def test_dzial_powiadomienia(app, client):
+    from denali.models import incident as inc_table
+    admin(app, client)
+    page = client.get("/incydenty").text
+    top = page[page.index('class="nav"'):page.index("</nav>")]
+    assert 'href="/powiadomienia"' in top and "/alerty" not in top and "/aktualizacje" not in top
+    for path, tab in (("/incydenty", "Incydenty"), ("/alerty", "Alerty"), ("/aktualizacje", "Aktualizacje"), ("/os-czasu", "Oś czasu")):
+        html = client.get(path).text
+        assert f'href="{path}" aria-current="page">{tab}' in html
+    assert client.get("/powiadomienia").headers["location"] == "/incydenty"
+    with app.state.engine.begin() as c:
+        source(c, alarms=[POOL], now=time.time())
+        alerts.evaluate(c, time.time())
+    assert client.get("/powiadomienia").headers["location"] == "/alerty"
+    with app.state.engine.begin() as c:
+        c.execute(inc_table.insert().values(title="x", severity="krytyczny", source="auto", status="trwa", started_at=time.time(),
+                                            acked_by="", cause_md="", fix_md=""))
+    assert client.get("/powiadomienia").headers["location"] == "/incydenty"
+    assert "Kanały powiadomień" in client.get("/").text
+
+
+def test_wyciszony_alert_nie_liczy_sie_w_menu(app, client):
+    admin(app, client)
+    with app.state.engine.begin() as c:
+        source(c, alarms=[POOL], now=time.time())
+        alerts.evaluate(c, time.time())
+        alerts.silence(c, c.execute(select(alert.c.id)).scalar(), 7)
+    assert '<span class="badge">' not in client.get("/alerty").text
+    assert client.get("/powiadomienia").headers["location"] == "/incydenty"

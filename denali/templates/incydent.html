@@ -4,7 +4,7 @@
 {% block content %}
 {% set admin = sess.role == "admin" %}
 <div>
-  <p class="muted small"><a href="/incydenty">Incydenty</a> / #{{ inc.id }}</p>
+  <p class="muted small"><a href="/powiadomienia">Powiadomienia</a> / <a href="/incydenty">Incydenty</a> / #{{ inc.id }}</p>
   <h1>{{ inc.title }}</h1>
   <p>{{ severity(inc.severity) }} {{ inc_status(inc.status) }}
     <span class="muted">od {{ inc.started_at | dt }}{% if inc.ended_at %} do {{ inc.ended_at | dt }}{% endif %}

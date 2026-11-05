@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "_makra.html" import notice_nav %}
 {% block title %}Oś czasu{% endblock %}
 {% block content %}
+{{ notice_nav(counts, "os-czasu") }}
 <div>
   <h1>Oś czasu</h1>
   <p class="lead">Co się działo: zmiany wykryte w źródłach, także te spoza panelu, akcje, zmiany stanu i incydenty.</p>

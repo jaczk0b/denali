@@ -1,5 +1,6 @@
 """Szablony Jinja. Każda strona dostaje sesję i token CSRF."""
 import hashlib
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -7,7 +8,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from markdown_it import MarkdownIt
 from markupsafe import Markup
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from . import discovery, incidents, inventory, live, updates
 from .auth import USER_ROLE
@@ -88,7 +89,9 @@ def _counts(request: Request) -> dict:
             "queue": conn.execute(select(func.count()).select_from(external_ref)
                                   .where(external_ref.c.status == "nowy")).scalar() + len(discovery.gone(conn)),
             "updates": updates.count(conn),
-            "alerts": conn.execute(select(func.count()).select_from(alert).where(alert.c.resolved_at.is_(None))).scalar(),
+            "alerts": conn.execute(select(func.count()).select_from(alert).where(
+                alert.c.resolved_at.is_(None), or_(alert.c.silenced_until.is_(None), alert.c.silenced_until < time.time()))
+            ).scalar(),
         }
 
 
