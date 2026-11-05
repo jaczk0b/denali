@@ -78,6 +78,7 @@ class Session:
     """Jedna powłoka w kształcie, jakiego oczekuje consoles.bridge: bajty z maszyny, send() z przeglądarki.
     Tekstowa ramka z przeglądarki to nowy rozmiar okna ({"cols", "rows"}), binarna to naciśnięte klawisze."""
     close_code = None
+    ended_text = "Maszyna zakończyła sesję"
 
     def __init__(self, conn, process):
         self.conn, self.process = conn, process

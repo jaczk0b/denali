@@ -42,6 +42,17 @@
   var resume = document.querySelector("form[data-autosubmit]");
   if (resume) { resume.submit(); }
 
+  // Terminal SSH: skrypt modułu nie ma jak zgłosić, że sam się nie wczytał, więc pilnujemy tego stąd.
+  var sshPage = document.getElementById("ssh");
+  if (sshPage) {
+    setTimeout(function () {
+      if (sshPage.dataset.ready) { return; }
+      var bar = document.getElementById("console-status");
+      bar.textContent = "Skrypt terminala się nie wczytał (/static/ssh.js). Odśwież stronę: Ctrl+F5.";
+      bar.classList.add("console-bad");
+    }, 5000);
+  }
+
   // Uprawnienia integracji: pod polami widać polecenie dla tego, co jest teraz zaznaczone.
   function grantCommands(box) {
     function show() {

@@ -643,3 +643,34 @@ def test_obieg_workera(settings):
     with engine.connect() as c:
         assert c.execute(select(func.count()).select_from(alert)).scalar() == 1
     engine.dispose()
+
+
+def test_odmowa_websocketu_ma_konkretny_powod(app, client):
+    from starlette.websockets import WebSocketDisconnect
+
+    from denali import consoles, ssh
+    admin(app, client)
+    with app.state.engine.begin() as c:
+        did = inv.create_device(c, "vm", "vm")
+        inv.add_address(c, did, "ip", "10.0.0.9")
+        cid = consoles.request_ssh(c, device_id=did, host="10.0.0.9", port=22, login="jan", user="admin", role="admin",
+                                   reauth_ok=True)
+    app.state.console_tickets[cid] = {"adapter": None, "info": None, "at": time.time()}
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(f"/terminale/konsola/{cid}/ws", headers={"origin": "https://obcy.example\x1b[31m"}):
+            pass
+    reason = client.get(f"/terminale/konsola/{cid}/koniec").json()["reason"]
+    assert "obcy.example" in reason and "DENALI_BASE_URL" in reason and "Websockets Support" not in reason
+    assert "\x1b" not in reason
+
+
+def test_bez_websocketu_zostaje_wskazowka_o_proxy(app, client):
+    from denali import consoles
+    admin(app, client)
+    with app.state.engine.begin() as c:
+        did = inv.create_device(c, "vm", "vm")
+        inv.add_address(c, did, "ip", "10.0.0.9")
+        cid = consoles.request_ssh(c, device_id=did, host="10.0.0.9", port=22, login="jan", user="admin", role="admin",
+                                   reauth_ok=True)
+    app.state.console_tickets[cid] = {"adapter": None, "info": None, "at": time.time()}
+    assert "Websockets Support" in client.get(f"/terminale/konsola/{cid}/koniec").json()["reason"]

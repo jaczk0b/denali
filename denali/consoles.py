@@ -213,6 +213,7 @@ def forget_unused(app, now=None):
     for cid, pending in list(app.state.console_tickets.items()):
         if now - pending["at"] > TICKET_VALID:
             del app.state.console_tickets[cid]
+            app.state.console_rejected.pop(cid, None)
             with app.state.engine.begin() as conn:
                 if row := get(conn, cid):
                     close(conn, row, NO_WEBSOCKET, now)
@@ -224,7 +225,7 @@ async def bridge(ws, upstream, check):
         async for m in upstream:
             await (ws.send_bytes(m) if isinstance(m, bytes) else ws.send_text(m))
         code, why = getattr(upstream, "close_code", None), getattr(upstream, "close_reason", "")
-        return "Proxmox zakończył konsolę" + (f" (kod {code}{': ' + why if why else ''})." if code not in (None, 1000) else ".")
+        return getattr(upstream, "ended_text", "Proxmox zakończył konsolę") + (f" (kod {code}{': ' + why if why else ''})." if code not in (None, 1000) else ".")
 
     async def to_upstream():
         while True:

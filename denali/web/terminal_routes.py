@@ -7,7 +7,7 @@ import logging
 import time
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, Request, WebSocket
+from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import delete, select
 
@@ -252,15 +252,31 @@ def console_end(request: Request, console_id: int, sess: dict = Depends(require_
         if not row or row["user"] != sess["login"]:
             raise NotFound("Nie ma takiej sesji.")
         if app.state.console_tickets.pop(console_id, None):     # bilet czeka, a przeglądarka już zgłasza koniec
-            consoles.close(conn, row, consoles.NO_WEBSOCKET)
+            consoles.close(conn, row, app.state.console_rejected.pop(console_id, consoles.NO_WEBSOCKET))
         row = consoles.get(conn, console_id)
     return {"reason": row["close_reason"]}
 
 
 def _same_origin(ws):
-    origin = urlsplit(ws.headers.get("origin", "")).netloc
+    try:
+        origin = urlsplit(ws.headers.get("origin", "")).netloc
+    except ValueError:      # zniekształcony nagłówek to odmowa, a nie wyjątek
+        return False
     base = urlsplit(ws.app.state.settings.base_url or "").netloc
     return bool(origin) and origin in (ws.headers.get("host", ""), base)
+
+
+def _refusal(ws, sess, row, console_id):
+    """Dlaczego panel nie wpuszcza tego WebSocketu (tekst dla człowieka) albo None."""
+    if not _same_origin(ws):
+        return f"Panel odrzucił połączenie: strona {ws.headers.get('origin')} nie pasuje do DENALI_BASE_URL ({ws.app.state.settings.base_url})."
+    if not sess or not (sess["kind"] == "zwykla" or sess.get("elevated")) or sess["role"] != "admin":
+        return "Panel odrzucił połączenie: nie widzi Twojej sesji. Sprawdź DENALI_TRUSTED_PROXIES albo zaloguj się ponownie."
+    if not row or row["user"] != sess["login"]:
+        return "Tej sesji otworzył ktoś inny."
+    if console_id not in ws.app.state.console_tickets:
+        return "Ta sesja już się skończyła. Otwórz terminal jeszcze raz."
+    return None
 
 
 @router.websocket("/terminale/konsola/{console_id:int}/ws")
@@ -270,11 +286,13 @@ async def console_ws(ws: WebSocket, console_id: int):
     with app.state.engine.begin() as conn:
         sess = tablet.resolve(conn, auth.load_session(conn, token, ip, touch=False))
         row = consoles.get(conn, console_id)
-    if (not _same_origin(ws) or not sess or not (sess["kind"] == "zwykla" or sess.get("elevated"))
-            or sess["role"] != "admin" or not row
-            or row["user"] != sess["login"] or console_id not in app.state.console_tickets):
-        log.warning("Odrzucony WebSocket konsoli %s: origin=%r host=%r sesja=%s", console_id, ws.headers.get("origin"),
-                    ws.headers.get("host"), bool(sess))
+    why = _refusal(ws, sess, row, console_id)
+    if why:
+        log.warning("Odrzucony WebSocket konsoli %s: %s origin=%r host=%r", console_id, why, ws.headers.get("origin"),
+                    ws.headers.get("host"))
+        if console_id in app.state.console_tickets:
+            # powód dla /koniec; czyta go tylko właściciel sesji, a nagłówki bez znaków sterujących trafiają do terminala
+            app.state.console_rejected[console_id] = "".join(ch for ch in why if ch.isprintable())[:200]
         await ws.close(4403)        # przed accept: przeglądarka widzi odmowę połączenia
         return
     pending = app.state.console_tickets.pop(console_id)
@@ -298,5 +316,5 @@ async def console_ws(ws: WebSocket, console_id: int):
         consoles.close(conn, row, reason)
     try:
         await ws.close(1000)
-    except RuntimeError:            # przeglądarka już się rozłączyła
+    except (RuntimeError, WebSocketDisconnect):     # przeglądarka już się rozłączyła
         pass
