@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 
 from . import discovery, incidents, inventory, live, updates
 from .auth import USER_ROLE
-from .models import external_ref, incident
+from .models import alert, external_ref, incident
 from .status import initials, tile_color
 
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templates")
@@ -88,6 +88,7 @@ def _counts(request: Request) -> dict:
             "queue": conn.execute(select(func.count()).select_from(external_ref)
                                   .where(external_ref.c.status == "nowy")).scalar() + len(discovery.gone(conn)),
             "updates": updates.count(conn),
+            "alerts": conn.execute(select(func.count()).select_from(alert).where(alert.c.resolved_at.is_(None))).scalar(),
         }
 
 

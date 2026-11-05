@@ -27,9 +27,10 @@ from urllib.parse import urlsplit
 import httpx
 from cryptography import x509
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from . import history, profiles
-from .models import check_state, device, device_address
+from .models import check_state, custom_check, device, device_address
 
 PING_TIMEOUT = 2.0
 HTTP_TIMEOUT = 10.0
@@ -82,7 +83,64 @@ def plan(conn):
             specs.append(Spec(d["id"], "http", d["app_url"]))
             if public_candidate(d["app_url"]):
                 specs.append(Spec(d["id"], "internet", d["app_url"]))
-    return specs
+    for c in conn.execute(select(custom_check)).mappings():
+        if profiles.value(conn, c["device_id"], "monitor"):
+            specs.append(Spec(c["device_id"], c["kind"], c["target"], c["expect"]))
+    return list(dict.fromkeys(specs))
+
+
+# ───────────────────────── własne sprawdzenia ─────────────────────────
+class CheckError(ValueError):
+    pass
+
+
+CUSTOM_KINDS = {"http": "HTTP(S)", "tcp": "Port TCP", "ping": "Ping", "tls": "Certyfikat TLS", "dns": "DNS"}
+
+
+def _clean_target(kind, target, expect):
+    target = (target or "").strip()
+    if kind not in CUSTOM_KINDS:
+        raise CheckError("Nieznany rodzaj sprawdzenia.")
+    if not target:
+        raise CheckError("Podaj cel sprawdzenia.")
+    if kind == "http" and urlsplit(target).scheme not in ("http", "https"):
+        raise CheckError("Adres musi zaczynać się od http:// albo https://.")
+    if kind in ("tcp", "tls"):
+        host, _, port = target.rpartition(":")
+        if not host or not port.isdigit() or not 0 < int(port) < 65536:
+            raise CheckError("Podaj cel jako adres:port, np. 192.168.1.5:443.")
+    if kind == "dns" and not expect.strip():
+        raise CheckError("Przy DNS podaj oczekiwany adres IP.")
+    return target[:500]
+
+
+def add_custom(conn, device_id, kind, target, expect=""):
+    target = _clean_target(kind, target, expect or "")
+    try:
+        with conn.begin_nested():
+            return conn.execute(custom_check.insert().values(device_id=device_id, kind=kind, target=target,
+                                                             expect=(expect or "").strip()[:200])).inserted_primary_key[0]
+    except IntegrityError:
+        raise CheckError("Takie sprawdzenie już jest.") from None
+
+
+def remove_custom(conn, device_id, check_id):
+    conn.execute(delete(custom_check).where(custom_check.c.id == check_id, custom_check.c.device_id == device_id))
+
+
+def custom_for_device(conn, device_id):
+    return conn.execute(select(custom_check).where(custom_check.c.device_id == device_id)
+                        .order_by(custom_check.c.kind, custom_check.c.target)).mappings().all()
+
+
+def needs_internet(kind, target):
+    """Czy sprawdzenie idzie przez internet: bez łącza jego porażka nic nie mówi o urządzeniu."""
+    if kind == "internet":
+        return True
+    if kind == "http":
+        return public_candidate(target)
+    host = target.rpartition(":")[0] if kind in ("tcp", "tls") else target
+    return _public_ip(host) or public_candidate(f"https://{host}")
 
 
 def ports(text):
@@ -214,6 +272,22 @@ async def dns(name, expect=""):
     if expect and expect not in found:
         return Result(False, f"{name} wskazuje {', '.join(found)}, a urządzenie ma {expect}", ms)
     return Result(True, f"{name} → {', '.join(found)}", ms)
+
+
+async def tls(target, now=None):
+    """Sam certyfikat na dowolnym porcie (poczta, MQTT po TLS, panel bez aplikacji www)."""
+    now = now or time.time()
+    host, _, port = target.rpartition(":")
+    try:
+        expires = await asyncio.to_thread(cert_expiry, host, int(port))
+    except (OSError, ValueError, ssl.SSLError) as e:
+        return Result(False, f"{target}: brak certyfikatu ({e.__class__.__name__})")
+    if not expires:
+        return Result(False, f"{target}: serwer nie podał certyfikatu")
+    days = (expires - now) / 86400
+    if days < 0:
+        return Result(False, f"{target}: certyfikat wygasł")
+    return Result(True, f"certyfikat ważny jeszcze {days:.0f} dni", cert_expires_at=expires)
 
 
 async def http(url, transport=None, now=None):
@@ -361,6 +435,8 @@ async def run_all(specs, transport=None, now=None):
                 return spec, await tcp(spec.target)
             if spec.kind == "dns":
                 return spec, await dns(spec.target, spec.expect)
+            if spec.kind == "tls":
+                return spec, await tls(spec.target, now)
             return spec, await http(spec.target, transport, now)
     return await asyncio.gather(*(one(s) for s in specs))
 

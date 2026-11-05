@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Agent Denali — tylko to, czego nie da się odczytać z API: pakiety apt, „wymagany restart”, montaże NFS.
+"""Agent Denali — to, czego nie da się odczytać z API: pakiety apt, „wymagany restart”, montaże NFS, dyski i pamięć
+maszyny, usługi w stanie failed, kontenery Dockera (warstwa zapisywalna, pliki core).
 
 Jeden plik, tylko biblioteka standardowa (Python 3.9+, Debian/Ubuntu z systemd). Co minutę wysyła raport do Denali.
 Nie słucha na żadnym porcie. Akcję zleconą przez panel (np. apt upgrade) wykona tylko wtedy, gdy jest na lokalnej
@@ -18,10 +19,13 @@ Usługi po instalacji:
                               (poza katalogami zleceń i wyników); zlecenia z panelu tylko zapisuje do pliku
   denali-agent-akcje.path     gdy pojawi się zlecenie, uruchamia denali-agent-akcje.service (root): sprawdza lokalną
                               listę dozwolonych, wykonuje akcję, zapisuje wynik — raport zaniesie go do Denali
+  denali-agent-docker.timer   co 10 minut, jako root, BEZ dostępu do sieci: stan kontenerów, rozmiar warstwy, pliki core
+                              (gniazdo Dockera to w praktyce root, więc raport go nie dotyka: czyta tylko wynik z pliku)
   denali-agent-ukryte.timer   raz dziennie, jako root, BEZ dostępu do sieci: czy pod montażami NFS nie leżą dane
                               zapisane wtedy, gdy udział nie był podłączony (wymaga bind-mountu, stąd root)
 """
 import argparse
+import http.client
 import json
 import os
 import re
@@ -36,13 +40,19 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 USER = "denali-agent"
 CONFIG_PATH = "/etc/denali-agent/config.json"
 INSTALL_DIR = "/opt/denali-agent"
 PROGRAM = INSTALL_DIR + "/denali-agent.py"
 STATE_DIR = "/var/lib/denali-agent"
 HIDDEN_FILE = STATE_DIR + "/ukryte.json"
+DOCKER_FILE = STATE_DIR + "/docker.json"
+DOCKER_SOCKET = "/var/run/docker.sock"
+DOCKER_MAX_AGE = 3600       # starszy wynik = timer nie działa, więc lepiej nie wiedzieć niż kłamać
+CORES_SCAN_MIN = 100 * 1024 * 1024    # pliki core szukamy tylko w kontenerach z taką warstwą (docker diff bywa wolny)
+DB_BACKUP_DIR = "/var/backups/denali-agent"
+DB_BACKUP_KEEP = 5
 JOBS_DIR = STATE_DIR + "/zlecenia"         # zapisuje usługa raportu, czyta i usuwa usługa akcji (root)
 RESULTS_DIR = STATE_DIR + "/wyniki"        # zapisuje usługa akcji, usuwa usługa raportu po potwierdzeniu z Denali
 JOB_NAME = re.compile(r"^(\d{1,12})\.json$")
@@ -51,7 +61,12 @@ RESULT_MAX = 20000          # wyjście gotowego polecenia bywa dłuższe niż wy
 # Akcje, które agent umie wykonać. Wykona tylko te, które są też na lokalnej liście w config.json („actions”).
 ACTIONS = {"apt_upgrade": "apt-get update i apt-get upgrade (bez usuwania pakietów, stare pliki konfiguracji zostają)",
            "reboot": "restart maszyny za minutę (shutdown -r +1); po aktualizacji z panelu — tylko gdy jest wymagany",
-           "polecenia": "gotowe polecenia tylko do odczytu z listy COMMANDS (dyski, pamięć, usługi, logi, Docker)"}
+           "polecenia": "gotowe polecenia tylko do odczytu z listy COMMANDS (dyski, pamięć, usługi, logi, Docker)",
+           "clean_cores": "usunięcie plików core wykrytych w warstwie kontenerów (tylko zwykłe pliki o nazwie core)",
+           "nfs_remount": "ponowne zamontowanie niedziałających udziałów NFS z /etc/fstab",
+           "docker_prune": "usunięcie obrazów dangling i cache budowania (obrazy w użyciu i wolumeny zostają)",
+           "journal_vacuum": "przycięcie dziennika systemd do 200 MB",
+           "db_backup": "pg_dumpall z kontenerów Postgres do /var/backups/denali-agent"}
 # Panel podaje tylko klucz — treść polecenia jest wyłącznie tutaj. Lista dla ludzi: denali/polecenia.py.
 COMMANDS = {"dyski": ["df", "-h", "-x", "tmpfs", "-x", "devtmpfs"],
             "urzadzenia": ["lsblk", "-o", "NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL"],
@@ -248,9 +263,10 @@ def parse_fstab_nfs(text):
 
 
 def _probe(mount):
+    start = time.monotonic()
     os.statvfs(mount)
     os.listdir(mount)
-    return True
+    return (time.monotonic() - start) * 1000
 
 
 def nfs(mounts_text=None, fstab_text=None, hidden=None):
@@ -272,10 +288,12 @@ def nfs(mounts_text=None, fstab_text=None, hidden=None):
         if row["mounted"]:
             opts = (mounted.get(mnt) or e).get("opts", "")
             row["readonly"] = "ro" in opts.split(",")
-            status, _ = guarded("nfs:" + mnt, _probe, NFS_TIMEOUT, mnt)
+            status, ms = guarded("nfs:" + mnt, _probe, NFS_TIMEOUT, mnt)
             row["responding"] = status == "ok"
             if status != "ok":
                 row["error"] = status
+            elif isinstance(ms, float):
+                row["latency_ms"] = round(ms)
         else:
             try:
                 row["local_entries"] = len(os.listdir(mnt)) if os.path.isdir(mnt) else 0
@@ -353,6 +371,154 @@ def hidden_check():
 
 
 # ───────────────────────── akcje ─────────────────────────
+# ───────────────────────── dyski, pamięć, usługi ─────────────────────────
+SKIP_FS = ("nfs", "nfs4", "cifs", "smb3", "fuse.sshfs", "tmpfs", "devtmpfs", "devpts", "proc", "sysfs", "cgroup", "cgroup2",
+           "overlay", "squashfs", "autofs", "debugfs", "tracefs", "securityfs", "pstore", "bpf", "mqueue", "hugetlbfs",
+           "configfs", "fusectl", "binfmt_misc", "ramfs", "efivarfs", "nsfs", "rpc_pipefs")
+
+
+def disks(mounts_text=None):
+    """Zajętość każdego prawdziwego systemu plików. Sieciowe pomijamy: zawieszony NFS zablokowałby statvfs."""
+    out, seen = [], set()
+    for m in parse_mounts(read("/proc/mounts") if mounts_text is None else mounts_text):
+        if m["fstype"] in SKIP_FS or m["source"] in seen or m["mount"].startswith(("/proc", "/sys", "/dev/", "/run/")):
+            continue
+        seen.add(m["source"])
+        try:
+            st = os.statvfs(m["mount"])
+        except OSError:
+            continue
+        if not st.f_blocks:
+            continue
+        used = st.f_blocks - st.f_bfree
+        row = {"mount": m["mount"], "pct": round(used / (used + st.f_bavail) * 100, 1) if used + st.f_bavail else 0,
+               "free_gb": round(st.f_bavail * st.f_frsize / 1024 ** 3, 1), "total_gb": round(st.f_blocks * st.f_frsize / 1024 ** 3, 1)}
+        if st.f_files:
+            row["inodes_pct"] = round((st.f_files - st.f_ffree) / st.f_files * 100, 1)
+        out.append(row)
+    return out
+
+
+def parse_meminfo(text):
+    v = {}
+    for line in text.splitlines():
+        k, _, rest = line.partition(":")
+        if rest.strip():
+            v[k] = int(rest.split()[0])
+    out = {}
+    if v.get("MemTotal") and "MemAvailable" in v:
+        out["memory"] = round((v["MemTotal"] - v["MemAvailable"]) / v["MemTotal"] * 100, 1)
+    if v.get("SwapTotal"):
+        out["swap"] = round((v["SwapTotal"] - v.get("SwapFree", 0)) / v["SwapTotal"] * 100, 1)
+    return out
+
+
+def memory():
+    return parse_meminfo(read("/proc/meminfo"))
+
+
+def failed_units():
+    rc, so, _ = run(["systemctl", "list-units", "--state=failed", "--plain", "--no-legend", "--no-pager"], timeout=15)
+    if rc != 0:
+        return []
+    return [line.split()[0] for line in so.splitlines() if line.strip()][:50]
+
+
+def boot_id():
+    return read("/proc/sys/kernel/random/boot_id").strip()
+
+
+def dpkg_changed():
+    try:
+        return int(os.stat("/var/lib/dpkg/status").st_mtime)
+    except OSError:
+        return None
+
+
+# ───────────────────────── Docker (usługa root, wynik w pliku) ─────────────────────────
+class _UnixConnection(http.client.HTTPConnection):
+    def __init__(self, path, timeout):
+        super().__init__("localhost", timeout=timeout)
+        self._path = path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self._path)
+
+
+def docker_api(path, method="GET", timeout=120, socket_path=DOCKER_SOCKET):
+    c = _UnixConnection(socket_path, timeout)
+    try:
+        c.request(method, path)
+        r = c.getresponse()
+        body = r.read()
+    finally:
+        c.close()
+    if r.status >= 400:
+        raise OSError("docker {}: HTTP {}".format(path, r.status))
+    return json.loads(body) if body else None
+
+
+CORE_RX = re.compile(r"^core(\.\d+)?$|^core\.[A-Za-z0-9_-]+\.\d+$")
+NAME_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+def find_core_files(changes):
+    """Z listy zmian warstwy (docker diff) wybiera pliki wyglądające na zrzuty pamięci."""
+    paths = [c.get("Path", "") for c in changes or [] if c.get("Kind") in (0, 1)]
+    return [p for p in paths if CORE_RX.match(os.path.basename(p)) and "/node_modules/" not in p]
+
+
+def docker_scan(api=docker_api):
+    """Stan kontenerów bez logów i zmiennych środowiskowych: tylko to, co potrzebne do alertów i osi czasu."""
+    out = []
+    for c in api("/containers/json?all=1&size=1"):
+        cid = c["Id"]
+        ins = api("/containers/{}/json".format(cid), timeout=30)
+        st = ins.get("State") or {}
+        name = (c.get("Names") or ["/" + cid[:12]])[0].lstrip("/")
+        row = {"name": name, "image": (ins.get("Config") or {}).get("Image") or c.get("Image"),
+               "image_id": ins.get("Image"), "state": st.get("Status"),
+               "health": (st.get("Health") or {}).get("Status"), "exit_code": st.get("ExitCode"),
+               "policy": ((ins.get("HostConfig") or {}).get("RestartPolicy") or {}).get("Name"),
+               "restarts": ins.get("RestartCount", 0), "size_rw": c.get("SizeRw") or 0, "core_files": 0}
+        if row["size_rw"] >= CORES_SCAN_MIN:
+            try:
+                row["core_files"] = len(find_core_files(api("/containers/{}/changes".format(cid))))
+            except (OSError, ValueError):
+                pass
+        out.append(row)
+    return out
+
+
+def docker_check(path=DOCKER_FILE):
+    """Timer (root, bez sieci): zapisuje wynik do pliku, raport tylko go czyta. Bez Dockera: pusty plik nie powstaje."""
+    if not os.path.exists(DOCKER_SOCKET):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return
+    try:
+        data = {"ts": time.time(), "containers": docker_scan()}
+    except (OSError, ValueError, http.client.HTTPException) as e:
+        log("Docker: {}".format(e))
+        return
+    _write_json(os.path.dirname(path), os.path.basename(path), data, 0o644)
+
+
+def load_docker(path=DOCKER_FILE, now=None):
+    """Kontenery z ostatniego skanu albo None (brak Dockera, skan jest za stary)."""
+    try:
+        data = _read_json(path, limit=512 * 1024)
+    except (OSError, ValueError):
+        return None
+    if (now or time.time()) - float(data.get("ts") or 0) > DOCKER_MAX_AGE:
+        return None
+    return data.get("containers")
+
+
 def _write_json(directory, name, data, mode=0o640, tmp_dir=None):
     """Zapis atomowy: plik tymczasowy (O_EXCL) i zmiana nazwy — dowiązanie podłożone pod tą nazwą zostaje zastąpione,
     a nie zapisane przez nie."""
@@ -465,7 +631,90 @@ def run_command(params=None):
     return rc == 0, rc, "\n".join(t.strip("\n") for t in (so, err) if t and t.strip())[:RESULT_MAX]
 
 
-RUNNERS = {"apt_upgrade": apt_upgrade, "reboot": reboot_machine, "polecenia": run_command}
+def clean_cores(params=None, api=docker_api, runner=None):
+    """Panel nie podaje ścieżek: agent sam je wykrywa i usuwa tylko zwykłe pliki o nazwie core."""
+    runner = runner or run
+    done = []
+    for c in api("/containers/json?size=1"):
+        name = (c.get("Names") or [""])[0].lstrip("/")
+        if not NAME_RX.match(name):
+            continue
+        paths = [p for p in find_core_files(api("/containers/{}/changes".format(c["Id"])))
+                 if p.startswith("/") and ".." not in p][:500]
+        if not paths:
+            continue
+        rc, so, err = runner(["docker", "exec", name, "find"] + paths + ["-maxdepth", "0", "-type", "f", "-name", "core*",
+                                                                         "-print", "-delete"], timeout=300)
+        if rc not in (0, 1):
+            return False, rc, _tail("{}:".format(name), so, err)
+        done.append("{}: {}".format(name, len(so.splitlines())))
+    return True, 0, "Usunięte pliki core — " + ", ".join(done) if done else "Nie znaleziono plików core."
+
+
+def nfs_remount(params=None, runner=None):
+    runner = runner or run
+    report = []
+    for m in nfs():
+        if m.get("mounted") and m.get("responding", True):
+            continue
+        if not m.get("in_fstab"):
+            continue
+        runner(["umount", "-l", m["mount"]], timeout=60)
+        rc, so, err = runner(["mount", m["mount"]], timeout=120)
+        if rc != 0:
+            return False, rc, _tail(m["mount"], so, err)
+        report.append(m["mount"])
+    return True, 0, "Zamontowane ponownie: " + ", ".join(report) if report else "Wszystkie udziały działają, nic do zrobienia."
+
+
+def docker_prune(params=None, api=docker_api):
+    a = api("/images/prune?filters=%7B%22dangling%22%3A%5B%22true%22%5D%7D", method="POST", timeout=600) or {}
+    b = api("/build/prune", method="POST", timeout=600) or {}
+    freed = (a.get("SpaceReclaimed") or 0) + (b.get("SpaceReclaimed") or 0)
+    return True, 0, "Zwolniono {:.2f} GB, usunięte obrazy: {}".format(freed / 1024 ** 3, len(a.get("ImagesDeleted") or []))
+
+
+def journal_vacuum(params=None):
+    rc, so, err = run(["journalctl", "--vacuum-size=200M"], timeout=300)
+    return rc == 0, rc, _tail(so, err)
+
+
+def db_backup(params=None, api=docker_api):
+    """pg_dumpall z każdego działającego kontenera Postgresa. Kopia zostaje na maszynie, tylko dla roota."""
+    os.makedirs(DB_BACKUP_DIR, mode=0o700, exist_ok=True)
+    done = []
+    for c in api("/containers/json"):
+        name = (c.get("Names") or [""])[0].lstrip("/")
+        ins = api("/containers/{}/json".format(c["Id"]), timeout=30)
+        env = (ins.get("Config") or {}).get("Env") or []
+        user = next((e.split("=", 1)[1] for e in env if e.startswith("POSTGRES_USER=")), "postgres")
+        image = str((ins.get("Config") or {}).get("Image") or "").lower()
+        is_postgres = any(e.startswith("PG_VERSION=") for e in env) or "postgres" in image    # sama POSTGRES_* to klient bazy
+        if not is_postgres or not NAME_RX.match(name) or not re.match(r"^[A-Za-z0-9_]{1,63}$", user):
+            continue
+        target = os.path.join(DB_BACKUP_DIR, "{}-{}.sql.gz".format(name, time.strftime("%Y%m%d-%H%M%S")))
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            dump = subprocess.Popen(["docker", "exec", name, "pg_dumpall", "--clean", "--if-exists", "-U", user],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            gz = subprocess.Popen(["gzip"], stdin=dump.stdout, stdout=f)
+            dump.stdout.close()
+            err = dump.stderr.read()
+            gz.wait(timeout=3600)
+            dump.wait(timeout=60)
+        if dump.returncode != 0 or os.path.getsize(target) < 100:
+            os.remove(target)
+            return False, dump.returncode, _tail("{}:".format(name), err.decode(errors="replace"))
+        done.append("{} ({:.0f} MB)".format(target, os.path.getsize(target) / 1024 ** 2))
+        old = sorted(f for f in os.listdir(DB_BACKUP_DIR) if f.startswith(name + "-") and f.endswith(".sql.gz"))
+        for f in old[:-DB_BACKUP_KEEP]:
+            os.remove(os.path.join(DB_BACKUP_DIR, f))
+    return True, 0, "Kopie: " + ", ".join(done) if done else "Nie znaleziono kontenerów Postgres."
+
+
+RUNNERS = {"apt_upgrade": apt_upgrade, "reboot": reboot_machine, "polecenia": run_command, "clean_cores": clean_cores,
+           "nfs_remount": nfs_remount, "docker_prune": docker_prune, "journal_vacuum": journal_vacuum,
+           "db_backup": db_backup}
 
 
 def do_jobs(cfg, jobs_dir=None, results_dir=None, runners=None):
@@ -541,7 +790,9 @@ def collect():
             return default
     return {"version": VERSION, "ts": time.time(), "hostname": socket.gethostname(), "os": safe(os_name, ""),
             "virt": safe(virt, ""), "addresses": safe(addresses, []), "kernel": safe(kernel, {}),
-            "reboot": safe(reboot, {}), "apt": safe(apt, {"error": "odczyt nieudany"}), "nfs": safe(nfs, [])}
+            "reboot": safe(reboot, {}), "apt": safe(apt, {"error": "odczyt nieudany"}), "nfs": safe(nfs, []),
+            "disks": safe(disks, []), "memory": safe(memory, {}), "failed_units": safe(failed_units, []),
+            "boot_id": safe(boot_id, ""), "dpkg_changed": safe(dpkg_changed, None), "containers": safe(load_docker, None)}
 
 
 def _ssl(cfg):
@@ -660,6 +911,32 @@ Persistent=true
 WantedBy=timers.target
 """
 
+DOCKER_SERVICE = """[Unit]
+Description=Denali: stan kontenerów Dockera (co 10 minut, bez sieci)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 {program} docker
+# gniazdo Dockera wymaga roota; sieć niepotrzebna, więc odcięta
+PrivateNetwork=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+Nice=15
+TimeoutStartSec=10min
+"""
+
+DOCKER_TIMER = """[Unit]
+Description=Denali: stan kontenerów Dockera — co 10 minut
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+"""
+
 ACTIONS_PATH = """[Unit]
 Description=Denali: czeka na zlecenie akcji z panelu
 
@@ -682,7 +959,8 @@ Nice=5
 
 UNITS = {"denali-agent.service": SERVICE, "denali-agent-ukryte.service": HIDDEN_SERVICE,
          "denali-agent-ukryte.timer": HIDDEN_TIMER, "denali-agent-akcje.path": ACTIONS_PATH,
-         "denali-agent-akcje.service": ACTIONS_SERVICE}
+         "denali-agent-akcje.service": ACTIONS_SERVICE, "denali-agent-docker.service": DOCKER_SERVICE,
+         "denali-agent-docker.timer": DOCKER_TIMER}
 
 
 def unit_text(name):
@@ -767,10 +1045,12 @@ def install(server, code, ca_file="", allow=None):
         with open(os.path.join(UNIT_DIR, name), "w") as f:
             f.write(unit_text(name))
     _systemctl("daemon-reload")
-    _systemctl("enable", "denali-agent.service", "denali-agent-ukryte.timer", "denali-agent-akcje.path")
+    _systemctl("enable", "denali-agent.service", "denali-agent-ukryte.timer", "denali-agent-docker.timer",
+               "denali-agent-akcje.path")
     _systemctl("restart", "denali-agent.service")
-    _systemctl("start", "denali-agent-ukryte.timer", "denali-agent-akcje.path")
+    _systemctl("start", "denali-agent-ukryte.timer", "denali-agent-docker.timer", "denali-agent-akcje.path")
     _systemctl("start", "--no-block", "denali-agent-ukryte.service")
+    _systemctl("start", "--no-block", "denali-agent-docker.service")
     print("Gotowe. Agent wysyła raport co minutę — maszyna pojawi się w Denali za chwilę.\n"
           "Stan: systemctl status denali-agent · dziennik: journalctl -u denali-agent -n 30\n"
           "Dozwolone akcje na tej maszynie: {}".format(
@@ -779,8 +1059,9 @@ def install(server, code, ca_file="", allow=None):
 
 def uninstall():
     _need_root()
-    _systemctl("disable", "--now", "denali-agent.service", "denali-agent-ukryte.timer", "denali-agent-akcje.path")
-    _systemctl("stop", "denali-agent-ukryte.service", "denali-agent-akcje.service")
+    _systemctl("disable", "--now", "denali-agent.service", "denali-agent-ukryte.timer", "denali-agent-docker.timer",
+               "denali-agent-akcje.path")
+    _systemctl("stop", "denali-agent-ukryte.service", "denali-agent-docker.service", "denali-agent-akcje.service")
     for name in UNITS:
         try:
             os.remove(os.path.join(UNIT_DIR, name))
@@ -809,6 +1090,7 @@ def main():
     sub.add_parser("uninstall")
     sub.add_parser("run", help="raport co minutę (usługa denali-agent)")
     sub.add_parser("ukryte", help="dane pod montażami NFS (usługa denali-agent-ukryte, root)")
+    sub.add_parser("docker", help="stan kontenerów Dockera (usługa denali-agent-docker, root)")
     sub.add_parser("print", help="raport na ekran, bez wysyłania")
     a = ap.parse_args()
     if a.cmd == "install":
@@ -824,6 +1106,8 @@ def main():
         loop(load_config())
     elif a.cmd == "ukryte":
         hidden_check()
+    elif a.cmd == "docker":
+        docker_check()
     elif a.cmd == "print":
         print(json.dumps(collect(), indent=2, ensure_ascii=False))
 

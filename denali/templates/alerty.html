@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st %}
+{% block title %}Alerty{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Alerty</h1>
+    <p class="lead">Urządzenie działa, ale coś wymaga reakcji. Powiadomienie idzie po 5 minutach, „rozwiązane” po 10 minutach spokoju.</p>
+  </div>
+  <div class="actions"><a class="btn" href="/os-czasu">Oś czasu</a>{% if sess.role == "admin" %}<a class="btn" href="/eksport.md">Eksport Markdown</a>{% endif %}</div>
+</div>
+<section class="card" aria-label="Otwarte alerty">
+  <h2>Otwarte <span class="muted">· {{ rows | length }}</span></h2>
+  {% if rows %}
+  <ul class="list-rows">
+    {% for a in rows %}
+    <li>{{ st("down" if a.severity == "krytyczny" else "warn", 14) }}
+      <span class="grow"><strong>{{ a.label }}</strong>{% if a.device_id %} · <a href="/urzadzenia/{{ a.device_id }}">{{ a.device }}</a>{% endif %}
+        <br><span class="small">{{ a.message }}</span>
+        <br><span class="muted small">od {{ a.first_seen | dt }}{% if a.silenced %} · wyciszony do {{ a.silenced_until | dt }}{% endif %}</span></span>
+      {% if sess.role == "admin" %}
+        {% if a.silenced %}
+        <form class="inline" method="post" action="/alerty/{{ a.id }}/odcisz"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">przywróć</button></form>
+        {% else %}
+        <form class="inline" method="post" action="/alerty/{{ a.id }}/wycisz"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <label class="sr" for="dni-{{ a.id }}">Wycisz na</label>
+          <select id="dni-{{ a.id }}" name="days">{% for n in silence_days %}<option value="{{ n }}" {% if n == 7 %}selected{% endif %}>{{ n }} d</option>{% endfor %}</select>
+          <button class="link" type="submit">wycisz</button></form>
+        {% endif %}
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted">Nic nie wymaga reakcji.</p>{% endif %}
+</section>
+{% if resolved %}
+<section class="card" aria-label="Rozwiązane">
+  <h2>Rozwiązane</h2>
+  <ul class="list-rows">
+    {% for a in resolved %}
+    <li><span class="mono muted small">{{ a.resolved_at | dt }}</span>
+      <span class="grow">{{ a.label }}{% if a.device_id %} · <a href="/urzadzenia/{{ a.device_id }}">{{ a.device }}</a>{% endif %} <span class="muted small">{{ a.message }}</span></span></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

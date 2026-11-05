@@ -126,7 +126,9 @@ def agent_page(request, conn, row):
                                                       observed_state.c.external_id == "host")).mappings().first()
     ref = conn.execute(select(external_ref).where(external_ref.c.integration_id == row["id"],
                                                   external_ref.c.external_id == "host")).mappings().first()
-    return render(request, "agent.html", {"row": row, "state": state, "ref": ref})
+    version = ((state["data"] if state else None) or {}).get("version")
+    return render(request, "agent.html", {"row": row, "state": state, "ref": ref, "latest": agents.latest_version(),
+                                          "outdated": agents.outdated(version)})
 
 
 @router.post("/admin/agenci/{integration_id:int}/usun")

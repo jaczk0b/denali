@@ -14,6 +14,9 @@ SETTINGS = {
     "down_after_s": (int, 120, "Po ilu sekundach niedziałania zgłosić awarię"),
     "notify": (bool, True, "Powiadamiaj na Discordzie"),
     "updates": (("powiadom", "ignoruj"), "powiadom", "Dostępne aktualizacje"),
+    "notify_warn": (bool, True, "Powiadamiaj o alertach (dysk, kopie, NFS…)"),
+    "disk_warn": (int, 85, "Dysk: ostrzeżenie od (%)"),
+    "disk_crit": (int, 95, "Dysk: krytyczne od (%)"),
     "actions": (list, [], "Dozwolone akcje"),
 }
 DEFAULT_PROFILE = "Domyślny"
@@ -29,6 +32,8 @@ def validate(key, value):
     typ, _default, label = SETTINGS[key]
     if isinstance(typ, tuple):
         ok = value in typ
+    elif key in ("disk_warn", "disk_crit"):
+        ok = isinstance(value, int) and not isinstance(value, bool) and 50 <= value <= 100
     elif typ is int:
         ok = isinstance(value, int) and not isinstance(value, bool) and 10 <= value <= 86400
     elif typ is list:

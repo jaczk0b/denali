@@ -13,7 +13,8 @@ from .config import Settings, get_settings
 from .crypto import Box
 from .db import kv_get, make_engine
 from .templating import render
-from .web import (action_routes, admin_routes, agent_routes, auth_routes, desk_routes, docs_routes, infra_routes, infra_tab_routes,
+from .web import (action_routes, admin_routes, agent_routes, auth_routes, desk_routes, docs_routes, extras_routes, infra_routes,
+                  infra_tab_routes,
                   integration_routes, live_routes, metrics_routes, notify_routes, oidc_routes, share_routes, terminal_routes)
 from .web.deps import CSP, CsrfError, Forbidden, NotFound, Redirect
 
@@ -31,7 +32,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = make_engine(settings.db_url)
     # tryb deweloperski bez klucza: klucz tymczasowy (zaszyfrowane dane nie przeżyją restartu)
     app.state.box = Box(settings.encryption_key or Fernet.generate_key().decode())
-    app.state.console_tickets = {}      # bilety konsoli między /start a WebSocketem — jeden proces, tylko w pamięci
+    app.state.console_tickets = {}
+    app.state.console_rejected = {}      # bilety konsoli między /start a WebSocketem — jeden proces, tylko w pamięci
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -64,7 +66,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     for r in (auth_routes, infra_routes, infra_tab_routes, docs_routes, admin_routes, integration_routes, notify_routes, live_routes,
-              agent_routes, action_routes, oidc_routes, terminal_routes, metrics_routes, desk_routes, share_routes):
+              agent_routes, action_routes, oidc_routes, terminal_routes, metrics_routes, desk_routes, share_routes,
+              extras_routes):
         app.include_router(r.router)
 
     @app.get("/health")

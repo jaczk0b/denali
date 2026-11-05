@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
-from .. import actions, auth, infra_views as views, live, mapview, racks, status
+from .. import actions, auth, infra_views as views, live, mapview, oui, racks, status
 from ..models import device, rack, rack_item
 from ..templating import render
 from .deps import client_ip, require_admin, require_user
@@ -62,6 +62,9 @@ def tab_docker(request: Request, sess: dict = Depends(require_user)):
 def tab_network(request: Request, sess: dict = Depends(require_user)):
     def build(conn):
         nets = views.network(conn)
+        for n in nets:
+            for c in n["clients"]:
+                c["vendor"] = oui.lookup(request.app.state.settings.data_dir, c["mac"])
         return {"nets": nets, "clients": views.all_clients(nets), "weak_signal": views.WEAK_SIGNAL, "bands": views.BAND}
     return _page(request, "infra_siec.html", "siec", build)
 

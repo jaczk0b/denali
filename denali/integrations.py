@@ -11,7 +11,7 @@ import time
 
 from sqlalchemy import delete, select
 
-from . import discovery, forecast, inventory as inv
+from . import changes, discovery, forecast, inventory as inv
 from .adapters import AdapterError, registry
 from .models import dependency, external_ref, integration, observed_state, update_item
 
@@ -99,6 +99,8 @@ def record(conn, integration_id, result, now=None):
     _sync_approved(conn, integration_id, result.found)
     _sync_live_deps(conn, integration_id, result.found)
     seen = set()
+    before = {r.external_id: r.data for r in conn.execute(select(observed_state.c.external_id, observed_state.c.data).where(
+        observed_state.c.integration_id == integration_id))}
     for s in result.states:
         seen.add(s.external_id)
         values = {"state": s.state, "summary": (s.summary or "")[:300], "data": s.data or {}, "observed_at": now}
@@ -111,6 +113,7 @@ def record(conn, integration_id, result, now=None):
     for s in result.states:
         if s.attach:
             _attach(conn, integration_id, s, now)
+        changes.record(conn, integration_id, s.external_id, before.get(s.external_id), s.data, now)
     # obiekty, których źródło już nie zgłasza (np. usunięta VM) — nie wiemy, co z nimi
     for row in conn.execute(select(observed_state.c.external_id, observed_state.c.state).where(
             observed_state.c.integration_id == integration_id)).all():

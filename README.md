@@ -11,7 +11,7 @@ zależności i kable, profile, kolejka „do zatwierdzenia”, analiza przyczyny
 skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo, router OpenWrt, router TP-Link i OVHcloud (VPS),
 sprawdzenia z LAN i z internetu, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS,
 odświeżanie na żywo (SSE); jedna lista aktualizacji (Proxmox, PBS, Komodo, OpenWrt, agent) i agent na maszynach (apt,
-wymagany restart, NFS); dział Infrastruktura z zakładkami Mapa (rysowana sama), Proxmox, TrueNAS, Docker, Sieć, VPS,
+wymagany restart, NFS, dyski, pamięć, usługi failed, kontenery); alerty, oś czasu i terminy; dział Infrastruktura z zakładkami Mapa (rysowana sama), Proxmox, TrueNAS, Docker, Sieć, VPS,
 Adresy IP (zajęte i wolne, konflikty) i Szafa (co na której wysokości); akcje z listy dozwolonych (Proxmox: start,
 wyłączenie, restart, snapshot; Komodo: start, restart, stop, Deploy; agent: apt upgrade po snapshocie i restart
 maszyny, gdy jest wymagany; OpenWrt: kopia konfiguracji) z potwierdzeniem i audytem — z karty urządzenia i z zakładek Proxmox i Docker; TrueNAS:
@@ -24,6 +24,7 @@ Spis treści:
 [Akcje](#akcje) ·
 [Terminale](#terminale) ·
 [Monitorowanie](#monitorowanie) ·
+[Alerty](#alerty) ·
 [Tablet](#tablet-przy-szafie) ·
 [Migracja z HLC](#migracja-z-hlc) ·
 [Kopia zapasowa](#kopia-zapasowa) ·
@@ -241,12 +242,16 @@ certyfikat — token nie idzie zwykłym HTTP.
 - `denali-agent.service` — raport co minutę, jako zwykły użytkownik `denali-agent`, system tylko do odczytu.
 - `denali-agent-ukryte.timer` — raz dziennie, jako root, **bez sieci**: czy pod montażami NFS nie leżą dane zapisane,
   gdy udział nie był podłączony.
+- `denali-agent-docker.timer` — co 10 minut, jako root, **bez sieci**: stan kontenerów, rozmiar warstwy i pliki core. Gniazdo
+  Dockera to w praktyce root, więc usługa raportu go nie dotyka, tylko czyta wynik z pliku. Logi i zmienne środowiskowe
+  kontenerów nie opuszczają maszyny.
 - `denali-agent-akcje.path` → `denali-agent-akcje.service` (root) — wykonuje akcję zleconą z panelu, **tylko jeśli
   jest na lokalnej liście** w `/etc/denali-agent/config.json`. Domyślnie lista jest pusta: agent niczego nie wykona.
   Pozwolenie: `sudo python3 /opt/denali-agent/denali-agent.py pozwol apt_upgrade` i `… pozwol reboot` (cofnięcie:
   `zabron`), albo od razu przy instalacji: `… install … --akcje apt_upgrade,reboot`. Panel tej listy nie zmieni.
 - Agent nie słucha na żadnym porcie. Zlecenie przychodzi w odpowiedzi na jego raport; usługa raportu tylko zapisuje
   je do pliku, a wykonuje osobna usługa po sprawdzeniu lokalnej listy.
+- Agent sprzed 1.4 działa dalej, ale nie zgłasza dysków, usług ani kontenerów: strona agenta pokaże „nieaktualny”.
 - Agent zainstalowany przed wersją 1.1 nie zna akcji, a przed 1.2 — restartu maszyny. Wygeneruj nowe polecenie i wklej
   je jeszcze raz (ta sama maszyna zostaje tą samą integracją, z historią; lokalna lista akcji zostaje).
 - Stan: `systemctl status denali-agent`, `journalctl -u denali-agent -n 30`; raport bez wysyłania:
@@ -289,7 +294,7 @@ historia w *Akcjach*, a przy trwającym incydencie urządzenia — w jego przebi
 | Proxmox VE | Uruchom, Wyłącz, Uruchom ponownie, Zatrzymaj natychmiast, Zrób snapshot (VM i LXC) | jeden token integracji, zakres „Akcje” (`VM.PowerMgmt`, `VM.Snapshot`), polecenie układa panel |
 | Komodo | Uruchom, Uruchom ponownie, Zatrzymaj, Aktualizuj (Deploy) — na stackach | klucz osobnego użytkownika z prawem **Execute** tylko na wybranych stackach |
 | OpenWrt | Kopia konfiguracji (to samo co `sysupgrade -b` / LuCI *Generate archive*) — na routerze nic się nie zmienia | osobne konto rpcd `denali-kopia` z prawem tylko do kopii (`cgi-io backup`) |
-| Agent | Zainstaluj aktualizacje (`apt-get update` + `apt-get upgrade`, bez usuwania pakietów), Uruchom ponownie maszynę (`shutdown -r +1`) | lokalna lista na maszynie (`pozwol apt_upgrade`, `pozwol reboot`; restart od agenta 1.2) |
+| Agent | Zainstaluj aktualizacje (`apt-get update` + `apt-get upgrade`, bez usuwania pakietów), Uruchom ponownie maszynę (`shutdown -r +1`), Usuń pliki core, Zamontuj ponownie NFS, Usuń nieużywane obrazy, Przytnij dziennik, Kopia baz Postgres (od agenta 1.4) | lokalna lista na maszynie (`pozwol KLUCZ`: `apt_upgrade`, `reboot`, `clean_cores`, `nfs_remount`, `docker_prune`, `journal_vacuum`, `db_backup`) |
 
 `apt upgrade` na VM z Proxmoxa: w oknie potwierdzenia „Najpierw snapshot w Proxmoxie” (gdy snapshot tej VM jest
 dozwolony i Proxmox ma token do akcji) — aktualizacja ruszy dopiero po udanym snapshocie, a nieudany snapshot ją
@@ -335,8 +340,42 @@ hasła konta na hoście; hosta obsługujesz z panelu Proxmoxa.
 adresy), przez agenta 1.3 lub nowszego. Panel wysyła tylko klucz polecenia, a treść jest w kodzie agenta, więc dowolnego
 polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/denali-agent.py pozwol polecenia`. Wynik pojawia się po około minucie, z kolejnym raportem agenta.
 
+## Alerty
+
+Incydent znaczy „urządzenie nie działa”. Alert znaczy „działa, ale coś wymaga reakcji”. Lista jest w *Alerty*, skrót na
+pulpicie i na karcie urządzenia. Sam stan „uwaga” niczego nie wysyła, bo uwagą jest też np. lista pakietów sprzed
+tygodnia: powiadomienie dostają tylko rzeczy z tej listy.
+
+| Skąd | Co |
+|---|---|
+| TrueNAS | pula inna niż ONLINE, pula zajęta od 90%, nieudany test SMART, za gorący dysk, błąd snapshotów albo replikacji, alerty TrueNAS od poziomu ERROR |
+| PBS | kopia starsza niż 36 h (krytyczne po 7 dniach), magazyn zajęty od 85% |
+| Proxmox | dysk węzła i kontenera LXC, RAM węzła, magazyny Proxmoxa, brak kworum klastra |
+| Komodo | stack `unhealthy` albo w pętli restartów |
+| Agent | dysk, i-węzły, RAM, swap, usługi failed, NFS (odłączony, wolny, dane pod montażem), kontener niezdrowy, restartujący się, zatrzymany z błędem, rosnąca warstwa zapisywalna, pliki core |
+| Sprawdzenia | certyfikat za mniej niż 14 dni, aplikacja niedostępna z internetu dłużej niż 5 minut |
+| Terminy | gwarancja, domena, licencja: 30 dni przed, pilne 7 dni przed |
+| Panel | brak internetu w domu |
+
+- Powiadomienie idzie po 5 minutach, jedna wiadomość na wagę, „rozwiązane” po 10 minutach spokoju.
+- Progi dysku (domyślnie 85 i 95%) i „Powiadamiaj o alertach” ustawiasz w *Profilach*, na urządzeniu tylko wyjątki.
+- *Wycisz* na 1, 7 albo 30 dni: alert zostaje na liście, ale nie wysyła wiadomości.
+- Gdy urządzenie leży albo ma planowaną przerwę, alert czeka: mówi o tym incydent.
+- Gdy źródło milczy (agent nie raportuje), alert zostaje otwarty: brak danych to nie naprawa.
+
+**Brak internetu w domu.** Panel co pół minuty łączy się z 1.1.1.1, 8.8.8.8 i 9.9.9.9. Po dwóch porażkach VPS i adresy
+publiczne dostają „nie da się sprawdzić” zamiast fałszywej awarii. Wiadomość o przerwie przychodzi po powrocie łącza.
+
+**Oś czasu** (*Alerty → Oś czasu*): zmiany z ostatnich 90 dni, także te spoza panelu: nowy obraz, nowy lub usunięty
+kontener, restart systemu i kontenera, zmiana adresu, instalacja pakietów. Zmiany z 24 h przed awarią trafiają do incydentu.
+
+**Eksport Markdown** (*Alerty → Eksport Markdown*, na karcie urządzenia w *Ustawieniach*): stan do diagnozy, dla siebie
+albo dla modelu językowego. Bez skarbca i plików, sekrety w notatkach są maskowane według wzorców. Maskowanie zmniejsza
+ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
+
 ## Monitorowanie
 
+- **Własne sprawdzenia** (karta urządzenia → *Ustawienia*): HTTP, TCP, ping, certyfikat TLS, DNS, tylko tam, gdzie te liczone same nie wystarczą.
 - **Sprawdzenia liczą się same** z adresów urządzenia: ping (IP albo nazwa hosta), HTTP (adres aplikacji), „z internetu”
   (domena w publicznym DNS), **DNS** (nazwa hosta z kropką, np. `nas.lan`, ma wskazywać IP urządzenia — najwyżej „uwaga”)
   i **porty TCP** wpisane w *Edytuj → Porty do sprawdzania* (np. `5432, 1883` dla bazy i MQTT).
@@ -370,7 +409,9 @@ polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/dena
   działać, gdy wybrane urządzenie padnie (symulacja, nic nie jest wyłączane).
 - **Prognoza miejsca** — pule TrueNAS i magazyny PBS: zajętość co godzinę, prognoza z przyrostu w ostatnich 14 dniach
   (potrzeba min. 2 dni danych). Poniżej 14 dni do zapełnienia — wiadomość na Discord (raz na tydzień).
-- **Podsumowanie tygodnia** na Discord w poniedziałek od 8:00 (albo *Powiadomienia → Wyślij teraz*).
+- **Podsumowanie tygodnia** w poniedziałek od 8:00 (albo *Powiadomienia → Wyślij teraz*), a dostępność za miesiąc pierwszego dnia miesiąca.
+- **Kanały**: Discord, ntfy, Telegram, e-mail (*Powiadomienia*). Krytyczny incydent bez reakcji może wracać co 1–24 h (*Powtórki*).
+- **Producent po MAC** na zakładce *Sieć*: lista IEEE, pobierana raz na miesiąc do katalogu danych.
 - **Ctrl+K** (albo `/`) — szybkie przejście do urządzenia, procedury, incydentu albo strony panelu.
 - **Motyw**: menu konta → kółka obok „Motyw”: *Grafit* albo *Zorza* (noc nad Denali). Zapamiętany w przeglądarce.
 - **Dla innych programów**: ustaw `DENALI_METRICS_TOKEN` w `.env`, a panel wystawi `/metrics` (Prometheus) i
@@ -415,7 +456,10 @@ Alarm: nowy incydent → czerwony ekran, wybudzenie ekranu i krótki dźwięk (p
 
 Przenosi z HLC: urządzenia (z notatkami, dostępem, portami), adresy, zależności, kable, runbooki, log problemów,
 pliki, hasła (do skarbca), procedury „na wypadek”, kontakt alarmowy, hasła Wi-Fi i ikony aplikacji ze strony Start.
-Nie przenosi kont (załóż w Denali), sprawdzeń i kanałów powiadomień (wrócą z integracjami w Etapie 3).
+Do tego terminy (gwarancja, domena), porty TCP, własne sprawdzenia, opis sieci i pul DHCP (jako runbook), ostatnią wersję
+kopii konfiguracji (jako pliki urządzenia) i oś czasu z 90 dni. Migrację można powtórzyć po aktualizacji Denali: doda tylko to,
+czego wcześniej nie było. Nie przenosi kont (załóż w Denali), kanałów powiadomień, sprawdzeń „z internetu” (Denali liczy je
+samo), historii alertów ani raportów.
 HLC jest tylko czytane — nic w nim się nie zmienia. Drugie uruchomienie niczego nie dubluje.
 
 Wystarczą dwa terminale w przeglądarce, bez kopiowania plików na komputer:
@@ -572,7 +616,7 @@ Kto co zmienił: *Audyt* w panelu.
   (wylogowanie wszędzie, wygasanie po 12 h bezczynności). Opcjonalnie Pocket ID (OIDC z PKCE) obok własnego konta.
 - Role: administrator i podgląd. Tablet: tylko podgląd, tylko ze swojego adresu.
 - Skarbiec zaszyfrowany; pokazanie hasła wymaga ponownego potwierdzenia hasłem i 2FA i trafia do audytu.
-- Każda zmiana ma wpis w audycie. Panel nie ma i nie będzie miał dostępu do powłoki serwerów.
+- Każda zmiana ma wpis w audycie. Powłoka tylko na karcie Terminale: dla administratora, po potwierdzeniu, z zapisem otwarcia i zamknięcia.
 - Akcje tylko z jawnej listy w kodzie i z listy dozwolonych urządzenia, osobnym tokenem o minimalnych uprawnieniach;
   niebezpieczne po ponownym potwierdzeniu; wyłącznik wszystkich akcji jednym kliknięciem.
 - Agent: token tylko w `/etc/denali-agent/config.json` (root i grupa agenta), w Denali tylko jego skrót; raport

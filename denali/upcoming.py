@@ -4,7 +4,8 @@
 - usługi OVH opłacone do daty w ciągu PAY_DAYS (z integracji OVHcloud),
 - aktualizacje bezpieczeństwa czekające dłużej niż SECURITY_WAIT_DAYS,
 - kopia zapasowa Denali starsza niż BACKUP_DAYS,
-- magazyny (pule TrueNAS, PBS), które według prognozy zapełnią się w ciągu forecast.SHOW_DAYS.
+- terminy wpisane przy urządzeniach (gwarancja, domena, licencja),
+- magazyny (pule TrueNAS, PBS, Proxmox), które według prognozy zapełnią się w ciągu forecast.SHOW_DAYS.
 Najbliższe (albo już zaległe) na górze. Nic nie trzeba ustawiać — wszystko liczy się z danych, które już są.
 """
 import time
@@ -12,7 +13,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
-from . import forecast
+from . import forecast, terms
 from .db import kv_get
 from .models import check_state, device, external_ref, integration, observed_state, update_item
 
@@ -87,5 +88,8 @@ def items(conn, now=None):
         if f["days"] is not None and f["days"] < forecast.SHOW_DAYS:
             out.append({"when": now + f["days"] * 86400, "level": "down" if f["days"] < forecast.ALERT_DAYS else "warn",
                         "text": forecast.describe(f), "link": f"/urzadzenia/{f['device_id']}" if f["device_id"] else "/"})
+    for t in terms.due(conn, now):
+        out.append({"when": t["when"], "level": "down" if t["severity"] == "krytyczny" else "warn", "text": t["text"],
+                    "link": f"/urzadzenia/{t['device_id']}"})
     out.sort(key=lambda x: x["when"])
     return out[:LIMIT]

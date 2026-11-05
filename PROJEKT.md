@@ -23,7 +23,8 @@ Cel, do którego odnosi się każda decyzja:
 | Poza zakresem | Asystent AI, panel Start z pogodą/kalendarzem, widok domownika — w [POMYSLY.md](POMYSLY.md) |
 | Shell | Do Etapu 5 żadnego: akcje wyłącznie przez API (Proxmox, Komodo, OpenWrt) albo lokalną białą listę agenta. Decyzja 4.11.2026: od Etapu 6 osobna karta z terminalami i VNC, bo panel nie jest wystawiony do internetu. Terminal SSH: dane logowania zaszyfrowane w Skarbcu urządzenia, żeby otwierać jednym kliknięciem (decyzja 4.11.2026, panel tylko w LAN) |
 | Token Proxmoxa | Jeden na wszystko (decyzja 4.11.2026). Zakresy wybiera administrator, panel układa polecenie `pveum` i sprawdza wynik. Dodanie zakresu i zmiana adresu przy nadanych zakresach: po potwierdzeniu hasłem |
-| Powiadomienia | **Discord (webhook)** na start |
+| Powiadomienia | **Discord (webhook)** na start; od 5.11.2026 też ntfy, Telegram i e-mail |
+| Alerty | Decyzja 5.11.2026: „uwaga” sama nie wysyła powiadomienia, tylko poważne problemy z listy w `denali/alerts.py` (osobna tabela `alert`, bez incydentu). Pełny dysk i awaria Immicha nie mogą przechodzić bez słowa |
 | Ustawienia urządzeń | **Minimum ustawień na pojedynczym urządzeniu** — zasada nadrzędna, patrz niżej (warunek akceptacji projektu) |
 
 ### Zasada nadrzędna: prawie nic do ustawiania na pojedynczym urządzeniu
@@ -72,7 +73,7 @@ Nazwa repozytorium, pakietu Pythona i obrazu Dockera: `denali`.
 | Wygląd | Własne tokeny CSS z makiety (statusy kolorem i kształtem, kontrast ≥ 4,5:1), czcionka IBM Plex Sans/Mono hostowana lokalnie | Panel nie może zależeć od Google Fonts, gdy padnie internet |
 | Zadania w tle | Osobny proces **worker** (asyncio, harmonogram w kodzie) | Odpytywanie integracji nie blokuje UI; restart workera nie wyłącza panelu |
 | Eksport PDF | **WeasyPrint** (w kontenerze) | PDF procedur do druku i do telefonu |
-| Agent | Jeden plik Pythona (stdlib), odchudzony agent z HLC | Tylko apt, reboot-required, NFS (z wykrywaniem ukrytych danych) |
+| Agent | Jeden plik Pythona (stdlib), odchudzony agent z HLC | Apt, reboot-required, NFS (z wykrywaniem ukrytych danych). Od 5.11.2026 też dyski, pamięć, usługi failed i kontenery (osobna usługa root bez sieci): API Proxmoxa nie zna dysku wewnątrz VM, a Komodo warstwy kontenera |
 | Testy | pytest + nagrane odpowiedzi API (fixture) dla każdego adaptera | Każdy adapter testowany na prawdziwych odpowiedziach, nie na wymyślonych |
 | Wdrożenie | **Docker Compose** na osobnej VM: `app` + `worker`; HTTPS robi istniejący **Nginx Proxy Manager** | Obraz = powtarzalna instalacja; łatwe uruchomienie na zapasowym serwerze |
 

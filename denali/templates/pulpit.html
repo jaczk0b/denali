@@ -92,6 +92,14 @@
           {% endfor %}
         </ol>
       </section>
+      {% if open_alerts %}
+      <section class="widget" aria-labelledby="uwagi">
+        <h2 id="uwagi"><a href="/alerty">Wymaga uwagi · {{ open_alerts | length }}</a></h2>
+        <ul class="upcoming">
+          {% for a in open_alerts[:6] %}<li class="{{ 'down' if a.severity == 'krytyczny' else 'warn' }}">{{ st('down' if a.severity == 'krytyczny' else 'warn', 14) }}<a href="{{ '/urzadzenia/%d' % a.device_id if a.device_id else '/alerty' }}">{{ a.message }}</a></li>{% endfor %}
+        </ul>
+      </section>
+      {% endif %}
       {% if upcoming %}
       <section class="widget" aria-labelledby="nadchodzace">
         <h2 id="nadchodzace">Nadchodzące</h2>
@@ -116,6 +124,7 @@
   <a href="/" aria-current="page">{{ nav_icon("pulpit") }}Pulpit</a>
   <a href="/urzadzenia">{{ nav_icon("infra") }}Infrastruktura</a>
   <a href="/incydenty">{{ nav_icon("incydenty") }}Incydenty{% if counts.incidents %}<span class="badge down">{{ counts.incidents }}</span>{% endif %}</a>
+  <a href="/alerty">{{ nav_icon("incydenty") }}Alerty{% if counts.alerts %}<span class="badge">{{ counts.alerts }}</span>{% endif %}</a>
   <a href="/aktualizacje">{{ nav_icon("aktualizacje") }}Aktualizacje{% if counts.updates %}<span class="badge">{{ counts.updates }}</span>{% endif %}</a>
   <a href="/procedury">{{ nav_icon("procedury") }}Procedury</a>
   {% if sess.role == "admin" and sess.kind != "kiosk" %}<a href="/terminale">{{ nav_icon("terminale") }}Terminale</a>{% endif %}

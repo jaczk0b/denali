@@ -25,6 +25,7 @@ REST = {"system.info": "/system/info", "pool.query": "/pool", "pool.snapshottask
 WS_ONLY = ("disk.temperatures",)     # w REST to POST — tam bez temperatur
 POOL_DOWN = {"FAULTED", "UNAVAIL", "OFFLINE", "REMOVED"}
 USAGE_WARN = 0.90
+USAGE_CRIT = 0.95
 ALERT_LEVELS = {"CRITICAL", "ERROR", "ALERT", "EMERGENCY"}
 LEVEL_ORDER = ("EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO")
 ALERTS_MAX = 50
@@ -129,7 +130,11 @@ def _disk_states(data):
         serial = str(d.get("serial") or "").strip()
         out.append(State(f"disk/{serial or name}", "warn" if problems else "ok", summary[:300], {
             "name": name, "model": str(d.get("model") or "")[:80], "serial": serial[:60], "size": d.get("size"),
-            "type": kind, "pool": pools.get(name), "temp": temp, "smart": test, "problems": problems},
+            "type": kind, "pool": pools.get(name), "temp": temp, "smart": test, "problems": problems,
+            "alarms": ([{"rule": "smart_failed", "key": serial or name, "text": f"Dysk {name}: {problems[0]}"}]
+                       if test and test["status"] in SMART_BAD else [])
+            + ([{"rule": "disk_hot", "key": serial or name, "text": f"Dysk {name}: {temp:.0f} °C"}]
+               if temp is not None and temp >= HOT.get(kind, HOT["SSD"]) else [])},
             attach={"ref": "server"}, label=f"dysk {name}"))
     return out
 
@@ -253,7 +258,10 @@ class Truenas(Adapter):
                   "alert_list": all_alerts, "disks_read": data.get("disk.query") is not None,
                   "smart_read": data.get("smart.test.results") is not None,
                   "nfs": [x.get("path") or (x.get("paths") or [""])[0] for x in data.get("sharing.nfs.query") or []
-                          if x.get("enabled", True)]}
+                          if x.get("enabled", True)],
+                  "alarms": [{"rule": "truenas_alert", "key": a["klass"] or a["text"][:80], "text": a["text"],
+                              "severity": "krytyczny" if a["level"] in ("CRITICAL", "ALERT", "EMERGENCY") else "ostrzezenie"}
+                             for a in alerts]}
         if alerts:
             out.states.append(State("server", "warn", f"alerty TrueNAS: {len(alerts)} — {texts[0][:150]}", server))
         else:
@@ -272,7 +280,14 @@ class Truenas(Adapter):
             else:
                 state = "ok"
             summary = f"pula {name}: {status}" + (f" · zajęte {pct:.0%}" if pct is not None else "")
-            out.states.append(State(f"pool/{name}", state, summary, {"status": status, "used": pct, "size": size, "allocated": alloc},
+            alarms = []
+            if status not in POOL_DOWN and (status != "ONLINE" or p.get("healthy") is False):
+                alarms.append({"rule": "pool_unhealthy", "key": name, "text": f"Pula {name}: {status}"})
+            if pct is not None and pct >= USAGE_WARN:
+                alarms.append({"rule": "storage", "key": name, "text": f"Pula {name} zajęta w {pct:.0%}",
+                               "severity": "krytyczny" if pct >= USAGE_CRIT else "ostrzezenie"})
+            out.states.append(State(f"pool/{name}", state, summary, {"status": status, "used": pct, "size": size, "allocated": alloc,
+                                                                     "alarms": alarms},
                                     attach={"ref": "server"}, label=f"pula {name}"))
         out.states += _disk_states(data)
         for kind, method, label in (("snapshot", "pool.snapshottask.query", "snapshoty"),
@@ -290,6 +305,9 @@ class Truenas(Adapter):
                     state, summary = "ok", f"{label} {key}: ostatnio {_when(last)}"
                 else:
                     state, summary = "unknown", f"{label} {key}: {s.lower() or 'jeszcze nie uruchomione'}"
-                out.states.append(State(f"{kind}/{key}", state, summary, {"last": last, "state": s},
+                out.states.append(State(f"{kind}/{key}", state, summary,
+                                        {"last": last, "state": s,
+                                         "alarms": [{"rule": "backup_task", "key": str(key), "text": summary}]
+                                         if state == "warn" else []},
                                         attach={"ref": "server"}, label=f"{label} {key}"))
         return out

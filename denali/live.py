@@ -17,7 +17,7 @@ import time
 
 from sqlalchemy import func, select
 
-from . import changes, history, incidents, inventory as inv, maintenance, profiles
+from . import changes, checks, history, incidents, inventory as inv, maintenance, profiles, uplink
 from .db import kv_get, kv_set
 from .models import check_state, device, external_ref, incident, incident_event, observed_state
 
@@ -45,14 +45,17 @@ def compute(conn, now=None):
     from_checks = {}
     for c in conn.execute(select(check_state)).mappings():
         from_checks.setdefault(c["device_id"], []).append(c)
-    for d in conn.execute(select(device.c.id)).scalars():
+    offline = uplink.is_down(conn)
+    for d, kind in conn.execute(select(device.c.id, device.c.kind)).all():
         if not profiles.value(conn, d, "monitor"):
             continue
         down_after = profiles.value(conn, d, "down_after_s")
         states = list(from_sources.get(d, []))
         pending_until = None    # najwcześniejsza chwila, w której niedziałające sprawdzenie zostanie uznane za awarię
         for c in from_checks.get(d, []):
-            if c["ok"]:
+            if offline and not c["ok"] and (kind == "vps" or checks.needs_internet(c["kind"], c["target"])):
+                states.append(("unknown", "brak internetu w domu — nie da się sprawdzić"))
+            elif c["ok"]:
                 soon = c["cert_expires_at"] and c["cert_expires_at"] - now < 14 * 86400
                 states.append(("warn" if soon else "ok", c["summary"]))
             elif not c["first_fail_at"]:

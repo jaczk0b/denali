@@ -16,6 +16,8 @@ from .tls import ssl_context, validate_pem_field
 CA_HINT = "cat /etc/proxmox-backup/proxy.pem"
 MAX_AGE_H = 36
 USAGE_WARN = 0.85
+USAGE_CRIT = 0.95
+STALE_CRIT_H = 7 * 24
 
 
 def _when(ts):
@@ -111,7 +113,7 @@ class Pbs(Adapter):
         ip = host if host.replace(".", "").isdigit() else None
         out.found.append(Found("server", {"name": "PBS" if ip else host, "kind": "vm",
                                           "addresses": [{"kind": "ip", "value": ip}] if ip else []}))
-        parts, worst = [], "ok"
+        parts, worst, alarms = [], "ok", []
         for store in stores:
             u = usage.get(store) or {}
             if u.get("total"):
@@ -119,10 +121,12 @@ class Pbs(Adapter):
                 parts.append(f"{store} {pct:.0%}")
                 if pct >= USAGE_WARN:
                     worst = "warn"
+                    alarms.append({"rule": "storage", "key": store, "text": f"Magazyn {store} zajęty w {pct:.0%}",
+                                   "severity": "krytyczny" if pct >= USAGE_CRIT else "ostrzezenie"})
             else:
                 parts.append(store)
         out.states.append(State("server", worst, "magazyny: " + ", ".join(parts) if parts else "brak magazynów",
-                                {"stores": stores, "usage": {s: {"used": usage[s].get("used", 0), "total": usage[s]["total"]}
+                                {"stores": stores, "alarms": alarms, "usage": {s: {"used": usage[s].get("used", 0), "total": usage[s]["total"]}
                                                              for s in stores if (usage.get(s) or {}).get("total")}}))
         latest = {}
         for store, items in groups.items():
@@ -143,7 +147,10 @@ class Pbs(Adapter):
                 summary = (f"brak świeżej kopii — ostatnia {_when(last)}" if last else "brak kopii") + f" · magazyn {store}"
             ids = [f"qemu/{bid}"] if typ == "vm" else [f"lxc/{bid}"]
             out.states.append(State(f"backup/{typ}/{bid}", "ok" if fresh else "warn", summary,
-                                    {"last_backup": last, "count": g.get("backup-count"), "store": store},
+                                    {"last_backup": last, "count": g.get("backup-count"), "store": store,
+                                     "alarms": [] if fresh else [{
+                                         "rule": "backup_stale", "key": f"{typ}/{bid}", "text": summary,
+                                         "severity": "krytyczny" if age_h is None or age_h > STALE_CRIT_H else "ostrzezenie"}]},
                                     attach={"integration_type": "proxmox", "external_ids": ids},
                                     label=f"kopie {'VM' if typ == 'vm' else 'kontenera'} {bid}"))
         return out

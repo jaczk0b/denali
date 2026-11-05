@@ -4,7 +4,8 @@ import asyncio
 import logging
 import time
 
-from . import actions, agents, backup, checks, export, forecast, history, integrations, live, notify, watchdog, weekly
+from . import (actions, agents, alerts, backup, changes, checks, export, forecast, history, integrations, live, notify,
+               oui, uplink, watchdog, weekly)
 from .config import Settings
 from .crypto import Box
 from .db import kv_get, kv_set, make_engine
@@ -37,6 +38,8 @@ def tick(engine, settings: Settings, state: dict, now: float | None = None) -> N
             with engine.begin() as conn:
                 history.prune(conn, now)
                 forecast.prune(conn, now)
+                alerts.prune(conn, now)
+                changes.prune(conn, now)
         except Exception:
             log.exception("Czyszczenie historii nie powiodło się")
     with engine.connect() as conn:
@@ -77,15 +80,26 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                 except Exception:
                     log.exception("Sprawdzenia nie powiodły się")
             try:
+                online = await uplink.online()
+                with engine.begin() as conn:
+                    uplink.record(conn, online)
+            except Exception:
+                log.exception("Sprawdzenie internetu nie powiodło się")
+            try:
                 with engine.begin() as conn:
                     agents.mark_silent(conn)
                     live.evaluate(conn)
+                    alerts.evaluate(conn)
             except Exception:
                 log.exception("Ocena stanu i incydentów nie powiodła się")
+            if not state.get("oui_task") or state["oui_task"].done():
+                state["oui_task"] = asyncio.create_task(oui.refresh(settings.data_dir, state))
             if box:
                 try:
                     with engine.begin() as conn:
                         await notify.process(conn, box, settings.base_url)
+                        await notify.process_alerts(conn, box, settings.base_url, live.saved(conn))
+                        await notify.reminders(conn, box, settings.base_url)
                 except Exception:
                     log.exception("Wysyłka powiadomień nie powiodła się")
                 if time.time() - state.get("forecast_at", 0) >= FORECAST_EVERY:
@@ -95,6 +109,8 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                             await notify.forecast_alerts(conn, box, settings.base_url)
                         with engine.begin() as conn:
                             await weekly.process(conn, box, settings.base_url)
+                        with engine.begin() as conn:
+                            await weekly.process_month(conn, box, settings.base_url)
                     except Exception:
                         log.exception("Prognoza miejsca albo podsumowanie tygodnia nie powiodły się")
                 try:
@@ -110,6 +126,8 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
     finally:
         for task in polls.values():
             task.cancel()
+        if state.get("oui_task"):
+            state["oui_task"].cancel()
         await asyncio.gather(*polls.values(), return_exceptions=True)
         engine.dispose()
         log.info("worker stop")

@@ -50,6 +50,16 @@
 
 {{ alerts(error, message) }}
 
+{% if open_alerts %}
+<section data-tab="przeglad" class="card" aria-labelledby="alerty-h">
+  <h2 id="alerty-h">Wymaga uwagi</h2>
+  <ul class="list-rows">
+    {% for a in open_alerts %}<li>{{ st("down" if a.severity == "krytyczny" else "warn", 14) }}<span class="grow">{{ a.message }}<br><span class="muted small">{{ a.label }} · od {{ a.first_seen | dt }}{% if a.silenced %} · wyciszony do {{ a.silenced_until | dt }}{% endif %}</span></span></li>{% endfor %}
+  </ul>
+  <p class="small"><a href="/alerty">Wycisz albo zobacz wszystkie</a></p>
+</section>
+{% endif %}
+
 {% if sources or checks %}
 <section data-tab="przeglad" aria-labelledby="zrodla">
   <h2 id="zrodla">Stan ze źródeł</h2>
@@ -65,7 +75,7 @@
     {% for c in checks %}
     {% set soon = c.ok and c.cert_expires_at and c.cert_expires_at - now < 14 * 86400 %}
     <div class="card source">
-      <div class="source-head"><span>{{ {"ping": "Ping z LAN", "internet": "Z internetu (przez publiczny DNS)", "tcp": "Port TCP", "dns": "Nazwa w DNS"}.get(c.kind, "Aplikacja (HTTP)") }}</span><span>{{ c.checked_at | hm }}</span></div>
+      <div class="source-head"><span>{{ {"ping": "Ping z LAN", "internet": "Z internetu (przez publiczny DNS)", "tcp": "Port TCP", "dns": "Nazwa w DNS", "tls": "Certyfikat TLS"}.get(c.kind, "Aplikacja (HTTP)") }}</span><span>{{ c.checked_at | hm }}</span></div>
       {% set waiting = not c.ok and c.first_fail_at and live and live.pending_until and c.kind not in ("internet", "dns") %}
       <div class="source-state">{{ st("warn" if soon or waiting else ("ok" if c.ok else "down"), 15) }}
         {{ ("Działa — uwaga" if soon else "Działa") if c.ok else ("Nie odpowiada — jeszcze nie awaria" if waiting else "Nie odpowiada") }}</div>
@@ -234,6 +244,16 @@
     </ul>
     {% else %}<p class="muted">Nic nie zapisano.</p>{% endif %}
   </section>
+
+  {% if recent_changes %}
+  <section data-tab="historia" class="card" aria-labelledby="zmiany">
+    <h2 id="zmiany">Zmiany z 30 dni</h2>
+    <ul class="list-rows">
+      {% for e in recent_changes %}<li><span class="mono muted small">{{ e.ts | dt }}</span><span class="grow">{{ e.text }}</span></li>{% endfor %}
+    </ul>
+    <p class="small"><a href="/os-czasu?urzadzenie={{ d.id }}&amp;dni=30">Pełna oś czasu</a></p>
+  </section>
+  {% endif %}
 
   {% if d.notes_md %}<section data-tab="przeglad" class="card md" aria-label="Notatki">{{ d.notes_md | md }}</section>{% endif %}
 </div>
@@ -408,6 +428,53 @@
     </table>
   </section>
 
+  {% if terms or admin %}
+  <section data-tab="ustawienia" class="card" aria-labelledby="terminy">
+    <h2 id="terminy">Terminy</h2>
+    <p class="muted small">Gwarancja, domena, licencja. Przypomnienie 30 dni przed.</p>
+    {% if terms %}
+    <ul class="list-rows">
+      {% for t in terms %}<li><span class="mono small">{{ t.due_on }}</span><span class="grow">{{ t.label }}</span>
+        {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/terminy/{{ t.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if admin %}
+    <details class="mt"><summary>Dodaj termin</summary>
+      <form method="post" action="/urzadzenia/{{ d.id }}/terminy" class="narrow-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <label class="field">Data<input name="due_on" type="date" required></label>
+        <label class="field">Czego dotyczy<input name="label" required maxlength="200" placeholder="np. gwarancja"></label>
+        <button class="btn" type="submit">Dodaj</button>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if custom_checks or admin %}
+  <section data-tab="ustawienia" class="card" aria-labelledby="wlasne">
+    <h2 id="wlasne">Własne sprawdzenia</h2>
+    <p class="muted small">Tylko to, czego panel nie policzy sam z adresów urządzenia.</p>
+    {% if custom_checks %}
+    <ul class="list-rows">
+      {% for c in custom_checks %}<li><span class="chip">{{ custom_kinds.get(c.kind, c.kind) }}</span><span class="grow mono small">{{ c.target }}{% if c.expect %} → {{ c.expect }}{% endif %}</span>
+        {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/sprawdzenia/{{ c.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if admin %}
+    <details class="mt"><summary>Dodaj sprawdzenie</summary>
+      <form method="post" action="/urzadzenia/{{ d.id }}/sprawdzenia" class="narrow-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <label class="field">Rodzaj<select name="kind">{% for k, v in custom_kinds.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+        <label class="field">Cel <span class="muted small">(adres, https://… albo adres:port)</span><input name="target" required maxlength="500"></label>
+        <label class="field">Oczekiwany adres <span class="muted small">(tylko DNS)</span><input name="expect" maxlength="200"></label>
+        <button class="btn" type="submit">Dodaj</button>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section data-tab="ustawienia" class="card" aria-labelledby="szczegoly">
     <h2 id="szczegoly">Szczegóły</h2>
     <table>
@@ -417,6 +484,7 @@
       <tr><td>Dodane</td><td>{{ d.created_at | dt }}</td></tr>
     </table>
     {% if admin %}
+    <p class="small mt"><a href="/urzadzenia/{{ d.id }}/eksport.md">Eksport Markdown do diagnozy</a> <span class="muted">(sekrety zamaskowane)</span></p>
     <details class="mt">
       <summary>Usuń urządzenie</summary>
       <form method="post" action="/urzadzenia/{{ d.id }}/usun" class="narrow-form">

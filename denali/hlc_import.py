@@ -19,15 +19,19 @@ from datetime import datetime
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
-from . import auth, desk, docs, files, inventory as inv, vault
+from . import auth, checks, desk, docs, files, inventory as inv, terms, vault
 from .db import kv_get, kv_set
-from .models import incident, incident_device, incident_event
+from .models import change_event, device, incident, incident_device, incident_event
 
 KIND_MAP = {"kasa": "inne", "terminal": "inne", "fiskalna": "inne", "skaner": "inne"}
 DEP_MAP = {"hosting": "usluga"}
 PASSWORDISH = re.compile(r"\b(has[łl][oa]?|password|passwd|pass|pin|token|secret)\s*[:=]", re.I)
 DONE_KEY = "hlc_import.done"
 MAX_DOWNLOAD = 2 * 1024 ** 3
+CHECK_KINDS = ("http", "tcp", "ping", "tls", "dns")
+EVENT_KINDS = {"update": "pakiety", "image_changed": "obraz", "container_new": "kontener", "container_removed": "kontener",
+               "ip_changed": "adres", "reboot": "restart", "action": "akcja", "config": "hlc"}
+EVENT_DAYS = 90
 
 
 class MigrationError(Exception):
@@ -206,6 +210,103 @@ class _Run:
                 self._address(did, d["name"], ip, primary=True)
             if PASSWORDISH.search(notes) or PASSWORDISH.search(d.get("runbook") or ""):
                 self.r.warn(f"{d['name']}: notatki albo runbook wyglądają, jakby zawierały hasło — przenieś je do skarbca")
+
+    def device_extras(self, rows):
+        """Porty TCP i terminy: także dla urządzeń przeniesionych wcześniejszą wersją importu."""
+        for d in rows:
+            did = self.dev.get(d["id"])
+            if not did:
+                continue
+            ports = sorted({int(p["port"]) for p in _json(d.get("ports"), []) if isinstance(p, dict)
+                            and str(p.get("port", "")).isdigit() and str(p.get("proto") or "tcp").lower() == "tcp"})
+            if ports and not self.seen(f"ports:{d['id']}"):
+                self.mark(f"ports:{d['id']}")
+                row = inv.get_device(self.conn, did)
+                if not row["tcp_ports"]:
+                    self.conn.execute(device.update().where(device.c.id == did).values(
+                        tcp_ports=", ".join(map(str, ports))[:200]))
+                    self.r.add("porty do sprawdzania")
+            for t in _json(d.get("expiry"), []):
+                if not isinstance(t, dict):
+                    continue
+                key = f"term:{d['id']}:{t.get('date')}:{t.get('label')}"
+                if self.seen(key):
+                    continue
+                try:
+                    terms.add(self.conn, did, t.get("date"), t.get("label") or "termin")
+                except terms.TermError:
+                    self.r.warn(f"{d['name']}: termin „{t.get('label')}” ma złą datę „{t.get('date')}”")
+                    continue
+                self.mark(key)
+                self.r.add("terminy")
+
+    def checks(self, rows):
+        for c in rows:
+            key = f"check:{c['id']}"
+            did = self.dev.get(c.get("device_id"))
+            if self.seen(key) or not did or not int(c.get("enabled", 1) or 0):
+                continue
+            kind = c.get("type")
+            if c.get("scope") == "external":
+                self.r.add("sprawdzenia „z internetu” pominięte (Denali liczy je samo z adresu aplikacji)")
+                continue
+            if kind not in CHECK_KINDS:
+                continue
+            params = _json(c.get("params"), {})
+            expect = str((params.get("expect") or params.get("ip") or "") if isinstance(params, dict) else "")
+            try:
+                checks.add_custom(self.conn, did, kind, c.get("target"), expect)
+            except checks.CheckError as e:
+                self.r.warn(f"sprawdzenie „{c.get('name') or c.get('target')}”: {e}")
+                continue
+            self.mark(key)
+            self.r.add("własne sprawdzenia")
+
+    def subnets(self, site):
+        key = f"subnets:{site['id']}"
+        rows = [s for s in _json(site.get("subnets"), []) if isinstance(s, dict) and s.get("cidr")]
+        if self.seen(key) or not rows:
+            return
+        lines = ["| Sieć | Nazwa | Pula DHCP |", "|---|---|---|"]
+        for s in rows:
+            pool = f"{s.get('dhcpFrom')}–{s.get('dhcpTo')}" if s.get("dhcpFrom") else "—"
+            lines.append(f"| {s['cidr']} | {s.get('name') or ''} | {pool} |")
+        docs.save_runbook(self.conn, f"Sieci: {site['name']} (z HLC)", "\n".join(lines), user=self.user)
+        self.mark(key)
+        self.r.add("opisy sieci (runbook)")
+
+    def configs(self, rows):
+        """Ostatnia wersja każdego pliku z kopii konfiguracji. HLC zapisywało je już z zamaskowanymi sekretami."""
+        latest = {}
+        for c in sorted(rows, key=lambda x: x.get("ts") or 0):
+            latest[(c.get("device_id"), c.get("path"))] = c
+        for (hid, path), c in latest.items():
+            key = f"config:{hid}:{c.get('sha')}"
+            did = self.dev.get(hid)
+            if self.seen(key) or not did or not c.get("content"):
+                continue
+            self.mark(key)
+            if self.apply:
+                name = "konfiguracja-" + re.sub(r"[^A-Za-z0-9._-]+", "_", str(path)).strip("_")
+                files.store(self.conn, self.settings.data_dir, did, name[:200], str(c["content"]).encode("utf-8"),
+                            "text/plain", user=self.user)
+            self.r.add("kopie konfiguracji (jako pliki)")
+
+    def events(self, rows, now=None):
+        """Oś czasu z ostatnich 90 dni, jednorazowo: starsze i tak skasowałaby retencja."""
+        if self.seen("events"):
+            return
+        self.mark("events")
+        since = (now or time.time()) - EVENT_DAYS * 86400
+        out = []
+        for e in rows:
+            did = self.dev.get(e.get("device_id"))
+            kind = EVENT_KINDS.get(e.get("kind"))
+            if did and kind and (e.get("ts") or 0) >= since:
+                out.append({"device_id": did, "ts": e["ts"], "kind": kind, "text": str(e.get("title") or "")[:300]})
+        if out:
+            self.conn.execute(change_event.insert(), out)
+            self.r.add("wpisy osi czasu", len(out))
 
     def _notes(self, d):
         parts = [d.get("notes") or ""]
@@ -517,9 +618,14 @@ def run(conn, settings, box, source, old_key=None, sites=None, apply=False, user
             for s in chosen:
                 r.site_docs(s)
             r.apps([a for a in _rows(con, "apps") if not a.get("device_id") or a.get("device_id") in dev_ids])
+            r.device_extras(devs)
+            r.checks(for_devs("checks"))
+            r.configs(for_devs("config_versions"))
+            r.events(for_devs("events"))
+            for s in chosen:
+                r.subnets(s)
             r.addresses(for_devs("net_hosts"), for_devs("dns_names"))
-            not_moved = {"sprawdzenia (dojdą z integracjami w Etapie 3)": len(_rows(con, "checks")),
-                         "kanały powiadomień (Discord ustawisz w Etapie 3)": len(_rows(con, "channels")),
+            not_moved = {"kanały powiadomień (ustaw w Powiadomieniach)": len(_rows(con, "channels")),
                          "konta użytkowników (załóż w Denali: create-user)": len(_rows(con, "users"))}
             for k, v in not_moved.items():
                 if v:

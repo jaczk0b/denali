@@ -50,6 +50,18 @@ def _days(seconds):
     return f"{d} {'dzień' if d == 1 else 'dni'}" if d else "od niedawna"
 
 
+MEM_WARN = 0.92
+STORAGE_WARN, STORAGE_CRIT = 0.85, 0.95
+
+
+def _usage_alarms(r, key, name):
+    """Surowa zajętość dysku; próg i wagę dobiera alerts.py z profilu."""
+    if not r.get("maxdisk"):
+        return []
+    pct = round((r.get("disk") or 0) / r["maxdisk"] * 100, 1)
+    return [{"rule": "disk", "key": key, "pct": pct, "text": f"{name}: dysk zajęty w {pct:.0f}%"}]
+
+
 def _ram(mem, maxmem):
     if not maxmem:
         return ""
@@ -227,6 +239,9 @@ class Proxmox(Adapter):
             except AdapterError:
                 status = []
             node_ip = {s.get("name"): s.get("ip") for s in status if s.get("type") == "node" and s.get("ip")}
+            cluster = next((s for s in status if s.get("type") == "cluster"), {})
+            no_quorum = (cluster.get("nodes") or 0) > 1 and not cluster.get("quorate")
+            storages = [r for r in res if r.get("type") == "storage" and r.get("storage") and r.get("maxdisk")]
             nodes = [r for r in res if r.get("type") == "node" and r.get("node")]
             guests = [r for r in res if r.get("type") in ("qemu", "lxc") and str(r.get("vmid", "")).isdigit()
                       and not r.get("template")]
@@ -257,9 +272,16 @@ class Proxmox(Adapter):
             addrs = [{"kind": "ip", "value": node_ip[name]}] if node_ip.get(name) else []
             out.found.append(Found(eid, {"name": name, "kind": "host", "addresses": addrs}))
             online = n.get("status") == "online"
+            alarms = _usage_alarms(n, "/", f"węzeł {name}") if online else []
+            if n.get("maxmem") and (n.get("mem") or 0) / n["maxmem"] >= MEM_WARN:
+                alarms.append({"rule": "memory", "key": name,
+                               "text": f"Węzeł {name}: RAM zajęty w {(n.get('mem') or 0) / n['maxmem']:.0%}"})
+            if no_quorum and n is nodes[0]:
+                alarms.append({"rule": "cluster_quorum", "key": "klaster", "text": "Klaster Proxmox nie ma kworum"})
             out.states.append(State(eid, "ok" if online else "down",
                                     f"węzeł działa · {_days(n.get('uptime'))}" if online else "węzeł niedostępny",
-                                    {"cpu": n.get("cpu"), "mem": n.get("mem"), "maxmem": n.get("maxmem"),
+                                    {"cpu": n.get("cpu"), "mem": n.get("mem"), "maxmem": n.get("maxmem"), "disk": n.get("disk"),
+                                     "maxdisk": n.get("maxdisk"), "alarms": alarms,
                                      "uptime": n.get("uptime")}))
         for g, (ips, onboot) in zip(guests, extra):
             typ, vmid, node = g["type"], g["vmid"], g["node"]
@@ -282,7 +304,22 @@ class Proxmox(Adapter):
             out.states.append(State(eid, state, summary, {
                 "node": node, "vmid": vmid, "type": typ, "status": st, "cpu": g.get("cpu"), "mem": g.get("mem"),
                 "maxmem": g.get("maxmem"), "disk": g.get("disk"), "maxdisk": g.get("maxdisk"),
-                "uptime": g.get("uptime"), "onboot": onboot}))
+                "uptime": g.get("uptime"), "onboot": onboot, "ips": ips,
+                # zajętość dysku zna tylko kontener; dla VM Proxmox podaje 0 (dysk maszyny widzi agent)
+                "alarms": _usage_alarms(g, "/", g.get("name") or eid) if typ == "lxc" and st == "running" else []}))
+        seen = set()
+        for r in storages:
+            key = r["storage"] if r.get("shared") else f"{r.get('node')}/{r['storage']}"
+            if key in seen or r.get("status") != "available":
+                continue
+            seen.add(key)
+            pct = (r.get("disk") or 0) / r["maxdisk"]
+            alarms = [{"rule": "storage", "key": key, "text": f"Magazyn {r['storage']} zajęty w {pct:.0%}",
+                       "severity": "krytyczny" if pct >= STORAGE_CRIT else "ostrzezenie"}] if pct >= STORAGE_WARN else []
+            out.states.append(State(f"storage/{key}", "warn" if alarms else "ok", f"magazyn {r['storage']}: zajęte {pct:.0%}",
+                                    {"usage": {r["storage"]: {"used": r.get("disk") or 0, "total": r["maxdisk"]}},
+                                     "alarms": alarms},
+                                    attach={"ref": f"node/{r.get('node')}"}, label=f"magazyn {r['storage']}"))
         return out
 
     # ───────────────────────── akcje ─────────────────────────

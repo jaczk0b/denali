@@ -182,7 +182,10 @@ class Komodo(Adapter):
                        "update": bool(x.get("update_available"))} for x in services if isinstance(x, dict)][:30]
             out.states.append(State(eid, STACK_STATE.get(st, "unknown"), summary,
                                     {"komodo_state": st, "services": len(services), "updates": updates,
-                                     "images": images}))
+                                     "images": images,
+                                     "alarms": [{"rule": "stack_unhealthy", "key": sid,
+                                                 "text": f"{s.get('name') or eid}: {STACK_LABEL[st]}"}]
+                                     if st in ("unhealthy", "restarting") else []}))
         return out
 
     # ───────────────────────── akcje ─────────────────────────

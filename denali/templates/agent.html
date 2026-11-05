@@ -22,7 +22,11 @@
     <ul class="plain">
       <li>{{ st({"ok": "ok", "warn": "warn", "down": "down"}.get(state.state, "unknown"), 13) }} {{ state.summary }}</li>
       {% if data.os %}<li class="muted">System: {{ data.os }}{% if data.kernel %} · jądro {{ data.kernel }}{% endif %}</li>{% endif %}
-      {% if data.version %}<li class="muted">Agent {{ data.version }}</li>{% endif %}
+      {% if data.version %}<li class="muted">Agent {{ data.version }}{% if outdated %} <span class="pill warn">{{ st("warn", 12) }} nieaktualny</span> panel rozdaje {{ latest }}: wygeneruj polecenie w <a href="/admin/agenci/nowy">Dodaj: Agent na maszynie</a> i wklej je ponownie{% endif %}</li>{% endif %}
+      {% for f in data.disks or [] %}<li class="muted small">Dysk {{ f.mount }}: {{ f.pct | round | int }}%{% if f.free_gb is defined %} · wolne {{ f.free_gb }} GB{% endif %}</li>{% endfor %}
+      {% if data.memory and data.memory.memory is defined %}<li class="muted small">RAM: {{ data.memory.memory | round | int }}%{% if data.memory.swap is defined %} · swap {{ data.memory.swap | round | int }}%{% endif %}</li>{% endif %}
+      {% for u in data.failed_units or [] %}<li><span class="pill warn">{{ st("warn", 12) }} {{ u }}</span></li>{% endfor %}
+      {% if data.containers %}<li class="muted small">Kontenery: {{ data.containers | length }}</li>{% endif %}
       {% if data.reboot_required %}<li><span class="pill warn">{{ st("warn", 12) }} wymagany restart</span>
         {% if data.reboot_why %}<span class="muted small">{{ data.reboot_why }}</span>{% endif %}</li>{% endif %}
       {% if data.apt_lists_age_h is number and data.apt_lists_age_h > 72 %}<li class="muted small">Lista pakietów nieodświeżana

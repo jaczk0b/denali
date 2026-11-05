@@ -1,4 +1,4 @@
-"""Kanały powiadomień (tylko administrator): Discord — dodanie, wysyłka testowa, włącz/wyłącz, usuń,
+"""Kanały powiadomień (tylko administrator): dodanie, wysyłka testowa, włącz/wyłącz, usuń, powtórki,
 podsumowanie tygodnia na żądanie."""
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -18,7 +18,9 @@ def _transport(request):
 
 def _page(request, conn, error=None, message=None, status_code=200):
     return render(request, "powiadomienia.html", {"rows": notify.channels(conn), "error": error, "message": message,
-                                                  "labels": notify.SEVERITY_LABEL, "watchdog": watchdog.status(conn)},
+                                                  "labels": notify.SEVERITY_LABEL, "watchdog": watchdog.status(conn),
+                                                  "types": notify.CHANNEL_TYPES, "repeat": notify.repeat_hours(conn),
+                                                  "repeat_choices": notify.REPEAT_CHOICES},
                   status_code)
 
 
@@ -43,6 +45,36 @@ async def channel_add(request: Request, name: str = Form(""), webhook: str = For
         except notify.NotifyError as e:
             return _page(request, conn, error=f"Kanał zapisany, ale wiadomość testowa nie doszła: {e}")
         return _page(request, conn, message="Zapisane. Na Discordzie powinna być wiadomość testowa.")
+
+
+@router.post("/admin/powiadomienia/inny")
+async def channel_add_other(request: Request, sess: dict = Depends(require_admin)):
+    form = await request.form()
+    type_ = str(form.get("type") or "")
+    with request.app.state.engine.begin() as conn:
+        try:
+            cid = notify.save_other(conn, request.app.state.box, type_, str(form.get("name") or ""), form,
+                                    str(form.get("min_severity") or "ostrzezenie"))
+        except notify.NotifyError as e:
+            return _page(request, conn, error=str(e), status_code=400)
+        auth.audit(conn, "channel_create", user=sess["login"], ip=client_ip(request), target=type_)
+        try:
+            await notify.test_channel(conn, request.app.state.box, cid, request.app.state.settings.base_url,
+                                      _transport(request))
+        except notify.NotifyError as e:
+            return _page(request, conn, error=f"Kanał zapisany, ale wiadomość testowa nie doszła: {e}")
+        return _page(request, conn, message="Zapisane. Powinna przyjść wiadomość testowa.")
+
+
+@router.post("/admin/powiadomienia/powtorki")
+def repeat_set(request: Request, hours: int = Form(0), sess: dict = Depends(require_admin)):
+    with request.app.state.engine.begin() as conn:
+        try:
+            notify.set_repeat_hours(conn, hours)
+        except notify.NotifyError as e:
+            return _page(request, conn, error=str(e), status_code=400)
+        auth.audit(conn, "notify_repeat", user=sess["login"], ip=client_ip(request), params={"godziny": hours})
+    return RedirectResponse("/admin/powiadomienia", 303)
 
 
 @router.post("/admin/powiadomienia/straznik")

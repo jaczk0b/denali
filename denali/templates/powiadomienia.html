@@ -15,7 +15,7 @@
     {% if rows %}
     <ul class="list-rows">
       {% for r in rows %}
-      <li><span class="grow"><strong>{{ r.name }}</strong> <span class="muted small">Discord · od: {{ labels[r.min_severity] }}</span>
+      <li><span class="grow"><strong>{{ r.name }}</strong> <span class="muted small">{{ types.get(r.type, r.type) }} · od: {{ labels[r.min_severity] }}</span>
           {% if not r.enabled %}<span class="pill">wyłączony</span>{% endif %}
           {% if r.last_error %}<br><span class="small">{{ st("down", 12) }} {{ r.last_error }}</span>
           {% elif r.last_sent_at %}<br><span class="muted small">ostatnio wysłano {{ r.last_sent_at | dt }}</span>{% endif %}</span>
@@ -28,6 +28,14 @@
     {% else %}<p class="muted">Brak kanałów — awarie widać tylko w panelu.</p>{% endif %}
   </section>
   {% if rows %}
+  <section class="card">
+    <h2>Powtórki</h2>
+    <p class="muted small">Krytyczny incydent, którym nikt się nie zajął, wraca co wybrany czas. „Zajmuję się tym” zatrzymuje powtórki.</p>
+    <form class="actions" method="post" action="/admin/powiadomienia/powtorki"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label class="sr" for="powtorki">Odstęp powtórek</label>
+      <select id="powtorki" name="hours">{% for h in repeat_choices %}<option value="{{ h }}" {% if h == repeat %}selected{% endif %}>{{ "bez powtórek" if h == 0 else "co %d h" % h }}</option>{% endfor %}</select>
+      <button class="btn small" type="submit">Zapisz</button></form>
+  </section>
   <section class="card">
     <h2>Podsumowanie tygodnia</h2>
     <p class="muted small">W poniedziałek od 8:00 na wszystkie włączone kanały: dostępność, incydenty, co migocze, nadchodzące terminy, aktualizacje.</p>
@@ -72,6 +80,31 @@
       </select></label>
     <button class="btn primary" type="submit">Dodaj i wyślij test</button>
   </form>
+
+  <section class="card">
+    <h2>Inny kanał</h2>
+    <p class="muted small">Warto mieć drugi: gdy Discord nie działa, awaria nie powinna przejść bez słowa.</p>
+    <details><summary>ntfy</summary>
+      <form method="post" action="/admin/powiadomienia/inny" autocomplete="off"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="type" value="ntfy">
+        <label class="field">Serwer<input name="url" value="https://ntfy.sh" required></label>
+        <label class="field">Temat<input name="topic" required maxlength="64"></label>
+        <label class="field">Token <span class="muted small">(opcjonalnie)</span><input name="token" type="password"></label>
+        <button class="btn" type="submit">Dodaj i wyślij test</button></form></details>
+    <details><summary>Telegram</summary>
+      <form method="post" action="/admin/powiadomienia/inny" autocomplete="off"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="type" value="telegram">
+        <label class="field">Token bota<input name="token" type="password" required></label>
+        <label class="field">Chat ID<input name="chat_id" required></label>
+        <button class="btn" type="submit">Dodaj i wyślij test</button></form></details>
+    <details><summary>E-mail (SMTP)</summary>
+      <form method="post" action="/admin/powiadomienia/inny" autocomplete="off"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="type" value="email">
+        <label class="field">Serwer<input name="host" required></label>
+        <label class="field">Port <span class="muted small">(587 STARTTLS albo 465 TLS)</span><input name="port" value="587" inputmode="numeric"></label>
+        <label class="field">Login<input name="user"></label>
+        <label class="field">Hasło<input name="password" type="password"></label>
+        <label class="field">Nadawca<input name="sender" type="email" required></label>
+        <label class="field">Adresat<input name="to" type="email" required></label>
+        <button class="btn" type="submit">Dodaj i wyślij test</button></form></details>
+  </section>
 </div>
 </div>
 {% endblock %}

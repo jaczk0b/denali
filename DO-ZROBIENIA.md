@@ -34,6 +34,19 @@ Kod sprawdzony testami na udawanym dostawcy; z prawdziwym Pocket ID nie był uru
       „Usunięte w źródle” (usuń z Denali / zostaw bez powiązania), na karcie urządzenia ostrzeżenie. Czekające
       w kolejce i pominięte znikają same. Klienci routera (telefon poza Wi-Fi) się nie liczą.
 
+## 1b. Funkcje przywrócone z HLC — do sprawdzenia
+
+Kod sprawdzony testami na nagranych danych. **Na prawdziwych serwerach nie był uruchomiony**, a nowy agent nie działał na Linuksie.
+
+- [ ] *Deploy* (migracja 0021). Jeśli HLC jeszcze działa: powtórz `migrate-hlc` z `--wykonaj`, doda terminy, porty, sprawdzenia, sieci, kopie konfiguracji i oś czasu.
+- [ ] Przejrzyj *Alerty* po godzinie. Jeśli coś hałasuje, zmień próg w *Profilach* albo wycisz i daj znać.
+- [ ] Agent 1.4 na testowej VM (ponowna instalacja poleceniem z panelu): dyski, RAM i usługi na stronie agenta.
+- [ ] Na VM z Dockerem po 10 minutach kontenery na stronie agenta. Gdyby nie: `systemctl status denali-agent-docker`, także w LXC (`PrivateNetwork`).
+- [ ] `pozwol clean_cores`, `nfs_remount`, `docker_prune`, `journal_vacuum`, `db_backup` tam, gdzie chcesz, i dopisz akcje w *Profilach*. Pierwszy raz na maszynie testowej.
+- [ ] Odłącz internet na chwilę (kabel WAN): VPS bez fałszywego incydentu, po powrocie wiadomość o przerwie.
+- [ ] Drugi kanał powiadomień (ntfy, Telegram albo e-mail).
+- [ ] Sprawdź, czy magazyny Proxmoxa są widoczne na karcie węzła (token PVEAuditor powinien je widzieć).
+
 ## 2. Bezpieczeństwo — do domknięcia
 
 - [ ] Hasło, które trafiło do logu Komodo i do rozmowy — jeśli używasz go gdziekolwiek, zmień je tam.
@@ -128,6 +141,8 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
 - [ ] Agent 1.3 (ponowna instalacja), `pozwol polecenia` → „Miejsce na dyskach” → wynik po około minucie.
 - [ ] W *Audycie*: `console_open`, `console_close`, `action_request` z kluczem polecenia.
 - [ ] Terminal SSH: *Terminale* → maszyna → login i hasło → terminal; kopiowanie, wklejanie, zmiana rozmiaru okna, gotowe polecenia z boku.
+      Zgłoszone 5.11.2026: po „Otwórz terminal” nic się nie pokazuje. Lokalnie działa, więc przyczyna jest we wdrożeniu. Terminal pisze teraz
+      powód czerwonym tekstem: po *Deploy* przepisz go tutaj.
 - [ ] *Moje polecenia*: dopisz swoje, widać je z boku terminala.
 - [ ] Akceptacja Etapu 6.
 
@@ -147,7 +162,7 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
       zatwierdzić VPS, porównać termin opłaty i faktury z panelem OVH, otworzyć terminal SSH z zakładki VPS.
 - [ ] **Klucz panelu** — kod gotowy, testy na lokalnym serwerze SSH. Do sprawdzenia: pierwsze logowanie hasłem na prawdziwej
       maszynie dopisuje klucz, kolejne idzie jednym kliknięciem; przyciski kopiowania w przeglądarce.
-- [ ] Z migracji HLC **nie przeniesione**: sprawdzenia, kanały powiadomień, konta (z założenia — wracają w nowej postaci).
+- [ ] Z migracji HLC **nie przeniesione**: kanały powiadomień, konta, historia alertów, raporty.
 
 ## 5. Rzeczy niesprawdzone albo do decyzji
 
@@ -164,7 +179,7 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
       pakiety; firmware'u OpenWrt też nie (świadomie — `owut` / Attended Sysupgrade).
 - [ ] **TrueNAS**: aktualizacje systemu jeszcze nie na liście (do dopisania w adapterze).
 - [ ] **Powiadomienia o aktualizacjach** (np. raz dziennie o nowych poprawkach bezpieczeństwa) — ustawienie profilu
-      „powiadom” na razie tylko liczy urządzenie w liczniku.
+      „powiadom” na razie tylko liczy urządzenie w liczniku. Czekające ponad 7 dni są w *Nadchodzących*.
 
 ## 6a. Etap 5 — czego nie ma (świadomie)
 

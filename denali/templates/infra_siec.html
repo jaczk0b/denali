@@ -46,7 +46,7 @@
       <tbody>
       {% for c in clients %}
       <tr{% if c.status == "nowy" %} class="is-new"{% endif %}>
-        <td>{% if c.device_id %}<a href="/urzadzenia/{{ c.device_id }}">{{ c.device }}</a>{% else %}<strong>{{ c.name }}</strong>{% endif %}</td>
+        <td>{% if c.device_id %}<a href="/urzadzenia/{{ c.device_id }}">{{ c.device }}</a>{% else %}<strong>{{ c.name }}</strong>{% endif %}{% if c.vendor %}<div class="muted small">{{ c.vendor }}</div>{% endif %}</td>
         <td class="mono small">{{ c.ip or "—" }} · {{ c.mac }}</td>
         <td>{{ c.connection }}{% if c.ssid %} „{{ c.ssid }}”{% endif %} <span class="muted small">· {{ c.via }}</span></td>
         <td>{% if c.signal is number %}<span{% if c.signal < weak_signal %} class="pill warn"{% endif %}>{{ c.signal }} dBm</span>{% else %}<span class="muted">—</span>{% endif %}</td>

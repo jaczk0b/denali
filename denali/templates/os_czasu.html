@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Oś czasu{% endblock %}
+{% block content %}
+<div>
+  <h1>Oś czasu</h1>
+  <p class="lead">Co się działo: zmiany wykryte w źródłach, także te spoza panelu, akcje, zmiany stanu i incydenty.</p>
+</div>
+<form class="card actions" method="get" action="/os-czasu">
+  <label class="field">Urządzenie
+    <select name="urzadzenie"><option value="">wszystkie</option>
+      {% for d in devices %}<option value="{{ d.id }}" {% if device_id == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></label>
+  <label class="field">Okres
+    <select name="dni">{% for n in (1, 7, 30, 90) %}<option value="{{ n }}" {% if days == n %}selected{% endif %}>{{ n }} d</option>{% endfor %}</select></label>
+  <button class="btn" type="submit">Pokaż</button>
+</form>
+<section class="card" aria-label="Zdarzenia">
+  {% if rows %}
+  <ul class="list-rows">
+    {% for e in rows %}
+    <li><span class="mono muted small">{{ e.ts | dt }}</span><span class="chip">{{ e.label }}</span>
+      <span class="grow">{% if e.device_id %}<a href="/urzadzenia/{{ e.device_id }}">{{ e.device }}</a>: {% endif %}{{ e.text }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted">W tym okresie nic się nie zmieniło.</p>{% endif %}
+</section>
+{% endblock %}

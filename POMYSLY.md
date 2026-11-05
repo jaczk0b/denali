@@ -7,12 +7,12 @@ Rzeczy, które nie służą bezpośrednio celowi panelu teraz albo czekają na d
 - **Asystent AI** — diagnoza incydentu na podstawie dowodów; jeśli kiedyś, to tylko do odczytu, bez prawa zapisu i akcji.
 - **Widżety pulpitu**: pogoda, kalendarz, wspólna lista zadań.
 - **„Zgłoś problem”** dla domowników (z tabletu albo telefonu).
-- **Prognoza zapełnienia dysku** — z danych Proxmoxa/TrueNAS, bez własnej bazy metryk.
 - **Test odtworzenia backupu** (tymczasowa VM bez sieci) — PBS weryfikuje kopie, ale nie sprawdza, czy maszyna wstaje.
-- **Bezpieczny restart hosta Proxmox** z kolejnością startu liczoną z zależności.
+- **Restart hosta z panelu**: panel liczy kolejność i zakłada przerwę, ale sam restart robisz w Proxmoxie (wymagałby `Sys.PowerMgmt`).
+- **Kopie konfiguracji z maszyn przez agenta** (git + diff): zostało tylko OpenWrt i ostatnie wersje przeniesione z HLC.
+- **Proxmox HA i replikacja**: kworum jest, reszta ma sens dopiero z pve2.
+- **Release notes przy aktualizacjach obrazów**: Komodo nie podaje numeru nowej wersji.
 - **Diagnoza „z internetu”**: łańcuch DNS (Cloudflare) → VPS → tunel → usługa w LAN.
-- **Podsumowanie tygodnia** i raport dostępności.
-- **Rejestr IP i portów** z wykrywaniem konfliktów.
 - **UPS przez NUT** (alerty, czas na baterii).
 
 ## Nowe

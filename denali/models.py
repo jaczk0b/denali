@@ -339,6 +339,7 @@ vault_secret = Table(
 # ───────────────────────── incydenty (log problemów) ─────────────────────────
 incident = Table(
     "incident", metadata,
+    Column("reminded_at", Float),                           # ostatnia powtórka powiadomienia
     Column("id", Integer, primary_key=True),
     Column("title", String(200), nullable=False),
     Column("root_device_id", Integer, ForeignKey("device.id", ondelete="SET NULL"), index=True),
@@ -506,4 +507,56 @@ console_session = Table(
     Column("opened_at", Float),                                 # puste = jeszcze nie połączona
     Column("closed_at", Float),
     Column("close_reason", String(200), nullable=False, default=""),
+)
+
+
+# Alert: konkretny problem, który nie jest awarią urządzenia (zapełniony dysk, zdegradowana pula, stara kopia).
+# Otwarty dopóki resolved_at jest puste (denali/alerts.py).
+alert = Table(
+    "alert", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("fingerprint", String(400), nullable=False, index=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), index=True),   # NULL = cała lokalizacja
+    Column("integration_id", Integer),                      # skąd alert: gdy źródło milczy, nie uznajemy go za rozwiązany
+    Column("external_id", String(200)),
+    Column("rule", String(32), nullable=False),
+    Column("severity", String(16), nullable=False),
+    Column("message", String(500), nullable=False),
+    Column("first_seen", Float, nullable=False),
+    Column("last_seen", Float, nullable=False),
+    Column("resolved_at", Float),
+    Column("notified_at", Float),
+    Column("resolved_notified_at", Float),
+    Column("silenced_until", Float),
+)
+
+# Oś czasu: zmiany wykryte w danych ze źródeł, także te zrobione poza panelem (nowy obraz, restart, zmiana IP).
+change_event = Table(
+    "change_event", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), nullable=False),
+    Column("ts", Float, nullable=False),
+    Column("kind", String(24), nullable=False),             # obraz | kontener | restart | adres | stan | pakiety | hlc
+    Column("text", String(300), nullable=False),
+    Index("ix_change_event_device_ts", "device_id", "ts"),
+)
+
+# Terminy przy urządzeniu: gwarancja, domena, licencja. Przypomnienie jako alert (denali/terms.py).
+device_term = Table(
+    "device_term", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("due_on", String(10), nullable=False),           # RRRR-MM-DD
+    Column("label", String(200), nullable=False),
+)
+
+# Własne sprawdzenia, dopisywane tylko tam, gdzie te liczone z adresów nie wystarczają.
+custom_check = Table(
+    "custom_check", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("kind", String(16), nullable=False),             # http | tcp | ping | tls | dns
+    Column("target", String(500), nullable=False),
+    Column("expect", String(200), nullable=False, default=""),   # dns: oczekiwany adres
+    UniqueConstraint("device_id", "kind", "target"),
 )

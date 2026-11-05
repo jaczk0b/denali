@@ -15,8 +15,18 @@
 </div>
 {{ infra_nav(tabs, "lista") }}
 <p class="muted">Od góry to, czego używasz, na dole to, na czym stoi.</p>
+<form class="actions" method="get" action="/urzadzenia" aria-label="Filtr urządzeń">
+  <label class="sr" for="filtr-q">Nazwa, rola albo IP</label>
+  <input id="filtr-q" type="search" name="q" value="{{ q }}" placeholder="Nazwa, rola albo IP">
+  <label class="sr" for="filtr-stan">Stan</label>
+  <select id="filtr-stan" name="stan">
+    {% for k, v in [("", "każdy stan"), ("down", "nie działa"), ("warn", "uwaga"), ("ok", "działa"), ("off", "wyłączone"), ("unknown", "brak danych")] %}<option value="{{ k }}" {% if stan == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+  </select>
+  <button class="btn small" type="submit">Filtruj</button>
+  {% if q or stan %}<a class="btn small" href="/urzadzenia">Wyczyść</a><span class="muted small">{{ shown }} z {{ total }}</span>{% endif %}
+</form>
 {% if not groups %}
-  <div class="card"><p class="muted">Nie ma jeszcze urządzeń.</p></div>
+  <div class="card"><p class="muted">{{ "Nic nie pasuje do filtra." if q or stan else "Nie ma jeszcze urządzeń." }}</p></div>
 {% endif %}
 {% for label, devs in groups %}
 <section class="card" aria-label="{{ label }}">

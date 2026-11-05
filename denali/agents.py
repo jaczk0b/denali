@@ -11,9 +11,11 @@ W bazie jest tylko skrót tokenu.
 import hashlib
 import hmac
 import ipaddress
+import re
 import secrets
 import time
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -33,7 +35,8 @@ VIRT_KIND = {"kvm": "vm", "qemu": "vm", "vmware": "vm", "microsoft": "vm", "xen"
              "lxc": "lxc", "lxc-libvirt": "lxc", "none": "host"}
 
 
-AGENT_ACTIONS = ("apt_upgrade", "reboot", "polecenia")    # akcje, które agent umie wykonać (jego lokalna lista może zawierać tylko te)
+AGENT_ACTIONS = ("apt_upgrade", "reboot", "polecenia", "clean_cores", "nfs_remount", "docker_prune", "journal_vacuum",
+                 "db_backup")    # akcje, które agent umie wykonać (jego lokalna lista może zawierać tylko te)
 
 
 class AgentError(ValueError):
@@ -56,6 +59,21 @@ class Agent(Adapter):
                    "Agent zrestartuje system za minutę (shutdown -r +1). Wszystko, co działa na maszynie, przez kilka "
                    "minut nie będzie dostępne. Na VM z Proxmoxa to samo robi „Uruchom ponownie” z Proxmoxa.",
                    ("host",), True),
+        ActionSpec("clean_cores", "Usuń pliki core z kontenerów",
+                   "Agent sam znajdzie w kontenerach pliki core (zrzuty pamięci) i usunie tylko je: zwykłe pliki o nazwie "
+                   "core, wykryte w warstwie zapisywalnej. Panel nie podaje ścieżek. Kontenery nie są restartowane.",
+                   ("host",), True),
+        ActionSpec("nfs_remount", "Zamontuj ponownie NFS",
+                   "Agent zamontuje udziały NFS z /etc/fstab, które są odłączone albo nie odpowiadają. Działające zostają "
+                   "bez zmian. Program piszący do zawieszonego udziału może dostać błąd zapisu.", ("host",), True),
+        ActionSpec("docker_prune", "Usuń nieużywane obrazy Dockera",
+                   "Agent usunie obrazy bez nazwy (dangling) i cache budowania. Obrazy w użyciu i wolumeny zostają.",
+                   ("host",), True),
+        ActionSpec("journal_vacuum", "Przytnij dziennik systemowy",
+                   "Agent zmniejszy dziennik systemd do 200 MB. Starsze wpisy znikną, usługi działają dalej.", ("host",)),
+        ActionSpec("db_backup", "Kopia baz Postgres",
+                   "Agent zrobi pg_dumpall z każdego kontenera Postgres do /var/backups/denali-agent (5 ostatnich na "
+                   "kontener). Kopia zostaje na maszynie, do panelu nie trafia.", ("host",)),
         ActionSpec("polecenia", "Gotowe polecenia (tylko odczyt)",
                    "Agent uruchomi jedno z poleceń z listy w kodzie agenta (dyski, pamięć, usługi, logi). "
                    "Dowolnego polecenia panel nie może zlecić.", ("host",), terminal=True),
@@ -142,6 +160,91 @@ def _s(v, n=200):
     return str(v if v is not None else "")[:n]
 
 
+def _num(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+GB = 1024 ** 3
+MEMORY_WARN, MEMORY_CRIT = 92, 98
+SWAP_WARN, SWAP_CRIT = 80, 95
+LAYER_WARN, LAYER_CRIT = 2 * GB, 10 * GB
+NFS_SLOW_WARN, NFS_SLOW_CRIT = 500, 3000
+DISK_PROBLEM = 85           # od tylu % karta pokazuje „uwagę”; próg powiadomienia bierze się z profilu
+REPORT_MAX = 100            # najwięcej dysków, usług i kontenerów branych z raportu
+
+
+def _system_alarms(report):
+    """Dyski, pamięć i usługi z raportu → surowe alarmy. Procenty oceniane są w alerts.py według profilu."""
+    out = []
+    for d in (report.get("disks") if isinstance(report.get("disks"), list) else [])[:REPORT_MAX]:
+        if not isinstance(d, dict):
+            continue
+        mount, pct, inodes = _s(d.get("mount"), 200), _num(d.get("pct")), _num(d.get("inodes_pct"))
+        if pct is not None:
+            free = f", wolne {d['free_gb']} GB" if _num(d.get("free_gb")) is not None else ""
+            out.append({"rule": "disk", "key": mount, "pct": pct, "text": f"{mount}: dysk zajęty w {pct:.0f}%{free}"})
+        if inodes is not None:
+            out.append({"rule": "inode", "key": mount, "pct": inodes, "text": f"{mount}: i-węzły zajęte w {inodes:.0f}%"})
+    mem = report.get("memory") if isinstance(report.get("memory"), dict) else {}
+    for rule, name, warn, crit in (("memory", "RAM", MEMORY_WARN, MEMORY_CRIT), ("swap", "Swap", SWAP_WARN, SWAP_CRIT)):
+        pct = _num(mem.get(rule))
+        if pct is not None and pct >= warn:
+            out.append({"rule": rule, "key": rule, "text": f"{name} zajęty w {pct:.0f}%",
+                        "severity": "krytyczny" if pct >= crit else "ostrzezenie"})
+    for u in (report.get("failed_units") if isinstance(report.get("failed_units"), list) else [])[:REPORT_MAX]:
+        unit = _s(u, 120)
+        if unit:
+            out.append({"rule": "systemd", "key": unit, "text": f"Usługa {unit} w stanie failed"})
+    return out
+
+
+def _docker_alarms(containers):
+    out = []
+    for c in containers:
+        name = c["name"]
+        size = _num(c.get("size_rw")) or 0
+        cores = _num(c.get("core_files")) or 0
+        if c.get("health") == "unhealthy":
+            out.append({"rule": "container_unhealthy", "key": name, "text": f"Kontener {name}: nie przechodzi kontroli zdrowia"})
+        if c.get("state") == "restarting":
+            out.append({"rule": "container_restarting", "key": name, "text": f"Kontener {name} się restartuje"})
+        if c.get("state") == "exited" and c.get("exit_code") and c.get("policy") not in ("no", "", None):
+            out.append({"rule": "container_exited", "key": name,
+                        "text": f"Kontener {name} zatrzymany z kodem {c['exit_code']}"})
+        if size >= LAYER_WARN:
+            out.append({"rule": "container_layer", "key": name, "text": f"Kontener {name} pisze do siebie: warstwa {size / GB:.1f} GB",
+                        "severity": "krytyczny" if size >= LAYER_CRIT else "ostrzezenie"})
+        if cores:
+            out.append({"rule": "core_dumps", "key": name, "text": f"Kontener {name}: pliki core ({cores:.0f})"})
+    return out
+
+
+def _containers(report):
+    """Lista kontenerów z raportu albo None, gdy agent jej nie podał (starszy agent, brak Dockera)."""
+    rows = report.get("containers")
+    if not isinstance(rows, list):
+        return None
+    out = []
+    for c in rows[:REPORT_MAX]:
+        if isinstance(c, dict) and c.get("name"):
+            out.append({"name": _s(c["name"], 100), "image": _s(c.get("image"), 200), "image_id": _s(c.get("image_id"), 80),
+                        "state": _s(c.get("state"), 20), "health": _s(c.get("health"), 20), "exit_code": _num(c.get("exit_code")),
+                        "policy": _s(c.get("policy"), 20), "restarts": _num(c.get("restarts")),
+                        "size_rw": _num(c.get("size_rw")), "core_files": _num(c.get("core_files"))})
+    return out
+
+
+def _nfs_alarms(mounts):
+    out = []
+    for m in mounts:
+        mnt = _s(m.get("mount"), 200)
+        ms = _num(m.get("latency_ms"))
+        if ms is not None and ms >= NFS_SLOW_WARN:
+            out.append({"rule": "nfs_slow", "key": mnt, "text": f"{mnt}: odpowiedź NFS {ms:.0f} ms",
+                        "severity": "krytyczny" if ms >= NFS_SLOW_CRIT else "ostrzezenie"})
+    return out
+
+
 def _nfs_server(source):
     """„192.168.1.30:/mnt/tank/media” → {"ip": …} albo {"hostname": …} do zależności „dane”."""
     host = _s(source).rsplit(":", 1)[0].strip("[]") if ":" in _s(source) else ""
@@ -152,6 +255,19 @@ def _nfs_server(source):
         return {"ip": host}
     except ValueError:
         return {"hostname": host.lower()}
+
+
+def latest_version():
+    """Wersja agenta, którą rozdaje ten panel (z pliku agenta)."""
+    text = (Path(__file__).resolve().parent / "agent" / "denali-agent.py").read_text(encoding="utf-8")
+    m = re.search(r'^VERSION = "([0-9.]+)"', text, re.M)
+    return m.group(1) if m else ""
+
+
+def outdated(version):
+    def key(v):
+        return tuple(int(x) for x in str(v).split(".") if x.isdigit())
+    return bool(version) and key(version) < key(latest_version())
 
 
 def _when(ts):
@@ -205,6 +321,12 @@ def to_result(report, now=None):
         ", ".join(_s(p, 60) for p in (reboot.get("packages") or [])[:3]) or ""
 
     problems = [p for p in (_mount_problem(m, now) for m in mounts) if p]
+    containers = _containers(report)
+    alarms = [{"rule": "nfs_hidden" if "pod montażem" in p else "nfs", "key": p.split(":")[0].split(" ")[0], "text": p}
+              for p in problems]
+    alarms += _nfs_alarms(mounts) + _system_alarms(report) + _docker_alarms(containers or [])
+    problems += [a["text"] for a in alarms
+                 if a["rule"] not in ("nfs", "nfs_hidden", "inode", "disk") or (a.get("pct") or 0) >= DISK_PROBLEM]
     apt = report.get("apt") if isinstance(report.get("apt"), dict) else {}
     parts = [f"agent {_s(report.get('version'), 20)}"]
     if report.get("os"):
@@ -222,7 +344,15 @@ def to_result(report, now=None):
     out.states.append(State("host", "warn" if problems else "ok", summary[:300], {
         "reboot_required": reboot_required, "reboot_why": why_reboot, "version": _s(report.get("version"), 20),
         "os": _s(report.get("os"), 100), "kernel": _s(kernel.get("running"), 60), "nfs": mounts,
-        "apt_lists_age_h": apt.get("lists_age_h"), "problems": problems, "reported_at": now,
+        "apt_lists_age_h": apt.get("lists_age_h"), "problems": problems, "reported_at": now, "alarms": alarms,
+        "boot_id": _s(report.get("boot_id"), 40), "dpkg_changed": _num(report.get("dpkg_changed")),
+        "ips": sorted({a["value"] for a in addresses if a["kind"] == "ip"}),
+        "disks": [d for d in (report.get("disks") if isinstance(report.get("disks"), list) else [])[:REPORT_MAX]
+                  if isinstance(d, dict)],
+        "memory": report.get("memory") if isinstance(report.get("memory"), dict) else {},
+        "failed_units": [_s(u, 120) for u in (report.get("failed_units") if isinstance(report.get("failed_units"), list)
+                                              else [])[:REPORT_MAX]],
+        **({"containers": containers} if containers is not None else {}),
         "actions": sorted({a for a in (report.get("actions") if isinstance(report.get("actions"), list) else [])
                             if a in AGENT_ACTIONS})}))
 

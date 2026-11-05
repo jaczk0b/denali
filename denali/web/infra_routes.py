@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import func, or_, select
 
-from .. import (actions, auth, checks, configs, desk, discovery, docs, files, forecast, history, incidents, infra_views, integrations,
-               inventory as inv, live, maintenance, profiles, racks, status, tablet, upcoming, updates, vault)
+from .. import (actions, alerts, auth, changes, checks, configs, desk, discovery, docs, files, forecast, history, incidents, infra_views, integrations,
+               inventory as inv, live, maintenance, profiles, racks, status, tablet, terms, upcoming, updates, vault)
 from ..db import kv_get
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook, setting)
@@ -19,7 +19,7 @@ from ..templating import render
 from .deps import NotFound, client_ip, require_admin, require_fresh, require_user
 
 router = APIRouter()
-EDIT_SETTINGS = ("monitor", "down_after_s", "notify", "updates")   # akcje: osobny formularz (action_routes)
+EDIT_SETTINGS = ("monitor", "down_after_s", "notify", "notify_warn", "disk_warn", "disk_crit", "updates")   # akcje: osobny formularz (action_routes)
 DAYS = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"]
 MONTHS = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września",
           "października", "listopada", "grudnia"]
@@ -57,6 +57,7 @@ def pulpit(request: Request, sess: dict = Depends(require_user)):
             "no_devices": not devices, "has_live": bool(states),
             "verdict": status.verdict(devices, states, open_inc, maintenance.active(conn), last_closed),
             "upcoming": upcoming.items(conn),
+            "open_alerts": [a for a in alerts.active(conn) if not a["silenced"]],
             "suggest": desk.suggestions(conn)[:8] if sess["role"] == "admin" else [],
         }
     now = datetime.now()
@@ -104,7 +105,7 @@ def updates_list(request: Request, sess: dict = Depends(require_user)):
 
 # ───────────────────────── lista i karta ─────────────────────────
 @router.get("/urzadzenia")
-def device_list(request: Request, sess: dict = Depends(require_user)):
+def device_list(request: Request, q: str = "", stan: str = "", sess: dict = Depends(require_user)):
     with request.app.state.engine.connect() as conn:
         rows = conn.execute(select(device).order_by(device.c.name)).mappings().all()
         marks = status.device_marks(conn)
@@ -114,13 +115,21 @@ def device_list(request: Request, sess: dict = Depends(require_user)):
             .where(device_address.c.kind == "ip").order_by(device_address.c.is_primary))}
         names = {r["id"]: r["name"] for r in rows}
         tabs = infra_views.tabs(conn)
+    total = len(rows)
+    needle = q.strip().lower()
+    if needle:
+        rows = [d for d in rows if needle in d["name"].lower() or needle in (d["role"] or "").lower()
+                or needle in ips.get(d["id"], "")]
+    if stan in ("ok", "warn", "down", "off", "unknown"):
+        rows = [d for d in rows if states.get(d["id"], {}).get("state", "unknown") == stan]
     groups = []
     for key, label, _k in status.LAYERS + [("inne", "Inne", set())]:
         devs = [d for d in rows if status.layer_of(d["kind"]) == key]
         if devs:
             groups.append((label, devs))
     return render(request, "urzadzenia.html", {"groups": groups, "marks": marks, "ips": ips, "names": names,
-                                               "states": states, "tabs": tabs})
+                                               "states": states, "tabs": tabs, "q": q, "stan": stan,
+                                               "shown": len(rows), "total": total})
 
 
 def _card(request, conn, device_id, *, error=None, message=None, revealed=None, status_code=200):
@@ -172,6 +181,9 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "breaks": [m for m in maintenance.active(conn).values() if m["device_id"] == device_id],
         "break_choices": maintenance.CHOICES,
         "desk_place": desk.device_category(conn, device_id),
+        "open_alerts": alerts.active(conn, device_id=device_id), "terms": terms.for_device(conn, device_id),
+        "custom_checks": checks.custom_for_device(conn, device_id), "custom_kinds": checks.CUSTOM_KINDS,
+        "recent_changes": changes.recent(conn, device_id, time.time() - 30 * 86400),
     }
     return render(request, "urzadzenie.html", ctx, status_code)
 
