@@ -28,7 +28,7 @@ def _manage(request, conn, selected=None, error=None, status_code=200):
 def _tile_form(request, conn, t, error=None, status_code=200):
     devices = conn.execute(select(device.c.id, device.c.name).order_by(device.c.name)).mappings().all()
     return render(request, "pulpit_ikona.html", {"t": t, "error": error, "categories": desk.categories(conn),
-                                                 "devices": devices}, status_code)
+                                                 "devices": devices, "url_choices": desk.url_choices(conn)}, status_code)
 
 
 def _chosen_category(conn, category_id, new_name):

@@ -394,7 +394,8 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
   zaproszona do tailnetu (udostępnione urządzenie nie przekazuje podsieci subnet routera), a ACL ma ograniczać ją
   do SMB i panelu. Bez tego ma dostęp do całego LAN-u.
 - **Ikony pulpitu** dodajesz przyciskiem „+” w kategorii albo przez *Ułóż ikony i kategorie* (`/pulpit/ikony`): dowolny
-  adres, strona panelu albo urządzenie (wtedy ikona pokazuje jego stan). Panel proponuje jednym kliknięciem aplikacje
+  adres, strona panelu (też terminal konkretnej maszyny), adres do skopiowania (`\\\\nas\\zdjecia`, `smb://`, `nfs://`, `ssh://`:
+  kliknięcie kopiuje, bo przeglądarka tego nie otworzy) albo urządzenie (wtedy ikona pokazuje jego stan). Panel proponuje jednym kliknięciem aplikacje
   z adresem, integracje i swoje strony. Kategorie możesz nazwać i ułożyć po swojemu; ikony znajdzie też Ctrl+K.
 - **Pulpit** zaczyna się od jednego zdania: „Wszystko działa”, „Nie odpowiada: … (jeszcze nie awaria)” albo
   „1 problem: …” z linkiem do incydentu. Obok widżet **Nadchodzące**: wygasające certyfikaty, opłaty OVH,

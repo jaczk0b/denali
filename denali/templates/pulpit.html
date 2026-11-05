@@ -57,13 +57,23 @@
           <div class="icons">
             {% for a in c.tiles %}
               {% set m = marks.get(a.device_id) %}
-              <a class="icon-tile {{ {'przyczyna': 'is-down', 'skutek': 'is-effect', 'gorzej': 'is-degraded'}.get(m, '') }}"
+              {% set tile_class = "icon-tile " ~ {'przyczyna': 'is-down', 'skutek': 'is-effect', 'gorzej': 'is-degraded'}.get(m, '') %}
+              {% if a.copy_only %}
+              <button type="button" class="{{ tile_class }}" data-copy="{{ a.url }}" title="Skopiuj: {{ a.url }}">
+                <span class="icon {{ a.name | tile_color }}">{{ a.icon or (a.name | initials) }}
+                  {%- if m %}<span class="icon-badge">{{ st({"przyczyna": "down", "skutek": "effect", "gorzej": "warn"}[m], 18) }}</span>{% endif %}</span>
+                <span class="icon-name" data-copy-label>{{ a.name }}</span>
+                <span class="icon-state">kliknij, by skopiować</span>
+              </button>
+              {% else %}
+              <a class="{{ tile_class }}"
                  href="{{ a.url }}" {% if a.external %}target="_blank" rel="noopener noreferrer"{% endif %}>
                 <span class="icon {{ a.name | tile_color }}">{{ a.icon or (a.name | initials) }}
                   {%- if m %}<span class="icon-badge">{{ st({"przyczyna": "down", "skutek": "effect", "gorzej": "warn"}[m], 18) }}</span>{% endif %}</span>
                 <span class="icon-name">{{ a.name }}</span>
                 {% if m %}<span class="icon-state">{{ {"przyczyna": "nie działa", "skutek": "bez danych", "gorzej": "działa gorzej"}[m] }}</span>{% endif %}
               </a>
+              {% endif %}
             {% endfor %}
             {% if can_edit %}
             <a class="icon-tile icon-add" href="/pulpit/ikony/nowa?kategoria={{ c.id }}">

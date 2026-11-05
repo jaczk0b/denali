@@ -1,25 +1,30 @@
 """Ikony na pulpicie: kategorie, kafle i propozycje, co dodać.
 
-Kafel to dowolny skrót (aplikacja w sieci albo strona panelu). Powiązany z urządzeniem bierze z niego brakującą
-nazwę, adres i skrót na ikonie, a na pulpicie pokazuje jego stan.
+Kafel to dowolny skrót: aplikacja w sieci, strona panelu (też terminal konkretnej maszyny) albo adres do skopiowania
+(udział SMB i inne adresy, których przeglądarka nie otworzy). Rodzaj wynika z samego adresu. Powiązany z urządzeniem
+bierze z niego brakującą nazwę, adres i skrót na ikonie, a na pulpicie pokazuje jego stan.
 """
 import re
 
 from sqlalchemy import func, select
 
-from .models import desk_category, desk_tile, device, integration
+from .models import desk_category, desk_tile, device, device_address, integration, share
 
 DEFAULT_CATEGORY = "Na co dzień"
 MAX_ICON = 3
 # Strony panelu: szybkie przejście (Ctrl+K) i propozycje ikon.
 PAGES = [("Pulpit", "/"), ("Mapa", "/infrastruktura/mapa"), ("Lista urządzeń", "/urzadzenia"),
          ("Szafa", "/infrastruktura/szafa"), ("Adresy IP", "/infrastruktura/adresy"),
-         ("Incydenty", "/incydenty"), ("Aktualizacje", "/aktualizacje"), ("Procedury", "/procedury"),
+         ("Incydenty", "/incydenty"), ("Alerty", "/alerty"), ("Aktualizacje", "/aktualizacje"), ("Oś czasu", "/os-czasu"),
+         ("Procedury", "/procedury"),
          ("Co jeśli…? (symulacja awarii)", "/infrastruktura/mapa?co_jesli=0"), ("Konto i sesje", "/konto")]
 ADMIN_PAGES = [("Do zatwierdzenia", "/zatwierdz"), ("Integracje", "/admin/integracje"),
-               ("Powiadomienia", "/admin/powiadomienia"), ("Akcje", "/akcje"), ("Terminale", "/terminale"),
+               ("Kanały powiadomień", "/admin/powiadomienia"), ("Akcje", "/akcje"), ("Terminale", "/terminale"),
                ("Audyt", "/admin/audyt"), ("Nowe urządzenie", "/urzadzenia/nowe")]
 _ADMIN_PATHS = {url for _, url in ADMIN_PAGES}
+_ADMIN_PREFIXES = ("/admin/", "/terminale/", "/akcje/", "/zatwierdz/")
+# Adresy tylko do skopiowania: UNC (\\\\nas\\zdjecia) i schematy, których przeglądarka nie otworzy. Nigdy nie trafiają do href.
+_COPY_RE = re.compile(r"^(\\\\[^\\/\s]+(\\[^\\/\x00-\x1f]+)*\\?|(smb|nfs|afp|ftp|sftp|ssh|rdp|vnc)://\S+)$", re.IGNORECASE)
 _NOT_A_TILE = {"/", "/konto"}                     # pulpit i konto są zawsze pod ręką
 
 
@@ -31,17 +36,26 @@ def _external(url):
     return url.lower().startswith(("http://", "https://"))
 
 
+def is_copy(url):
+    return bool(_COPY_RE.match(url or ""))
+
+
+def _admin_only(url):
+    return url in _ADMIN_PATHS or url.startswith(_ADMIN_PREFIXES)
+
+
 def _same_url(url):
     return url.strip().rstrip("/").lower()
 
 
 def check_url(url):
-    """Pełny adres http(s) albo ścieżka panelu. „//host” i „/\\host” przeglądarka potraktowałaby jak inny serwer."""
+    """Pełny adres http(s), ścieżka panelu albo adres do skopiowania. „//host” i „/\\host” przeglądarka potraktowałaby
+    jak inny serwer."""
     url = (url or "").strip()
     if len(url) > 500:
         raise DeskError("Adres jest za długi.")
-    if url and not re.match(r"^(https?://[^\s/]\S*|/(?![/\\])\S*)$", url, re.IGNORECASE):
-        raise DeskError("Adres musi zaczynać się od http://, https:// albo / (strona panelu).")
+    if url and not is_copy(url) and not re.match(r"^(https?://[^\s/]\S*|/(?![/\\])\S*)$", url, re.IGNORECASE):
+        raise DeskError("Adres musi zaczynać się od http://, https://, / (strona panelu), \\\\serwer\\udział albo smb://, nfs://, ssh://…")
     return url
 
 
@@ -54,7 +68,7 @@ def _view(r):
     url = r["url"] or r["device_url"] or (f"/urzadzenia/{r['device_id']}" if r["device_id"] else "")
     return {"id": r["id"], "category_id": r["category_id"], "device_id": r["device_id"],
             "name": r["name"] or r["device_name"] or "", "url": url, "icon": r["icon"] or r["device_icon"] or "",
-            "external": _external(url), "own_name": r["name"], "own_url": r["url"], "own_icon": r["icon"]}
+            "external": _external(url), "copy_only": is_copy(url), "own_name": r["name"], "own_url": r["url"], "own_icon": r["icon"]}
 
 
 def tiles(conn, role="admin"):
@@ -63,7 +77,7 @@ def tiles(conn, role="admin"):
                                device.c.icon.label("device_icon"))
                         .select_from(desk_tile.outerjoin(device, device.c.id == desk_tile.c.device_id))
                         .order_by(desk_tile.c.position, desk_tile.c.id)).mappings().all()
-    return [v for v in map(_view, rows) if role == "admin" or v["url"] not in _ADMIN_PATHS]
+    return [v for v in map(_view, rows) if role == "admin" or not _admin_only(v["url"])]
 
 
 def board(conn, role="admin"):
@@ -82,7 +96,20 @@ def device_category(conn, device_id):
 
 def find(conn, q, role="admin"):
     low = q.lower()
-    return [t for t in tiles(conn, role) if low in t["name"].lower() or low in t["url"].lower()]
+    # adres do skopiowania nie jest stroną, do której można przejść
+    return [t for t in tiles(conn, role) if not t["copy_only"] and (low in t["name"].lower() or low in t["url"].lower())]
+
+
+def terminals(conn):
+    """[(„Terminal: nazwa”, adres)] maszyn, które mają adres na karcie."""
+    with_address = select(device_address.c.device_id).where(device_address.c.kind.in_(("ip", "hostname")))
+    rows = conn.execute(select(device.c.id, device.c.name).where(device.c.id.in_(with_address)).order_by(device.c.name))
+    return [(f"Terminal: {r.name}", f"/terminale/{r.id}") for r in rows]
+
+
+def url_choices(conn):
+    """Podpowiedzi pola „Adres”: strony panelu i terminale."""
+    return [{"name": n, "url": u} for n, u in PAGES + ADMIN_PAGES + terminals(conn) if u not in _NOT_A_TILE]
 
 
 def suggestions(conn):
@@ -109,6 +136,11 @@ def suggestions(conn):
     for name, url in PAGES + ADMIN_PAGES:
         if url not in _NOT_A_TILE:
             offer(f"strona:{url}", name.removesuffix(" (symulacja awarii)"), url, "Strony panelu")
+    for name, url in terminals(conn):
+        offer(f"strona:{url}", name, url, "Terminale")
+    for s in conn.execute(select(share.c.title, share.c.target).where(share.c.kind == "adres").order_by(share.c.position)):
+        if is_copy(s.target):
+            offer(f"adres:{s.target}", s.title, s.target, "Do skopiowania")
     return out
 
 

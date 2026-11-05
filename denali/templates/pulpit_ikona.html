@@ -10,7 +10,9 @@
 <form class="card narrow-form wide-form" method="post" action="{{ '/pulpit/ikony/%d/edycja' % t.id if t.id else '/pulpit/ikony/nowa' }}">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <label class="field">Nazwa<input name="name" value="{{ t.own_name }}" maxlength="200" autofocus placeholder="np. Grafana"></label>
-  <label class="field">Adres <span class="muted small">(http://, https:// albo strona panelu, np. /procedury)</span><input name="url" value="{{ t.own_url }}" maxlength="500" placeholder="https://…"></label>
+  <label class="field">Adres <span class="muted small">(https://…, strona panelu z listy, a udział SMB, np. \\nas\zdjecia albo smb://nas/zdjecia, ikona skopiuje)</span>
+    <input name="url" value="{{ t.own_url }}" maxlength="500" placeholder="https://… albo zacznij pisać nazwę strony" list="adresy-panelu"></label>
+  <datalist id="adresy-panelu">{% for c in url_choices %}<option value="{{ c.url }}">{{ c.name }}</option>{% endfor %}</datalist>
   <label class="field">Skrót na ikonie <span class="muted small">(do 3 znaków, może być emoji; puste = z nazwy)</span><input name="icon" value="{{ t.own_icon }}" maxlength="3"></label>
   {% if categories %}
   <label class="field">Kategoria

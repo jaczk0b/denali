@@ -185,14 +185,15 @@
 document.addEventListener("click", async (e) => {
   const button = e.target.closest("[data-copy]");
   if (!button) return;
-  const label = button.textContent;
+  const target = button.querySelector("[data-copy-label]") || button;   // ikona pulpitu: bez kasowania obrazka
+  const label = target.textContent;
   try {
     await navigator.clipboard.writeText(button.dataset.copy);
-    button.textContent = "Skopiowano";
+    target.textContent = "Skopiowano";
   } catch {
-    button.textContent = "Nie udało się skopiować";
+    target.textContent = "Nie udało się skopiować";
   }
-  setTimeout(() => { button.textContent = label; }, 1500);
+  setTimeout(() => { target.textContent = label; }, 1500);
 });
 
 // Ctrl+K (albo „/” poza polem tekstowym): szybkie przejście do strony, urządzenia, procedury albo incydentu.

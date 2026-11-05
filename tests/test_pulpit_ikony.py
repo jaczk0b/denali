@@ -43,7 +43,7 @@ def test_dobre_adresy(url):
     assert desk.check_url(f" {url} ") == url
 
 
-@pytest.mark.parametrize("url", ["javascript:alert(1)", "//zly.pl", "/\\zly.pl", "ftp://nas", "https://", "grafana.lan",
+@pytest.mark.parametrize("url", ["javascript:alert(1)", "//zly.pl", "/\\zly.pl", "gopher://nas", "https://", "grafana.lan",
                                  "data:text/html,x", "https://a b"])
 def test_zle_adresy(url):
     with pytest.raises(desk.DeskError):
@@ -223,3 +223,45 @@ def test_migracja_przenosi_przypiete_urzadzenia(settings):
     command.upgrade(cfg, "head")
     engine.dispose()
     assert back == {"a": "codzien", "b": "codzien", "c": "zarzadzanie", "d": "brak"}
+
+
+@pytest.mark.parametrize("url", ["\\\\nas\\zdjecia", "\\\\nas\\Moje Dokumenty\\", "smb://nas/zdjecia", "NFS://nas/tank", "ssh://root@10.0.0.1"])
+def test_adres_do_skopiowania(url):
+    assert desk.check_url(url) == url and desk.is_copy(url)
+
+
+@pytest.mark.parametrize("url", ["javascript:alert(1)", "data:text/html,x", "\\\\", "smb://", "file:///etc/passwd", "//host/x"])
+def test_niebezpieczne_adresy_odrzucone(url):
+    with pytest.raises(desk.DeskError):
+        desk.check_url(url)
+
+
+def test_ikona_kopiuje_zamiast_linku(app, admin):
+    add(app, name="Zdjęcia", url="\\\\nas\\zdjecia")
+    page = admin.get("/").text
+    assert 'data-copy="\\\\nas\\zdjecia"' in page and 'href="\\\\nas' not in page
+    with app.state.engine.connect() as conn:
+        assert desk.find(conn, "zdj") == []                     # szybkie przejście nie ma dokąd przejść
+
+
+def test_terminal_i_udzial_w_propozycjach(app, admin):
+    from denali import shares
+    with app.state.engine.begin() as conn:
+        did = inv.create_device(conn, "docker", "vm")
+        inv.add_address(conn, did, "ip", "10.0.0.5")
+        inv.create_device(conn, "bez-adresu", "vm")
+        shares.create(conn, "Dysk", "adres", "\\\\nas\\wspolne")
+        got = {s["key"]: s for s in desk.suggestions(conn)}
+        assert got[f"strona:/terminale/{did}"]["name"] == "Terminal: docker"
+        assert not any("bez-adresu" in s["name"] for s in got.values())
+        tid = desk.add_suggestion(conn, "adres:\\\\nas\\wspolne", category(app, "Na co dzień"))
+        assert desk.get_tile(conn, tid)["copy_only"]
+    assert f'value="/terminale/{did}"' in admin.get("/pulpit/ikony/nowa").text
+
+
+def test_podglad_nie_widzi_skrotu_do_terminala(app, admin, viewer):
+    with app.state.engine.begin() as conn:
+        did = inv.create_device(conn, "docker", "vm")
+    add(app, name="Term", url=f"/terminale/{did}")
+    assert f'href="/terminale/{did}"' in admin.get("/").text
+    assert f'href="/terminale/{did}"' not in viewer.get("/").text
