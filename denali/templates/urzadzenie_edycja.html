@@ -24,7 +24,7 @@
     <label class="field">Adres aplikacji <span class="muted small">(ikona na pulpicie)</span><input name="app_url" value="{{ d.app_url }}" placeholder="https://…" maxlength="500"></label>
     <label class="field">Porty do sprawdzania <span class="muted small">(TCP, np. „5432, 1883” — usługi bez strony WWW)</span><input name="tcp_ports" value="{{ d.tcp_ports }}" placeholder="5432, 1883" maxlength="200"></label>
     <label class="field">Na pulpicie
-      <select name="pulpit_group">{% for k, v in [("brak", "nie pokazuj"), ("codzien", "na co dzień"), ("zarzadzanie", "zarządzanie")] %}<option value="{{ k }}" {% if d.pulpit_group == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+      <select name="desk_category"><option value="">nie pokazuj</option>{% for c in desk_categories %}<option value="{{ c.id }}" {% if d.desk_category == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
     <label class="field">Skrót na ikonie <span class="muted small">(2–3 znaki; puste = z nazwy)</span><input name="icon" value="{{ d.icon }}" maxlength="3"></label>
     <label class="field">Gdzie fizycznie<input name="place" value="{{ d.place }}" maxlength="200"></label>
     <label class="field">Numer seryjny<input name="serial" value="{{ d.serial }}" maxlength="100"></label>

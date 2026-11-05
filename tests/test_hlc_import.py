@@ -8,7 +8,7 @@ import pytest
 from cryptography.fernet import Fernet
 from sqlalchemy import func, select
 
-from denali import docs, hlc_import, inventory as inv, vault
+from denali import desk, docs, hlc_import, inventory as inv, vault
 from denali.models import contact, cable, dependency, device, device_address, incident, runbook, vault_secret
 
 OLD_KEY = Fernet.generate_key().decode()
@@ -122,8 +122,9 @@ def test_pelna_migracja_jednej_lokalizacji(app, settings, tmp_path):
         assert pve["criticality"] == 1 and docker["criticality"] == 2           # crit 3 w HLC = P1
         assert truenas["parent_id"] == pve["id"] and immich["parent_id"] == docker["id"]
         assert "## Dostęp" in immich["notes_md"] and "port: 2283" in immich["notes_md"]
-        assert immich["app_url"] == "https://photos.lan" and immich["icon"] == "📷" and immich["pulpit_group"] == "codzien"
-        assert pve["pulpit_group"] == "zarzadzanie"
+        assert immich["app_url"] == "https://photos.lan" and immich["icon"] == "📷"
+        assert desk.device_category(c, immich["id"])["name"] == "Na co dzień"
+        assert desk.device_category(c, pve["id"])["name"] == "Zarządzanie"
         assert by_name(c, "Przepisy")["app_url"] == "https://mealie.lan"
         addrs = {(a.kind, a.value) for a in c.execute(select(device_address))}
         assert ("ip", "192.168.1.30") in addrs and ("mac", "aa:bb:cc:00:00:10") in addrs

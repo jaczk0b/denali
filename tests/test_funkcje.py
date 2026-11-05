@@ -223,6 +223,7 @@ def test_strona_restartu_hosta_i_przypinanie(app):
         assert c.get(f"/urzadzenia/{docker}/restart-hosta").status_code == 404    # to nie host
         desk = c.get("/").text
         assert "+ Grafana" in desk
-        r = c.post(f"/urzadzenia/{app_id}/na-pulpit", data={"csrf_token": csrf_from(desk)})
+        r = c.post("/pulpit/ikony/propozycja", data={"csrf_token": csrf_from(desk), "key": f"urzadzenie:{app_id}",
+                                                     "wroc": "pulpit"})
         assert r.status_code == 303
         assert "+ Grafana" not in c.get("/").text

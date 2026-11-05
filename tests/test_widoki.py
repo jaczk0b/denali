@@ -4,7 +4,7 @@ import re
 import pytest
 from sqlalchemy import select
 
-from denali import auth, discovery, docs, incidents, inventory as inv
+from denali import auth, desk, discovery, docs, incidents, inventory as inv
 from denali.models import audit_log, device, external_ref, integration, profile
 
 from .conftest import ADMIN_PW, csrf_from, do_login, enable_2fa, make_user, new_client, user_row
@@ -33,10 +33,12 @@ def lab(app):
     with app.state.engine.begin() as conn:
         ids = {"pve": inv.create_device(conn, "pve", "host", criticality=1)}
         ids["truenas"] = inv.create_device(conn, "truenas", "vm", parent_id=ids["pve"], criticality=1,
-                                           pulpit_group="zarzadzanie", app_url="https://truenas.lan")
+                                           app_url="https://truenas.lan")
         ids["docker"] = inv.create_device(conn, "docker", "vm", parent_id=ids["pve"])
         ids["immich"] = inv.create_device(conn, "Immich", "kontener", parent_id=ids["docker"],
-                                          pulpit_group="codzien", app_url="https://immich.lan")
+                                          app_url="https://immich.lan")
+        desk.pin_device(conn, ids["immich"], desk.ensure_category(conn, "Na co dzień"))
+        desk.pin_device(conn, ids["truenas"], desk.ensure_category(conn, "Zarządzanie"))
         inv.add_dependency(conn, ids["immich"], ids["truenas"], "dane")
         inv.add_address(conn, ids["truenas"], "ip", "192.168.1.30")
         g = inv.load_graph(conn)

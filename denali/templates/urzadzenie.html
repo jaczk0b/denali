@@ -412,7 +412,7 @@
     <h2 id="szczegoly">Szczegóły</h2>
     <table>
       {% if d.serial %}<tr><td>Numer seryjny</td><td class="mono">{{ d.serial }}</td></tr>{% endif %}
-      <tr><td>Na pulpicie</td><td>{{ {"codzien": "na co dzień", "zarzadzanie": "zarządzanie", "brak": "nie"}[d.pulpit_group] }}</td></tr>
+      <tr><td>Na pulpicie</td><td>{{ desk_place.name if desk_place else "nie" }}</td></tr>
       {% for r in refs %}<tr><td>Z integracji</td><td class="mono">{{ r.external_id }}</td></tr>{% endfor %}
       <tr><td>Dodane</td><td>{{ d.created_at | dt }}</td></tr>
     </table>

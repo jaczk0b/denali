@@ -8,7 +8,7 @@ from denali.models import device, device_address
 def test_urzadzenie_wymaga_tylko_nazwy_i_typu(conn):
     did = inv.create_device(conn, "  pve  ", "host")
     d = inv.get_device(conn, did)
-    assert d["name"] == "pve" and d["criticality"] == 3 and d["pulpit_group"] == "brak"
+    assert d["name"] == "pve" and d["criticality"] == 3 and d["app_url"] == ""
 
 
 @pytest.mark.parametrize("fields, msg", [

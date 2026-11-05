@@ -347,6 +347,9 @@ polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/dena
   spokoju: jedno powiadomienie i jedno „rozwiązane” zamiast serii.
 - **Powiadomienia** mówią, co dokładnie zgłosiło źródło (np. „192.168.1.10 nie odpowiada”, „port 5432 zamknięty”),
   a „rozwiązane” — co było, co jest teraz i ile trwało.
+- **Ikony pulpitu** dodajesz przyciskiem „+” w kategorii albo przez *Ułóż ikony i kategorie* (`/pulpit/ikony`): dowolny
+  adres, strona panelu albo urządzenie (wtedy ikona pokazuje jego stan). Panel proponuje jednym kliknięciem aplikacje
+  z adresem, integracje i swoje strony. Kategorie możesz nazwać i ułożyć po swojemu; ikony znajdzie też Ctrl+K.
 - **Pulpit** zaczyna się od jednego zdania: „Wszystko działa”, „Nie odpowiada: … (jeszcze nie awaria)” albo
   „1 problem: …” z linkiem do incydentu. Obok widżet **Nadchodzące**: wygasające certyfikaty, opłaty OVH,
   aktualizacje bezpieczeństwa czekające ponad 7 dni, stara kopia Denali i magazyny, które się zapełniają.

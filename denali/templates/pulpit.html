@@ -36,43 +36,44 @@
 
   <div class="desk-grid">
     <div class="desk-apps">
-      {% if no_devices %}
-        <div class="widget">
-          <h2>Pusto — zacznij od urządzeń</h2>
-          <p class="muted">Urządzenia przyjdą same z integracji (Etap 3) albo dodaj je ręcznie. Aplikacja z adresem i grupą pulpitu pojawi się tutaj jako ikona.</p>
-          {% if sess.role == "admin" %}<a class="btn primary" href="/urzadzenia/nowe">Dodaj urządzenie</a>{% endif %}
-        </div>
-      {% elif not apps %}
+      {% set can_edit = sess.role == "admin" %}
+      {% if not board | map(attribute="tiles") | sum(start=[]) %}
         <div class="hint">
-          <span><b>Ikony aplikacji</b> — urządzenia z adresem aplikacji możesz przypiąć tutaj.</span>
-          {% if suggest and sess.role == "admin" %}
-          <div class="hint-pins">
-            {% for d in suggest %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/na-pulpit">
-              <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="pin" type="submit">+ {{ d.name }}</button></form>{% endfor %}
-          </div>
-          {% elif not suggest %}<span class="muted small">Najpierw ustaw adres aplikacji na karcie urządzenia (Edytuj).</span>{% endif %}
+          <span><b>Ikony aplikacji</b> — skróty do tego, czego używasz na co dzień.</span>
+          {% if can_edit %}
+          {% if suggest %}
+          <form class="hint-pins" method="post" action="/pulpit/ikony/propozycja">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="wroc" value="pulpit">
+            {% for s in suggest %}<button class="pin" type="submit" name="key" value="{{ s.key }}" title="{{ s.url }}">+ {{ s.name }}</button>{% endfor %}
+          </form>
+          {% endif %}
+          {% if no_devices %}<span class="muted small">Urządzenia przyjdą same z integracji albo <a href="/urzadzenia/nowe">dodaj je ręcznie</a>.</span>{% endif %}
+          {% else %}<span class="muted small">Dodaje je administrator.</span>{% endif %}
         </div>
       {% endif %}
-      {% for group, label in [("codzien", "Na co dzień"), ("zarzadzanie", "Zarządzanie")] %}
-        {% set items = apps | selectattr("pulpit_group", "equalto", group) | list %}
-        {% if items %}
-        <section aria-labelledby="g-{{ group }}">
-          <h2 class="desk-label" id="g-{{ group }}">{{ label }}</h2>
+      {% for c in board if c.tiles or can_edit %}
+        <section aria-labelledby="g-{{ c.id }}">
+          <h2 class="desk-label" id="g-{{ c.id }}">{{ c.name }}</h2>
           <div class="icons">
-            {% for a in items %}
-              {% set m = marks.get(a.id) %}
+            {% for a in c.tiles %}
+              {% set m = marks.get(a.device_id) %}
               <a class="icon-tile {{ {'przyczyna': 'is-down', 'skutek': 'is-effect', 'gorzej': 'is-degraded'}.get(m, '') }}"
-                 href="{{ a.app_url or '/urzadzenia/%d' % a.id }}" {% if a.app_url %}target="_blank" rel="noopener noreferrer"{% endif %}>
+                 href="{{ a.url }}" {% if a.external %}target="_blank" rel="noopener noreferrer"{% endif %}>
                 <span class="icon {{ a.name | tile_color }}">{{ a.icon or (a.name | initials) }}
                   {%- if m %}<span class="icon-badge">{{ st({"przyczyna": "down", "skutek": "effect", "gorzej": "warn"}[m], 18) }}</span>{% endif %}</span>
                 <span class="icon-name">{{ a.name }}</span>
                 {% if m %}<span class="icon-state">{{ {"przyczyna": "nie działa", "skutek": "bez danych", "gorzej": "działa gorzej"}[m] }}</span>{% endif %}
               </a>
             {% endfor %}
+            {% if can_edit %}
+            <a class="icon-tile icon-add" href="/pulpit/ikony/nowa?kategoria={{ c.id }}">
+              <span class="icon" aria-hidden="true">+</span><span class="icon-name">Dodaj</span>
+            </a>
+            {% endif %}
           </div>
         </section>
-        {% endif %}
       {% endfor %}
+      {% if can_edit %}<a class="desk-edit" href="/pulpit/ikony">Ułóż ikony i kategorie</a>{% endif %}
     </div>
 
     <aside class="desk-side" aria-label="Widżety">

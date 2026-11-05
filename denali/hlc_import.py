@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
-from . import auth, docs, files, inventory as inv, vault
+from . import auth, desk, docs, files, inventory as inv, vault
 from .db import kv_get, kv_set
 from .models import incident, incident_device, incident_event
 
@@ -415,22 +415,23 @@ class _Run:
             url = (a.get("url") or "").strip()
             if self.seen(key) or not url.startswith(("http://", "https://")):
                 continue
-            group = "zarzadzanie" if a.get("audience") == "admin" else "codzien"
+            category = desk.ensure_category(self.conn, "Zarządzanie" if a.get("audience") == "admin" else "Na co dzień")
             icon = (a.get("icon") or "").strip()
             icon = icon if 0 < len(icon) <= 3 else ""
             did = self.dev.get(a.get("device_id") or "")
             if did:
                 cur = inv.get_device(self.conn, did)
-                fields = {"pulpit_group": group}
+                fields = {}
                 if not cur["app_url"]:
                     fields["app_url"] = url[:500]
                 if icon and not cur["icon"]:
                     fields["icon"] = icon
                 inv.update_device(self.conn, did, **fields)
             else:
-                inv.create_device(self.conn, (a.get("name") or url)[:200], "usluga", app_url=url[:500], pulpit_group=group,
-                                  icon=icon, role=(a.get("description") or "")[:300])
+                did = inv.create_device(self.conn, (a.get("name") or url)[:200], "usluga", app_url=url[:500], icon=icon,
+                                        role=(a.get("description") or "")[:300])
                 self.r.add("urządzenia")
+            desk.pin_device(self.conn, did, category)
             self.mark(key)
             self.r.add("ikony aplikacji na pulpicie")
 

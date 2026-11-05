@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}{{ "Edycja ikony" if t.id else "Nowa ikona" }}{% endblock %}
+{% block content %}
+<div>
+  <p class="muted small"><a href="/">Pulpit</a> / <a href="/pulpit/ikony">Ikony pulpitu</a></p>
+  <h1>{{ "Edycja ikony" if t.id else "Nowa ikona" }}</h1>
+</div>
+{{ alerts(error) }}
+<form class="card narrow-form wide-form" method="post" action="{{ '/pulpit/ikony/%d/edycja' % t.id if t.id else '/pulpit/ikony/nowa' }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label class="field">Nazwa<input name="name" value="{{ t.own_name }}" maxlength="200" autofocus placeholder="np. Grafana"></label>
+  <label class="field">Adres <span class="muted small">(http://, https:// albo strona panelu, np. /procedury)</span><input name="url" value="{{ t.own_url }}" maxlength="500" placeholder="https://…"></label>
+  <label class="field">Skrót na ikonie <span class="muted small">(do 3 znaków, może być emoji; puste = z nazwy)</span><input name="icon" value="{{ t.own_icon }}" maxlength="3"></label>
+  {% if categories %}
+  <label class="field">Kategoria
+    <select name="category_id">{% for c in categories %}<option value="{{ c.id }}" {% if c.id == t.category_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
+  {% endif %}
+  <label class="field">Nowa kategoria <span class="muted small">(zamiast wybranej powyżej)</span><input name="new_category" value="{{ t.new_category }}" maxlength="100"></label>
+  <label class="field">Urządzenie <span class="muted small">(opcjonalnie: ikona pokaże jego stan, a puste pola weźmie z niego)</span>
+    <select name="device_id"><option value="">— bez urządzenia —</option>
+      {% for d in devices %}<option value="{{ d.id }}" {% if d.id == t.device_id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></label>
+  <div class="form-row">
+    <button class="btn primary" type="submit">Zapisz</button>
+    <a class="btn" href="/pulpit/ikony">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import func, or_, select
 
-from .. import (actions, auth, checks, configs, discovery, docs, files, forecast, history, incidents, infra_views, integrations,
+from .. import (actions, auth, checks, configs, desk, discovery, docs, files, forecast, history, incidents, infra_views, integrations,
                inventory as inv, live, maintenance, profiles, racks, status, tablet, upcoming, updates, vault)
 from ..db import kv_get
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
@@ -51,15 +51,13 @@ def pulpit(request: Request, sess: dict = Depends(require_user)):
         last_closed = conn.execute(select(incident.c.ended_at).where(incident.c.status == "zamkniety")
                                    .order_by(incident.c.ended_at.desc()).limit(1)).mappings().first()
         ctx = {
-            "apps": status.pulpit_apps(conn), "marks": marks, "open_incidents": open_inc, "effects": effects,
+            "board": desk.board(conn, sess["role"]), "marks": marks, "open_incidents": open_inc, "effects": effects,
             "layers": [l for l in status.layers(devices, marks, states) if l["state"] != "none"],
             "recent": status.recent_events(conn),
             "no_devices": not devices, "has_live": bool(states),
             "verdict": status.verdict(devices, states, open_inc, maintenance.active(conn), last_closed),
             "upcoming": upcoming.items(conn),
-            "suggest": conn.execute(select(device.c.id, device.c.name, device.c.app_url).where(
-                device.c.app_url != "", device.c.pulpit_group == "brak").order_by(device.c.name).limit(8)
-            ).mappings().all(),
+            "suggest": desk.suggestions(conn)[:8] if sess["role"] == "admin" else [],
         }
     now = datetime.now()
     ctx.update(clock=now.strftime("%H:%M"), date=f"{DAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]}")
@@ -91,16 +89,6 @@ def _wall(request, conn, sess, devices, states, open_inc):
         "has_pin": bool(tablet.pin_info(conn, sess["public_id"])),
         "hosts": [d for d in devices if d["kind"] == "host"],
     }
-
-
-@router.post("/urzadzenia/{device_id}/na-pulpit")
-def pin_to_desk(request: Request, device_id: int, group: str = Form("codzien"), sess: dict = Depends(require_admin)):
-    with request.app.state.engine.begin() as conn:
-        if not inv.get_device(conn, device_id):
-            raise NotFound("Nie ma takiego urządzenia.")
-        inv.update_device(conn, device_id, pulpit_group=group if group in inv.PULPIT_GROUPS else "codzien")
-        auth.audit(conn, "device_pin", user=sess["login"], ip=client_ip(request), target=str(device_id))
-    return _back("/")
 
 
 # ───────────────────────── aktualizacje ─────────────────────────
@@ -183,6 +171,7 @@ def _card(request, conn, device_id, *, error=None, message=None, revealed=None, 
         "storage": [f for f in forecast.forecasts(conn) if f["device_id"] == device_id],
         "breaks": [m for m in maintenance.active(conn).values() if m["device_id"] == device_id],
         "break_choices": maintenance.CHOICES,
+        "desk_place": desk.device_category(conn, device_id),
     }
     return render(request, "urzadzenie.html", ctx, status_code)
 
@@ -213,7 +202,8 @@ def _edit_form(request, conn, d, error=None, status_code=200):
     profs = conn.execute(select(profiles.profile.c.id, profiles.profile.c.name).order_by(profiles.profile.c.name)
                          ).mappings().all()
     return render(request, "urzadzenie_edycja.html", {"d": d, "error": error, "all_devices": all_devices,
-                                                      "profiles": profs, "nest": inv.NEST_IN}, status_code)
+                                                      "profiles": profs, "nest": inv.NEST_IN,
+                                                      "desk_categories": desk.categories(conn)}, status_code)
 
 
 @router.get("/urzadzenia/nowe")
@@ -221,7 +211,7 @@ def device_new_form(request: Request, sess: dict = Depends(require_admin)):
     with request.app.state.engine.connect() as conn:
         return _edit_form(request, conn, {"id": None, "name": "", "kind": "usluga", "role": "", "criticality": 3,
                                           "parent_id": None, "profile_id": None, "place": "", "serial": "",
-                                          "notes_md": "", "icon": "", "app_url": "", "pulpit_group": "brak",
+                                          "notes_md": "", "icon": "", "app_url": "", "desk_category": None,
                                           "tcp_ports": ""})
 
 
@@ -231,19 +221,22 @@ def _device_fields(form):
         "criticality": _int(form.get("criticality")) or 3, "parent_id": _int(form.get("parent_id")),
         "profile_id": _int(form.get("profile_id")), "place": form.get("place", ""),
         "serial": form.get("serial", ""), "notes_md": form.get("notes_md", ""), "icon": form.get("icon", ""),
-        "app_url": form.get("app_url", ""), "pulpit_group": form.get("pulpit_group", "brak"),
+        "app_url": form.get("app_url", ""),
         "tcp_ports": form.get("tcp_ports", ""),
     }
 
 
 @router.post("/urzadzenia/nowe")
 async def device_create(request: Request, sess: dict = Depends(require_admin)):
-    fields = _device_fields(await request.form())
+    form = await request.form()
+    fields, category = _device_fields(form), _int(form.get("desk_category"))
     with request.app.state.engine.begin() as conn:
         try:
             did = inv.create_device(conn, **fields)
-        except inv.InventoryError as e:
-            return _edit_form(request, conn, {"id": None, **fields}, str(e), 400)
+            if category:
+                desk.pin_device(conn, did, category)
+        except (inv.InventoryError, desk.DeskError) as e:
+            return _edit_form(request, conn, {"id": None, **fields, "desk_category": category}, str(e), 400)
         auth.audit(conn, "device_create", user=sess["login"], ip=client_ip(request), target=fields["name"])
     return _back(f"/urzadzenia/{did}")
 
@@ -254,19 +247,23 @@ def device_edit_form(request: Request, device_id: int, sess: dict = Depends(requ
         d = inv.get_device(conn, device_id)
         if not d:
             raise NotFound("Nie ma takiego urządzenia.")
-        return _edit_form(request, conn, d)
+        place = desk.device_category(conn, device_id)
+        return _edit_form(request, conn, {**d, "desk_category": place["id"] if place else None})
 
 
 @router.post("/urzadzenia/{device_id}/edycja")
 async def device_update(request: Request, device_id: int, sess: dict = Depends(require_admin)):
-    fields = _device_fields(await request.form())
+    form = await request.form()
+    fields, category = _device_fields(form), _int(form.get("desk_category"))
     with request.app.state.engine.begin() as conn:
         if not inv.get_device(conn, device_id):
             raise NotFound("Nie ma takiego urządzenia.")
         try:
             inv.update_device(conn, device_id, **fields)
-        except inv.InventoryError as e:
-            return _edit_form(request, conn, {"id": device_id, **fields}, str(e), 400)
+            if "desk_category" in form:             # brak pola to nie „zdejmij z pulpitu”
+                desk.pin_device(conn, device_id, category)
+        except (inv.InventoryError, desk.DeskError) as e:
+            return _edit_form(request, conn, {"id": device_id, **fields, "desk_category": category}, str(e), 400)
         auth.audit(conn, "device_update", user=sess["login"], ip=client_ip(request), target=fields["name"])
     return _back(f"/urzadzenia/{device_id}")
 
@@ -612,16 +609,8 @@ def search(request: Request, q: str = "", sess: dict = Depends(require_user)):
     q = q.strip()[:100]
     with request.app.state.engine.connect() as conn:
         res = _search(conn, q)
+        res["tiles"] = desk.find(conn, q, sess["role"]) if q else []
     return render(request, "szukaj.html", {"q": q, "res": res, "total": sum(len(v) for v in res.values())})
-
-
-# Strony do szybkiego przejścia (Ctrl+K) — pasują po nazwie, zanim cokolwiek się wpisze w bazie.
-PAGES = [("Pulpit", "/"), ("Mapa", "/infrastruktura/mapa"), ("Lista urządzeń", "/urzadzenia"),
-         ("Incydenty", "/incydenty"), ("Aktualizacje", "/aktualizacje"), ("Procedury", "/procedury"),
-         ("Co jeśli…? (symulacja awarii)", "/infrastruktura/mapa?co_jesli=0"), ("Konto i sesje", "/konto")]
-ADMIN_PAGES = [("Do zatwierdzenia", "/zatwierdz"), ("Integracje", "/admin/integracje"),
-               ("Powiadomienia", "/admin/powiadomienia"), ("Akcje", "/akcje"), ("Terminale", "/terminale"),
-               ("Audyt", "/admin/audyt"), ("Nowe urządzenie", "/urzadzenia/nowe")]
 
 
 @router.get("/szukaj/szybko")
@@ -629,12 +618,14 @@ def quick_search(request: Request, q: str = "", sess: dict = Depends(require_use
     """Ctrl+K: krótka lista [{label, sub, url}] — strony panelu, urządzenia, procedury, runbooki, incydenty."""
     q = q.strip()[:100]
     low = q.lower()
-    pages = PAGES + (ADMIN_PAGES if sess["role"] == "admin" else [])
+    pages = desk.PAGES + (desk.ADMIN_PAGES if sess["role"] == "admin" else [])
     out = [{"label": label, "sub": "strona", "url": url} for label, url in pages if not q or low in label.lower()]
     if q:
         with request.app.state.engine.connect() as conn:
             res = _search(conn, q)
             states = live.saved(conn)
+            tiles = desk.find(conn, q, sess["role"])
+        out += [{"label": t["name"], "sub": "ikona na pulpicie", "url": t["url"]} for t in tiles[:6]]
         out += [{"label": d["name"], "sub": inv.KINDS.get(d["kind"], d["kind"]) + {"down": " · nie działa", "warn": " · uwaga"}.get(
                      (states.get(d["id"]) or {}).get("state"), ""), "url": f"/urzadzenia/{d['id']}"}
                 for d in res["devices"][:8]]

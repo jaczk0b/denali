@@ -23,9 +23,8 @@ NEST_IN = {
 }
 DEP_TYPES = {"zasilanie": "Zasilanie", "siec": "Sieć", "dane": "Dane", "usluga": "Usługa"}
 ADDRESS_KINDS = ("ip", "mac", "hostname")
-PULPIT_GROUPS = ("codzien", "zarzadzanie", "brak")
 EDITABLE = ("name", "kind", "role", "criticality", "parent_id", "profile_id", "place", "serial", "notes_md", "icon",
-            "app_url", "pulpit_group", "tcp_ports")
+            "app_url", "tcp_ports")
 
 _MAC = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 _HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
@@ -62,8 +61,6 @@ def _clean(conn, fields, device_id=None, kind=None):
         raise InventoryError("Nieznany typ urządzenia.")
     if "criticality" in out and out["criticality"] not in (1, 2, 3):
         raise InventoryError("Krytyczność to P1, P2 albo P3.")
-    if "pulpit_group" in out and out["pulpit_group"] not in PULPIT_GROUPS:
-        raise InventoryError("Nieznana grupa pulpitu.")
     if "tcp_ports" in out:
         raw = [p for p in re.split(r"[\s,;]+", (out["tcp_ports"] or "").strip()) if p]
         if any(not p.isdigit() or not 0 < int(p) < 65536 for p in raw):

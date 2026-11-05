@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}Ikony pulpitu{% endblock %}
+{% macro move(action, first, last, token) %}
+  <form class="inline" method="post" action="{{ action }}"><input type="hidden" name="csrf_token" value="{{ token }}"><input type="hidden" name="kierunek" value="gora"><button class="btn small" type="submit" aria-label="W górę" {% if first %}disabled{% endif %}>↑</button></form>
+  <form class="inline" method="post" action="{{ action }}"><input type="hidden" name="csrf_token" value="{{ token }}"><input type="hidden" name="kierunek" value="dol"><button class="btn small" type="submit" aria-label="W dół" {% if last %}disabled{% endif %}>↓</button></form>
+{% endmacro %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <p class="muted small"><a href="/">Pulpit</a></p>
+    <h1>Ikony pulpitu</h1>
+    <p class="muted">Skróty do aplikacji i stron panelu, ułożone w Twoich kategoriach.</p>
+  </div>
+  <a class="btn primary" href="/pulpit/ikony/nowa">Dodaj ikonę</a>
+</div>
+{{ alerts(error) }}
+
+{% if suggest %}
+<section class="card">
+  <h2>Dodaj jednym kliknięciem</h2>
+  <form method="post" action="/pulpit/ikony/propozycja">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    {% if board %}
+    <label class="field">Do kategorii
+      <select name="category_id">{% for c in board %}<option value="{{ c.id }}" {% if c.id == selected %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
+    {% endif %}
+    {% for group, items in suggest | groupby("group") %}
+    <h3 class="desk-offer">{{ group }}</h3>
+    <div class="hint-pins">
+      {% for s in items %}<button class="pin" type="submit" name="key" value="{{ s.key }}" title="{{ s.url }}">+ {{ s.name }}</button>{% endfor %}
+    </div>
+    {% endfor %}
+  </form>
+</section>
+{% endif %}
+
+{% for c in board %}
+{% set cat_loop = loop %}
+<section class="card desk-cat" aria-label="Kategoria {{ c.name }}">
+  <div class="desk-cat-head">
+    <form class="form-row" method="post" action="/pulpit/kategorie/{{ c.id }}/nazwa">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input class="grow" name="name" value="{{ c.name }}" maxlength="100" required aria-label="Nazwa kategorii">
+      <button class="btn small" type="submit">Zmień nazwę</button>
+    </form>
+    <div class="desk-row-tools">{{ move("/pulpit/kategorie/%d/przesun" % c.id, cat_loop.first, cat_loop.last, csrf) }}</div>
+  </div>
+  {% if c.tiles %}
+  <ul class="desk-rows">
+    {% for t in c.tiles %}
+    <li>
+      <span class="icon {{ t.name | tile_color }}">{{ t.icon or (t.name | initials) }}</span>
+      <span class="desk-row-text"><b>{{ t.name }}</b><span class="muted small">{{ t.url }}{% if t.device_id %} · pokazuje stan urządzenia{% endif %}</span></span>
+      <span class="desk-row-tools">
+        {{ move("/pulpit/ikony/%d/przesun" % t.id, loop.first, loop.last, csrf) }}
+        <a class="btn small" href="/pulpit/ikony/{{ t.id }}/edycja">Edytuj</a>
+        <form class="inline" method="post" action="/pulpit/ikony/{{ t.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger" type="submit">Usuń</button></form>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted small">Pusta — na pulpicie widać ją tylko z przyciskiem dodawania.</p>{% endif %}
+  <div class="desk-cat-foot">
+    <a class="btn small" href="/pulpit/ikony/nowa?kategoria={{ c.id }}">+ Dodaj ikonę</a>
+    <details class="desk-danger">
+      <summary>Usuń kategorię</summary>
+      <form method="post" action="/pulpit/kategorie/{{ c.id }}/usun">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <p class="small">{% if c.tiles %}Razem z kategorią znikną jej ikony ({{ c.tiles | length }}). Urządzenia zostają.{% else %}Kategoria jest pusta.{% endif %}</p>
+        <button class="btn small danger" type="submit">Tak, usuń</button>
+      </form>
+    </details>
+  </div>
+</section>
+{% endfor %}
+
+<section class="card">
+  <h2>Nowa kategoria</h2>
+  <form class="form-row" method="post" action="/pulpit/kategorie">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input class="grow" name="name" maxlength="100" required placeholder="np. Multimedia" aria-label="Nazwa nowej kategorii">
+    <button class="btn" type="submit">Dodaj kategorię</button>
+  </form>
+</section>
+{% endblock %}

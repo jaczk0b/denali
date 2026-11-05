@@ -96,8 +96,11 @@ settings              klucz → wartość (nazwa lokalizacji, progi, kanały dom
 
 -- dokumentacja ------------------------------------------------------------
 device                id, name, kind, role (do czego służy), criticality P1–P3, parent_id (na czym działa),
-                      place (gdzie fizycznie), serial, notes_md, icon, app_url (ikona na pulpicie),
-                      pulpit_group (codzien | zarzadzanie | brak), profile_id (puste = profil po typie), created_at, updated_at
+                      place (gdzie fizycznie), serial, notes_md, icon, app_url (adres aplikacji),
+                      profile_id (puste = profil po typie), created_at, updated_at
+desk_category         id, name, position — kategorie ikon na pulpicie
+desk_tile             id, category_id, device_id (opcjonalnie, jedna ikona na urządzenie), name, url (http(s) albo ścieżka
+                      panelu), icon, position — puste pola bierze z urządzenia
 device_address        device_id, kind (ip | mac | hostname), value, source (manual | integracja), primary
 dependency            id, device_id → depends_on_id, type (zasilanie | siec | hosting | dane | usluga),
                       hard (bool), note
@@ -343,7 +346,7 @@ denali migrate-hlc <kopia ZIP z `hlc backup` | http://… | katalog | hlc.db> [-
 | `dns_names` | `device_address` (hostname) | |
 | `checks` | `check` | tylko definicje |
 | `channels` | `notification_channel` | opcjonalnie |
-| `apps` | `device.app_url`, `pulpit_group` | ikony aplikacji na pulpicie B |
+| `apps` | `device.app_url`, `desk_tile` | ikony aplikacji na pulpicie B |
 | użytkownicy, metryki, AI, panel Start, shell | — | nie przenosimy |
 
 `--dry-run` pokazuje liczby i listę rzeczy do ręcznego przejrzenia (np. urządzenia bez typu, runbooki ze śladami haseł).

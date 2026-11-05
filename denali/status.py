@@ -7,7 +7,7 @@ import time
 
 from sqlalchemy import select
 
-from .models import device, incident, incident_device, incident_event
+from .models import incident, incident_device, incident_event
 
 # Od góry to, czego używasz, na dole to, na czym stoi.
 LAYERS = [
@@ -134,11 +134,6 @@ def verdict(devices, states, open_inc, breaks, last_closed=None, now=None):
 def recent_events(conn, limit=5):
     return conn.execute(select(incident_event.c.ts, incident_event.c.text, incident_event.c.incident_id)
                         .order_by(incident_event.c.ts.desc(), incident_event.c.id.desc()).limit(limit)).mappings().all()
-
-
-def pulpit_apps(conn):
-    return conn.execute(select(device).where(device.c.pulpit_group != "brak").order_by(device.c.name)
-                        ).mappings().all()
 
 
 def tile_color(name):

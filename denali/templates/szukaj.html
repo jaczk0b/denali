@@ -11,6 +11,11 @@
 </div>
 {% if q %}
   {% if not total %}<div class="card"><p class="muted">Nic nie znaleziono dla „{{ q }}”.</p></div>{% endif %}
+  {% if res.tiles %}
+  <section class="card"><h2>Ikony pulpitu</h2><ul class="plain">
+    {% for t in res.tiles %}<li><a href="{{ t.url }}" {% if t.external %}target="_blank" rel="noopener noreferrer"{% endif %}>{{ t.name }}</a> <span class="muted small">{{ t.url }}</span></li>{% endfor %}
+  </ul></section>
+  {% endif %}
   {% if res.devices %}
   <section class="card"><h2>Urządzenia</h2><ul class="plain">
     {% for d in res.devices %}<li><a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a> <span class="muted small">{{ KINDS.get(d.kind, d.kind) }}{% if d.role %} · {{ d.role }}{% endif %}</span></li>{% endfor %}

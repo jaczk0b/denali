@@ -99,10 +99,28 @@ device = Table(
     Column("notes_md", Text, nullable=False, default=""),
     Column("icon", String(64), nullable=False, default=""),
     Column("app_url", String(500), nullable=False, default=""),
-    Column("pulpit_group", String(16), nullable=False, default="brak"),  # codzien | zarzadzanie | brak
     Column("tcp_ports", String(200), nullable=False, default="", server_default=""),  # „5432, 1883” — sprawdzenia TCP
     Column("created_at", Float, nullable=False),
     Column("updated_at", Float, nullable=False),
+)
+
+# Ikony pulpitu. Kafel to dowolny skrót; z device_id dziedziczy puste pola i pokazuje stan urządzenia.
+desk_category = Table(
+    "desk_category", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String(100), nullable=False),
+    Column("position", Integer, nullable=False, default=0, server_default="0"),
+)
+
+desk_tile = Table(
+    "desk_tile", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("category_id", Integer, ForeignKey("desk_category.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="CASCADE"), unique=True),
+    Column("name", String(200), nullable=False, default="", server_default=""),
+    Column("url", String(500), nullable=False, default="", server_default=""),  # http(s):// albo ścieżka panelu
+    Column("icon", String(64), nullable=False, default="", server_default=""),
+    Column("position", Integer, nullable=False, default=0, server_default="0"),
 )
 
 device_address = Table(
