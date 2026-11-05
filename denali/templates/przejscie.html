@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Potwierdzenie{% endblock %}
+{% block content %}
+{# denali.js przechodzi od razu; przycisk jest na wypadek wyłączonego JavaScriptu #}
+<div class="card narrow">
+  <h1>Przechodzę do Pocket ID…</h1>
+  <p class="muted">Po potwierdzeniu panel sam dokończy to, co było kliknięte.</p>
+  <a class="btn primary wide" href="{{ url }}" data-autogo>Potwierdź w Pocket ID</a>
+</div>
+{% endblock %}

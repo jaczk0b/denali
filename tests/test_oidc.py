@@ -233,8 +233,8 @@ def test_potwierdzenie_przez_pocket_id(app_groups, provider):
     with new_client(app_groups) as c:
         oidc_round(c, provider, groups=["denali-admins"])
         # konto bez hasła: od razu do Pocket ID, bez strony pośredniej
-        r = c.get("/potwierdz?next=/akcje")
-        assert r.status_code == 303 and r.headers["location"] == "/login/oidc?cel=reauth&next=%2Fakcje"
+        r = c.get("/potwierdz?next=/akcje")      # strona, nie przekierowanie: CSP zatrzymałaby formularz w drodze do dostawcy
+        assert r.status_code == 200 and 'href="/login/oidc?cel=reauth&amp;next=%2Fakcje" data-autogo' in r.text
         page = c.get("/potwierdz?next=/akcje&inna=1").text
         assert "Potwierdź w Pocket ID" in page and 'name="password"' not in page
         r = oidc_round(c, provider, start="/login/oidc?cel=reauth&next=/akcje", groups=["denali-admins"],
@@ -262,7 +262,7 @@ def test_preferowane_potwierdzanie_i_haslo_gdy_pocket_id_zawiedzie(app, provider
         assert 'name="password"' in c.get("/potwierdz?next=/akcje").text
         c.post("/konto/potwierdzanie", data={"csrf_token": csrf_from(page), "sposob": "oidc"})
         assert user_row(app, "jan")["reauth_method"] == "oidc"
-        assert c.get("/potwierdz?next=/akcje").headers["location"].startswith("/login/oidc?cel=reauth")
+        assert 'href="/login/oidc?cel=reauth' in c.get("/potwierdz?next=/akcje").text
         r = oidc_round(c, provider, start="/login/oidc?cel=reauth&next=/akcje", auth_time=time.time() - 3600)
         fallback = c.get(r.headers["location"]).text
         assert 'name="password"' in fallback and "Pocket ID nie potwierdził" in fallback
@@ -295,3 +295,11 @@ def test_konto_bez_hasla_nie_rozlaczy_sie(app_groups, provider):
         r = c.post("/konto/oidc/rozlacz", data={"csrf_token": csrf_from(page)})
         assert r.status_code == 400
     assert user_row(app_groups, "jakub")["oidc_sub"]
+
+
+def test_po_hasle_laczenie_konta_nie_przekierowuje_formularza_do_dostawcy(app, provider):
+    """Przekierowanie formularza poza panel blokuje CSP (form-action): przeglądarka zostaje na miejscu, bez komunikatu."""
+    with new_client(app) as c:
+        _password_user(app, c)
+        r = _reauth(c, "/login/oidc?cel=link")
+        assert r.status_code == 200 and 'href="/login/oidc?cel=link" data-autogo' in r.text

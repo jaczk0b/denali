@@ -141,8 +141,8 @@ Proxmoxem nie był uruchomiony**, a token API na `vncwebsocket` zależy od wersj
 - [ ] Agent 1.3 (ponowna instalacja), `pozwol polecenia` → „Miejsce na dyskach” → wynik po około minucie.
 - [ ] W *Audycie*: `console_open`, `console_close`, `action_request` z kluczem polecenia.
 - [ ] Terminal SSH: *Terminale* → maszyna → login i hasło → terminal; kopiowanie, wklejanie, zmiana rozmiaru okna, gotowe polecenia z boku.
-      Zgłoszone 5.11.2026: po „Otwórz terminal” nic się nie pokazuje. Lokalnie działa, więc przyczyna jest we wdrożeniu. Terminal pisze teraz
-      powód czerwonym tekstem: po *Deploy* przepisz go tutaj.
+      Zgłoszone 5.11.2026: po „Otwórz terminal” i „Utwórz konto” nic się nie działo. Przyczyna przy potwierdzaniu przez Pocket ID:
+      CSP blokowała przekierowanie formularza do dostawcy (poprawione stroną przejściową). Gdyby terminal dalej nie ruszał, pisze powód czerwonym tekstem.
 - [ ] *Moje polecenia*: dopisz swoje, widać je z boku terminala.
 - [ ] Akceptacja Etapu 6.
 

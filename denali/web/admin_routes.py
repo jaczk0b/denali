@@ -42,12 +42,19 @@ def _reauth_page(request: Request, sess: dict, nxt: str, error: str | None = Non
                   status)
 
 
+def _to_provider(request: Request, url: str):
+    """Wyjście do Pocket ID przez stronę, a nie przekierowanie. Do /potwierdz zwykle trafia się z formularza, a CSP
+    „form-action 'self'” zatrzymuje formularz, którego przekierowania wychodzą poza panel: przeglądarka zostaje
+    wtedy na miejscu, bez żadnego komunikatu."""
+    return render(request, "przejscie.html", {"url": url})
+
+
 @router.get("/potwierdz")
 def reauth_form(request: Request, next: str = "", inna: str = "", blad: str = "", sess: dict = Depends(require_user)):
     nxt, user = safe_next(next), _user(request, sess)
     prefers_oidc = user["reauth_method"] == "oidc" or not auth.has_password(user)
     if not inna and prefers_oidc and user["oidc_sub"] and request.app.state.settings.oidc_enabled:
-        return RedirectResponse(f"/login/oidc?cel=reauth&next={quote(nxt, safe='')}", 303)
+        return _to_provider(request, f"/login/oidc?cel=reauth&next={quote(nxt, safe='')}")
     return _reauth_page(request, sess, nxt, "Pocket ID nie potwierdził. Potwierdź inaczej." if blad else None)
 
 
@@ -68,6 +75,8 @@ def reauth(request: Request, password: str = Form(""), code: str = Form(""), nex
             return _reauth_page(request, sess, nxt, "Złe hasło albo kod.", 400)
         auth.mark_reauth(conn, sess["token"])
         auth.audit(conn, "reauth", user=sess["login"], ip=ip)
+    if nxt.startswith("/login/oidc"):       # łączenie konta: dalej jest już strona dostawcy
+        return _to_provider(request, nxt)
     return RedirectResponse(nxt or "/", 303)
 
 

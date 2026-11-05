@@ -38,6 +38,10 @@
   }
   inlineStyles();
 
+  // Wyjście do Pocket ID: zwykła nawigacja, bo przekierowania formularza poza panel blokuje CSP (form-action).
+  var leave = document.querySelector("a[data-autogo]");
+  if (leave) { location.replace(leave.href); }
+
   // Po potwierdzeniu hasłem panel sam dokańcza działanie, które na nie czekało.
   var resume = document.querySelector("form[data-autosubmit]");
   if (resume) { resume.submit(); }
