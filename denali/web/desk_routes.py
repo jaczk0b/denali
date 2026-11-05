@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 
-from .. import auth, desk
+from .. import auth, desk, deskview
 from ..models import device
-from ..templating import render
+from ..templating import render, templates
 from .deps import NotFound, client_ip, require_admin
 
 router = APIRouter()
@@ -189,6 +189,31 @@ async def api_widget(request: Request, sess: dict = Depends(require_admin)):
     except desk.DeskError as e:
         return _failed(e)
     return {"ok": True}
+
+
+@router.post("/pulpit/api/statystyka")
+async def api_widget_save(request: Request, sess: dict = Depends(require_admin)):
+    try:
+        data = await _body(request)
+        with request.app.state.engine.begin() as conn:
+            saved = desk.save_widget(conn, data.get("id"), data.get("kind"), data.get("title"), data.get("config"))
+            _audit(request, conn, sess, "desk_widget", saved)
+    except desk.DeskError as e:
+        return _failed(e)
+    return {"id": saved}
+
+
+@router.post("/pulpit/api/podglad")
+async def api_widget_preview(request: Request, sess: dict = Depends(require_admin)):
+    """Podgląd z prawdziwych danych: ten sam kod, co kafelek na pulpicie. Niczego nie zapisuje."""
+    try:
+        data = await _body(request)
+        title, config = desk.clean_widget(data.get("kind"), data.get("title"), data.get("config"))
+    except desk.DeskError as e:
+        return _failed(e)
+    with request.app.state.engine.connect() as conn:
+        w = deskview.widget(conn, {"id": 0, "kind": data["kind"], "title": title, "size": 1, "config": config})
+    return {"html": templates.env.get_template("_widzet_podglad.html").render(w=w)}
 
 
 @router.post("/pulpit/api/wyglad")

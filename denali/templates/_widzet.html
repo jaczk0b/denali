@@ -1,0 +1,19 @@
+{% from "_makra.html" import st %}
+{# Treść widżetu Statystyk: ta sama na pulpicie i w podglądzie okna „Nowa statystyka”. #}
+{% macro stat_view(w, admin=False) %}
+<header><h3>{{ w.name }}</h3><span class="stat-source">z: {{ w.source }}</span></header>
+{% if w.empty %}<p class="muted small">Brak danych z tego źródła.{% if admin %} <a href="/admin/integracje">Podłącz integrację</a>{% endif %}</p>{% endif %}
+{% if w.big is defined %}<div class="stat-big"><span class="num">{{ w.big }}<small>{{ w.unit }}</small></span><span class="muted small">{{ w.big_note }}</span></div>{% endif %}
+{% if w.view == "liczby" and w.bars %}
+<div class="stat-nums">{% for b in w.bars %}<div class="stat-num"><span>{{ b.label }}</span><b>{{ b.value }}</b></div>{% endfor %}</div>
+{% else %}
+{% for b in w.bars or [] %}
+<div class="stat-bar"><div><span>{{ b.label }}</span><span>{{ b.value }}</span></div>
+  <span class="tracked"><span class="track{% if b.level %} {{ b.level }}{% endif %}" aria-hidden="true"><i data-style="width: {{ b.pct }}%"></i></span>{% if b.tick %}<span class="track-tick" data-style="left: {{ b.tick }}%" title="Próg ostrzeżenia: {{ b.tick }}%"></span>{% endif %}</span></div>
+{% endfor %}
+{% endif %}
+{% if w.entries %}<ul class="stat-items">{% for i in w.entries %}<li>{{ st({"ok": "ok", "warn": "warn", "down": "down"}.get(i.state, "unknown"), 14) }}<span>{{ i.name }}</span><span class="stat-when {{ i.state }}">{{ i.when }}</span></li>{% endfor %}</ul>{% endif %}
+{% if w.rows %}<ul class="stat-rows">{% for r in w.rows %}<li><span>{{ r.label }}</span><span class="{{ r.state }}">{{ r.value }}</span></li>{% endfor %}</ul>{% endif %}
+{% if w.next %}<div class="stat-next">{{ st(w.next.state, 14) }}<span class="mono">{{ w.next.host }}</span><span class="stat-when {{ w.next.state }}">{{ w.next.when }}</span></div>{% endif %}
+{% if w.foot %}<footer>{{ w.foot }}</footer>{% endif %}
+{% endmacro %}

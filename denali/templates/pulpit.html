@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_makra.html" import st, search_icon %}
+{% from "_widzet.html" import stat_view %}
 {% block title %}Pulpit{% endblock %}
 {% block body_class %}desk-body{% if edit %} desk-editing{% endif %}{% endblock %}
 {% block head %}{% if edit %}
@@ -58,6 +59,7 @@
   {% if edit %}
   <div class="stat-tools">{{ grip(w.name) }}
     <span class="stat-title"><b>{{ w.name }}</b><span class="stat-source">z: {{ w.source }}</span></span>
+    <button type="button" class="mini" data-stat-edit data-kind="{{ w.kind }}" data-title="{{ w.title }}" data-config='{{ w.config | tojson }}' aria-label="Ustawienia statystyki {{ w.name }}">{{ pencil() }}</button>
     <button type="button" class="mini" data-remove="widzet" data-id="{{ w.id }}" aria-label="Usuń statystykę {{ w.name }}">{{ cross() }}</button>
   </div>
   <div class="stat-size"><span>Rozmiar</span>
@@ -65,19 +67,7 @@
       <button type="button" data-size="1" aria-pressed="{{ 'true' if w.size != 2 else 'false' }}">1×</button>
       <button type="button" data-size="2" aria-pressed="{{ 'true' if w.size == 2 else 'false' }}">2×</button>
     </span></div>
-  {% else %}
-  <header><h3>{{ w.name }}</h3><span class="stat-source">z: {{ w.source }}</span></header>
-  {% if w.empty %}<p class="muted small">Brak danych z tego źródła. {% if sess.role == "admin" %}<a href="/admin/integracje">Podłącz integrację</a>{% endif %}</p>{% endif %}
-  {% if w.big is defined %}<div class="stat-big"><span class="num">{{ w.big }}<small>{{ w.unit }}</small></span><span class="muted small">{{ w.big_note }}</span></div>{% endif %}
-  {% for b in w.bars or [] %}
-  <div class="stat-bar"><div><span>{{ b.label }}</span><span>{{ b.value }}</span></div>
-    <span class="track{% if b.hi %} hi{% endif %}" aria-hidden="true"><i data-style="width: {{ b.pct }}%"></i></span></div>
-  {% endfor %}
-  {% if w.entries %}<ul class="stat-items">{% for i in w.entries %}<li>{{ st({"ok": "ok", "warn": "warn", "down": "down"}.get(i.state, "unknown"), 14) }}<span>{{ i.name }}</span><span class="stat-when {{ i.state }}">{{ i.when }}</span></li>{% endfor %}</ul>{% endif %}
-  {% if w.rows %}<ul class="stat-rows">{% for r in w.rows %}<li><span>{{ r.label }}</span><span class="{{ r.state }}">{{ r.value }}</span></li>{% endfor %}</ul>{% endif %}
-  {% if w.next %}<div class="stat-next">{{ st(w.next.state, 14) }}<span class="mono">{{ w.next.host }}</span><span class="stat-when {{ w.next.state }}">{{ w.next.when }}</span></div>{% endif %}
-  {% if w.foot %}<footer>{{ w.foot }}</footer>{% endif %}
-  {% endif %}
+  {% else %}{{ stat_view(w, sess.role == "admin") }}{% endif %}
 </article>
 {% endmacro %}
 
@@ -330,7 +320,8 @@
       <div class="dlg-row" data-item data-item-tab="{{ g }}" data-q="{{ (i.name ~ ' ' ~ i.detail) | lower }}">
         <span class="app-icon small">{{ i.icon }}</span>
         <span class="grow dlg-text"><b>{{ i.name }}</b><span>{{ i.detail }}</span></span>
-        {% if i.key %}<button class="btn small" type="submit" name="key" value="{{ i.key }}">Dodaj</button>
+        {% if i.stat %}<button class="btn small" type="button" data-new-stat="{{ i.stat }}">Wybierz…</button>
+        {% elif i.key %}<button class="btn small" type="submit" name="key" value="{{ i.key }}">Dodaj</button>
         {% else %}<span class="dlg-added">{{ st("ok", 14) }} Na pulpicie</span>{% endif %}
       </div>
       {% endfor %}
@@ -340,6 +331,62 @@
     <div class="dlg-foot">
       <span><kbd>Enter</kbd> dodaj pierwszy wynik</span><span><kbd>Esc</kbd> zamknij</span><span class="grow"></span>
       <a href="/pulpit/ikony/nowa" data-add-own>Własny link</a>
+    </div>
+  </form>
+</dialog>
+<dialog class="dlg dlg-wide" id="statystyka" aria-labelledby="statystyka-h">
+  <form class="dlg-box" data-stat-form>
+    <div class="dlg-title dlg-bar"><h2 id="statystyka-h" data-stat-heading>Nowa statystyka</h2>
+      <button type="button" class="mini" data-close aria-label="Zamknij">{{ cross() }}</button></div>
+    <div class="stat-dlg">
+      <div class="stat-dlg-form">
+        <fieldset class="bare"><legend>1. Skąd brać dane</legend>
+          <div class="source-chips">
+            {% for src in stat_sources %}<button type="button" class="source-chip" data-stat-source="{{ src.kind }}" aria-pressed="false">{% if not src.connected %}{{ st("unknown", 12, "niepodłączone") }}{% endif %}{{ src.label }}</button>{% endfor %}
+            {% for name in offline_sources %}<span class="source-chip off" title="Tej integracji jeszcze nie ma">{{ st("unknown", 12, "niepodłączone") }}{{ name }}</span>{% endfor %}
+            <a class="source-chip add" href="/admin/integracje">+ Podłącz integrację</a>
+          </div>
+        </fieldset>
+        {% for src in stat_sources %}
+        <div class="stat-panel" data-stat-panel="{{ src.kind }}" hidden>
+          <fieldset class="bare"><legend>2. Co pokazać · {{ src.label }}</legend>
+            {% if src.refs | length > 1 %}<label class="field">Który obiekt
+              <select data-stat-ref><option value="">Wybierz sam: najbardziej zajęty albo pierwszy</option>{% for r in src.refs %}<option value="{{ r.ref }}">{{ r.label }}</option>{% endfor %}</select></label>{% endif %}
+            {% for m in src.metrics %}<label class="metric"><input type="checkbox" data-stat-metric="{{ m.key }}" checked><span class="grow">{{ m.label }}</span><span class="muted small">{{ m.note }}</span></label>{% endfor %}
+            {% for name, why in src.missing %}<label class="metric off"><input type="checkbox" disabled><span class="grow">{{ name }}</span><span class="muted small">{{ why }}</span></label>{% endfor %}
+          </fieldset>
+          {% if src.metrics | selectattr("limit") | list %}
+          <fieldset class="bare"><legend>3. Kiedy ostrzegać</legend>
+            <div class="limits"><span></span><span class="limit-warn">Ostrzeżenie od</span><span class="limit-crit">Awaria od</span>
+              {% for m in src.metrics if m.limit %}
+              <span class="muted" data-limit-label="{{ m.key }}">{{ m.label }}</span>
+              <label data-limit="{{ m.key }}"><span class="sr">{{ m.label }}: ostrzeżenie</span><input type="number" min="1" max="100" data-stat-warn="{{ m.key }}" value="{{ m.limit[0] }}"> %</label>
+              <label data-limit="{{ m.key }}"><span class="sr">{{ m.label }}: awaria</span><input type="number" min="1" max="100" data-stat-crit="{{ m.key }}" value="{{ m.limit[1] }}"> %</label>
+              {% endfor %}
+            </div>
+            <label class="check"><input type="checkbox" data-stat-alert checked> Po przekroczeniu dodaj do „Wymaga uwagi” i wyślij powiadomienie</label>
+            <p class="muted small">Powiadomienie idzie po 5 minutach, więc chwilowy skok go nie wyśle.</p>
+          </fieldset>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="stat-dlg-side">
+        <span class="kpi-label">Podgląd na żywo</span>
+        <label class="field">Nazwa na kafelku<input data-stat-title maxlength="100" placeholder="Domyślna ze źródła"></label>
+        <span class="segment wide" role="group" aria-label="Wygląd">
+          <button type="button" data-stat-view="paski" aria-pressed="true">Paski</button>
+          <button type="button" data-stat-view="liczby" aria-pressed="false">Liczby</button>
+          <button type="button" disabled title="Panel nie zbiera jeszcze historii tych wartości">Wykres · wkrótce</button>
+        </span>
+        <article class="stat-card" data-stat-preview></article>
+        <p class="muted small">Żółta kreska na pasku to próg ostrzeżenia.</p>
+        <p class="stat-error" data-stat-error role="alert" hidden></p>
+      </div>
+    </div>
+    <div class="dlg-foot dlg-actions">
+      <button type="button" class="btn" data-close>Anuluj</button>
+      <button type="submit" class="btn primary" data-stat-save>Dodaj do Statystyk</button>
     </div>
   </form>
 </dialog>

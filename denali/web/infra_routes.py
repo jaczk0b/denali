@@ -64,7 +64,7 @@ def pulpit(request: Request, edycja: str = "", dodaj: str = "", sess: dict = Dep
             "verdict": status.verdict(devices, states, open_inc, maintenance.active(conn), last_closed),
             "banner": banner, "chain": deskview.chain(conn, banner, states, names),
             "kpis": deskview.kpis(conn, devices, states, checks_now),
-            "widgets": deskview.widgets(conn, desk.widgets(conn), {k: v[0] for k, v in desk.WIDGETS.items()}),
+            "widgets": deskview.widgets(conn, desk.widgets(conn)),
             "attention": rows, "attention_more": more, "attention_good": good,
             "events": deskview.events(conn), "upcoming": upcoming.items(conn),
             "side": desk.side(conn), "look": settings, "edit": edit,
@@ -72,6 +72,7 @@ def pulpit(request: Request, edycja: str = "", dodaj: str = "", sess: dict = Dep
         }
         if edit:
             ctx.update(catalog=desk.catalog(conn), open_add=_int(dodaj), layout=desk.snapshot(conn),
+                       stat_sources=deskview.stat_sources(conn), offline_sources=desk.OFFLINE_SOURCES,
                        live_version="")          # odświeżanie na żywo przerwałoby przeciąganie
     now = datetime.now()
     ctx.update(clock=now.strftime("%H:%M"), date=f"{DAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]}")

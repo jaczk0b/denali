@@ -3,14 +3,17 @@
 Tylko odczyt, wszystko z tego, co panel już ma. Czego nie ma, pokazujemy jako „brak danych”, a nie jako zero.
 Układ (kolejność, widoczność) trzyma desk.py.
 """
+import logging
 import time
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
-from . import alerts, changes, infra_views, inventory
-from .models import check_state, device, incident_device, incident_event
+from . import alerts, changes, desk, infra_views, inventory
+from .models import check_state, device, incident_device, incident_event, integration
+
+log = logging.getLogger(__name__)
 
 MACHINE_KINDS = {"host", "vm", "lxc", "nas"}
 MAX_CHAIN_UP = 3            # tyle poziomów „na czym to stoi” pokazujemy nad przyczyną
@@ -185,77 +188,102 @@ def decorate(board, marks, states, checks):
 
 
 # ───────────────────────── Statystyki ─────────────────────────
-def _row(label, value, state=""):
-    return {"label": label, "value": value, "state": state}
+def _on(cfg, key):
+    """Bez wyboru metryk (widżety startowe) pokazujemy wszystko."""
+    chosen = cfg.get("metrics")
+    return not chosen or key in chosen
 
 
-def _bar(label, value, fraction):
+def _limits(cfg, key):
+    warn, crit = (cfg.get("warn") or {}).get(key), (cfg.get("crit") or {}).get(key)
+    return warn, crit
+
+
+def _row(key, label, value, state=""):
+    return {"key": key, "label": label, "value": value, "state": state}
+
+
+def _bar(cfg, key, label, value, fraction):
     pct = max(0, min(100, round((fraction or 0) * 100, 1)))
-    return {"label": label, "value": value, "pct": pct, "hi": bool(fraction and fraction >= 0.9)}
+    warn, crit = _limits(cfg, key)
+    level = "crit" if crit and pct >= crit else "hi" if (warn and pct >= warn) or (not warn and pct >= 90) else ""
+    return {"key": key, "label": label, "value": value, "pct": pct, "level": level, "tick": warn, "warn": warn, "crit": crit}
 
 
 def _missing(source):
     return {"empty": True, "source": source}
 
 
-def _proxmox(conn, _now):
+def _pick(pairs, cfg):
+    """Wskazany obiekt albo domyślny: [(ref, cokolwiek)], ref = „integracja:obiekt”."""
+    return next((p for ref, p in pairs if ref == cfg.get("ref")), None)
+
+
+def _proxmox(conn, _now, cfg):
     rows = infra_views.proxmox(conn)
-    nodes = [(src, n) for src in rows for n in src["nodes"]]
+    nodes = [(f"{src['row']['id']}:{n['eid']}", (src, n)) for src in rows for n in src["nodes"]]
     if not nodes:
         return _missing("Proxmox")
-    src, n = next(((s, x) for s, x in nodes if x["maxmem"]), nodes[0])
+    src, n = _pick(nodes, cfg) or next((p for _r, p in nodes if p[1]["maxmem"]), nodes[0][1])
     bars = []
-    if isinstance(n["cpu"], (int, float)):
-        bars.append(_bar("CPU", f"{n['cpu'] * 100:.0f}%", n["cpu"]))
-    if n["maxmem"]:
-        bars.append(_bar("RAM", f"{_bytes(n['mem'] or 0)} z {_bytes(n['maxmem'])}", (n["mem"] or 0) / n["maxmem"]))
-    foot = [f"{n['running']} z {n['guests']} VM i LXC działa"] if n["guests"] else []
-    if isinstance(n["uptime"], (int, float)) and n["uptime"] > 0:
+    if _on(cfg, "cpu") and isinstance(n["cpu"], (int, float)):
+        bars.append(_bar(cfg, "cpu", "CPU", f"{n['cpu'] * 100:.0f}%", n["cpu"]))
+    if _on(cfg, "ram") and n["maxmem"]:
+        bars.append(_bar(cfg, "ram", "RAM", f"{_bytes(n['mem'] or 0)} z {_bytes(n['maxmem'])}", (n["mem"] or 0) / n["maxmem"]))
+    foot = [f"{n['running']} z {n['guests']} VM i LXC działa"] if _on(cfg, "maszyny") and n["guests"] else []
+    if _on(cfg, "czas") and isinstance(n["uptime"], (int, float)) and n["uptime"] > 0:
         foot.append("działa " + ago(n["uptime"]))
-    return {"title": n["name"], "source": src["row"]["name"], "state": n["state"], "bars": bars, "foot": " · ".join(foot)}
+    return {"title": n["name"], "source": src["row"]["name"], "state": n["state"], "bars": bars, "foot": " · ".join(foot),
+            "device_id": n["device_id"], "integration_id": src["row"]["id"], "external_id": n["eid"]}
 
 
-def _pool(conn, _now):
+def _pool(conn, _now, cfg):
     sources = infra_views.truenas(conn)
-    pools = [(src, p) for src in sources for p in src["pools"]]
+    pools = [(f"{src['row']['id']}:pool/{p['name']}", (src, p)) for src in sources for p in src["pools"]]
     if not pools:
         return _missing("TrueNAS")
-    src, p = max(pools, key=lambda x: x[1]["used"] or 0)
-    bars = [_bar("Zajęte", f"{_bytes(p['allocated'])} z {_bytes(p['size'])}", p["used"])] if p.get("allocated") and p.get("size") else []
+    src, p = _pick(pools, cfg) or max((x for _r, x in pools), key=lambda x: x[1]["used"] or 0)
+    bars = []
+    if _on(cfg, "zajete") and p.get("allocated") and p.get("size"):
+        bars.append(_bar(cfg, "zajete", "Zajęte", f"{_bytes(p['allocated'])} z {_bytes(p['size'])}", p["used"]))
     disks = src["disks"]
     bad = sum(1 for d in disks if d.get("problems"))
     temps = [d["temp"] for d in disks if isinstance(d.get("temp"), (int, float))]
-    rows = [_row("Stan puli", {"ok": "Działa", "warn": "Uwaga", "down": "Nie działa"}.get(p["state"], "Brak danych") + (f" · {p['status']}" if p["status"] else ""), p["state"])]
-    if disks:
-        rows.append(_row("Dyski z problemem", f"{bad} z {len(disks)}", "warn" if bad else ""))
-    if temps:
-        rows.append(_row("Temperatury", f"{min(temps):.0f}–{max(temps):.0f} °C"))
-    return {"title": p["name"], "source": src["row"]["name"], "state": p["state"], "bars": bars, "rows": rows}
+    rows = []
+    if _on(cfg, "stan"):
+        rows.append(_row("stan", "Stan puli", {"ok": "Działa", "warn": "Uwaga", "down": "Nie działa"}.get(p["state"], "Brak danych") + (f" · {p['status']}" if p["status"] else ""), p["state"]))
+    if _on(cfg, "dyski") and disks:
+        rows.append(_row("dyski", "Dyski z problemem", f"{bad} z {len(disks)}", "warn" if bad else ""))
+    if _on(cfg, "temp") and temps:
+        rows.append(_row("temp", "Temperatury", f"{min(temps):.0f}–{max(temps):.0f} °C"))
+    return {"title": p["name"], "source": src["row"]["name"], "state": p["state"], "bars": bars, "rows": rows,
+            "device_id": src["device_id"], "integration_id": src["row"]["id"], "external_id": f"pool/{p['name']}"}
 
 
-def _backups(conn, now):
+def _backups(conn, now, cfg):
     items, sources = [], []
-    for src in infra_views.truenas(conn):
-        if src["tasks"]:
-            sources.append(src["row"]["name"])
-        for t in src["tasks"]:
-            when = f"{ago(now - t['last'])} temu" if t["last"] else "bez danych"
-            items.append({"state": t["state"], "name": f"{t['kind'].capitalize()} {t['key']}", "when": when, "ts": t["last"] or 0})
-    pbs = infra_views.sources(conn, "pbs")
-    for src in pbs:
-        rows = [s for eid, s in src["states"].items() if eid.startswith("backup/")]
-        if rows:
-            sources.append(src["row"]["name"])
-            late = sum(1 for s in rows if s["state"] != "ok")
-            items.append({"state": "warn" if late else "ok", "name": f"Kopie maszyn ({len(rows)})",
-                          "when": f"{late} spóźnione" if late else "na czas", "ts": 0})
+    if _on(cfg, "zadania"):
+        for src in infra_views.truenas(conn):
+            if src["tasks"]:
+                sources.append(src["row"]["name"])
+            for t in src["tasks"]:
+                when = f"{ago(now - t['last'])} temu" if t["last"] else "bez danych"
+                items.append({"state": t["state"], "name": f"{t['kind'].capitalize()} {t['key']}", "when": when, "ts": t["last"] or 0})
+    if _on(cfg, "maszyny"):
+        for src in infra_views.sources(conn, "pbs"):
+            rows = [s for eid, s in src["states"].items() if eid.startswith("backup/")]
+            if rows:
+                sources.append(src["row"]["name"])
+                late = sum(1 for s in rows if s["state"] != "ok")
+                items.append({"state": "warn" if late else "ok", "name": f"Kopie maszyn ({len(rows)})",
+                              "when": f"{late} spóźnione" if late else "na czas", "ts": 0})
     if not items:
         return _missing("TrueNAS, PBS")
     items.sort(key=lambda x: (x["state"] == "ok", -x["ts"]))
     return {"source": ", ".join(sources), "state": "warn" if any(i["state"] != "ok" for i in items) else "ok", "entries": items[:4]}
 
 
-def _containers(conn, _now):
+def _containers(conn, _now, cfg):
     rows = infra_views.docker(conn)
     if not rows:
         return _missing("Komodo")
@@ -263,31 +291,38 @@ def _containers(conn, _now):
     bad = sum(r["count"]["problem"] for r in rows)
     fresh = sum(r["count"]["updates"] for r in rows)
     named = [s["name"] for r in rows for g in r["groups"] for s in g["stacks"] if s["updates"]][:2]
-    out = [_row("Z problemem", str(bad), "warn" if bad else "")]
-    out.append(_row("Nowe obrazy", f"{fresh}" + (f" · {', '.join(named)}" if named else "")))
-    return {"source": ", ".join(r["row"]["name"] for r in rows), "state": "warn" if bad else "ok",
-            "big": stacks - bad, "unit": f"/{stacks}", "big_note": "stacków działa", "rows": out}
+    out = []
+    if _on(cfg, "problemy"):
+        out.append(_row("problemy", "Z problemem", str(bad), "warn" if bad else ""))
+    if _on(cfg, "obrazy"):
+        out.append(_row("obrazy", "Nowe obrazy", f"{fresh}" + (f" · {', '.join(named)}" if named else "")))
+    data = {"source": ", ".join(r["row"]["name"] for r in rows), "state": "warn" if bad else "ok", "rows": out}
+    if _on(cfg, "liczba"):
+        data.update(big=stacks - bad, unit=f"/{stacks}", big_note="stacków działa")
+    return data
 
 
-def _network(conn, _now):
+def _network(conn, _now, cfg):
     rows = infra_views.network(conn)
     if not rows:
         return _missing("OpenWrt, TP-Link")
-    main = rows[0]
-    router = main["router"]
-    out = [_row("Urządzenia w sieci", str(sum(r["count"]["all"] for r in rows))),
-           _row("Wi-Fi / przewód", f"{sum(r['count']['wifi'] for r in rows)} / {sum(r['count']['wired'] for r in rows)}")]
+    router = rows[0]["router"]
+    out = []
+    if _on(cfg, "urzadzenia"):
+        out.append(_row("urzadzenia", "Urządzenia w sieci", str(sum(r["count"]["all"] for r in rows))))
+    if _on(cfg, "wifi"):
+        out.append(_row("wifi", "Wi-Fi / przewód", f"{sum(r['count']['wifi'] for r in rows)} / {sum(r['count']['wired'] for r in rows)}"))
     new = sum(r["count"]["new"] for r in rows)
     weak = sum(r["count"]["weak"] for r in rows)
-    if new:
-        out.append(_row("Nowe, do zatwierdzenia", str(new), "warn"))
-    if weak:
-        out.append(_row("Słaby sygnał", str(weak), "warn"))
+    if new and _on(cfg, "nowe"):
+        out.append(_row("nowe", "Nowe, do zatwierdzenia", str(new), "warn"))
+    if weak and _on(cfg, "slaby"):
+        out.append(_row("slaby", "Słaby sygnał", str(weak), "warn"))
     return {"source": ", ".join(r["row"]["name"] for r in rows), "state": router["state"] if router else "unknown", "rows": out,
-            "foot": router["summary"] if router else ""}
+            "foot": router["summary"] if router and _on(cfg, "router") else ""}
 
 
-def _certs(conn, now):
+def _certs(conn, now, cfg):
     rows = conn.execute(select(check_state.c.target, check_state.c.cert_expires_at).where(check_state.c.cert_expires_at.isnot(None))).all()
     certs = {}
     for r in rows:
@@ -300,21 +335,65 @@ def _certs(conn, now):
     left = (at - now) / 86400
     state = "down" if left < 7 else "warn" if left < CERT_WARN_DAYS else "ok"
     text = f"wygasł {ago(now - at)} temu" if left < 0 else f"za {round(left)} dni"
-    return {"source": "sprawdzenia HTTP", "state": state, "big": valid, "unit": "", "big_note": "ważnych",
-            "next": {"host": host, "when": text, "state": state}}
+    data = {"source": "sprawdzenia HTTP", "state": state}
+    if _on(cfg, "liczba"):
+        data.update(big=valid, unit="", big_note="ważnych")
+    if _on(cfg, "najblizszy"):
+        data["next"] = {"host": host, "when": text, "state": state}
+    return data
 
 
 WIDGET_DATA = {"proxmox": _proxmox, "pula": _pool, "kopie": _backups, "kontenery": _containers, "siec": _network, "certyfikaty": _certs}
 
 
-def widgets(conn, rows, labels, now=None):
-    """Dane każdego widżetu. Błąd jednego nie może zabrać pulpitu, więc widżet bez danych mówi, skąd ich brakuje."""
+def widget(conn, row, now=None):
+    """Dane jednego widżetu. Awaria źródła nie może zabrać pulpitu, więc widżet mówi wtedy, czego mu brakuje."""
     now = now or time.time()
+    cfg = row["config"] or {}
+    label = desk.WIDGETS.get(row["kind"], (row["kind"],))[0]
+    try:
+        data = WIDGET_DATA[row["kind"]](conn, now, cfg)
+    except Exception:  # noqa: BLE001
+        log.exception("widżet %s", row["kind"])
+        data = _missing(label)
+    return {"id": row["id"], "kind": row["kind"], "title": row["title"], "size": row["size"], "config": cfg, "label": label,
+            "view": cfg.get("view", "paski"), **{k: v for k, v in data.items() if k != "title"},
+            "name": row["title"] or data.get("title") or label}
+
+
+def widgets(conn, rows, now=None):
+    return [widget(conn, r, now) for r in rows]
+
+
+def breaches(conn, now=None):
+    """Przekroczone progi widżetów z włączonym ostrzeganiem: trafiają do zwykłych alertów (alerts.collect)."""
     out = []
-    for w in rows:
-        data = WIDGET_DATA[w["kind"]](conn, now) if w["kind"] in WIDGET_DATA else _missing(w["kind"])
-        out.append({"id": w["id"], "kind": w["kind"], "size": w["size"], "label": labels.get(w["kind"], w["kind"]),
-                    "name": w["title"] or data.get("title") or labels.get(w["kind"], w["kind"]), **data})
+    for w in widgets(conn, [r for r in desk.widgets(conn) if (r["config"] or {}).get("alert")], now):
+        for b in w.get("bars") or []:
+            over = "crit" if b["crit"] and b["pct"] >= b["crit"] else "warn" if b["warn"] and b["pct"] >= b["warn"] else ""
+            if over:
+                out.append({"key": f"{w['id']}:{b['key']}", "device_id": w.get("device_id"), "integration_id": w.get("integration_id"),
+                            "external_id": w.get("external_id"), "severity": alerts.CRIT if over == "crit" else alerts.WARN,
+                            "text": f"{w['name']}: {b['label']} {b['value']} (próg {b[over]}%)"})
+    return out
+
+
+def _refs(conn):
+    """Co da się wybrać w źródle, gdy obiektów jest kilka: węzły Proxmoxa i pule."""
+    return {"proxmox": [{"ref": f"{s['row']['id']}:{n['eid']}", "label": f"{s['row']['name']} · {n['name']}"} for s in infra_views.proxmox(conn) for n in s["nodes"]],
+            "pula": [{"ref": f"{s['row']['id']}:pool/{p['name']}", "label": f"{s['row']['name']} · {p['name']}"} for s in infra_views.truenas(conn) for p in s["pools"]]}
+
+
+def stat_sources(conn):
+    """Dane okna „Nowa statystyka”: źródła, ich metryki, domyślne progi i to, czego na razie nie ma."""
+    used = {r.type for r in conn.execute(select(integration.c.type))}
+    refs = _refs(conn)
+    out = []
+    for kind, (label, _source, _what) in desk.WIDGETS.items():
+        need = desk.WIDGET_SOURCES.get(kind)
+        metrics = [{"key": k, "label": name, "note": note, "limit": desk.THRESHOLDS.get(k)} for k, name, note in desk.WIDGET_METRICS[kind]]
+        out.append({"kind": kind, "label": label, "connected": need is None or bool(need & used), "metrics": metrics,
+                    "missing": desk.WIDGET_MISSING.get(kind, ()), "refs": refs.get(kind, [])})
     return out
 
 

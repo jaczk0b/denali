@@ -208,7 +208,7 @@ def test_widzet_z_danych_integracji(app):
         iid = conn.execute(integration.insert().values(type="proxmox", name="Proxmox Main", config={})).inserted_primary_key[0]
         conn.execute(observed_state.insert().values(integration_id=iid, external_id="node/pve", state="ok", summary="", observed_at=1,
                                                     data={"cpu": 0.23, "mem": 32 * 2**30, "maxmem": 64 * 2**30, "uptime": 18 * 86400}))
-        w = deskview.widgets(conn, desk.widgets(conn), {})[0]
+        w = deskview.widgets(conn, desk.widgets(conn))[0]
     assert (w["name"], w["source"]) == ("pve", "Proxmox Main")
     assert [b["label"] for b in w["bars"]] == ["CPU", "RAM"] and w["bars"][0]["value"] == "23%" and w["bars"][1]["value"] == "32,0 GB z 64,0 GB"
     assert w["foot"] == "działa 18 dni"
@@ -349,18 +349,13 @@ def test_cofniecie_nie_dubluje_urzadzenia(app, admin):
         assert len(desk.tiles(conn)) == 1
 
 
-def test_usuniecie_widzetu_i_dodanie_z_okna(app, admin):
+def test_usuniecie_widzetu_i_oferta_w_oknie(app, admin):
     with app.state.engine.connect() as conn:
         first = desk.widgets(conn)[0]
-    token = csrf(admin)
-    assert api(admin, "usun", token, kind="widzet", id=first["id"]).json()["name"] == "Proxmox"
+    assert api(admin, "usun", csrf(admin), kind="widzet", id=first["id"]).json()["name"] == "Proxmox"
     with app.state.engine.connect() as conn:
-        offer = next(i for i in desk.catalog(conn) if i["key"] == "widzet:proxmox")
-    assert offer["tab"] == "statystyki"
-    r = admin.post("/pulpit/ikony/propozycja", data={"csrf_token": token, "key": "widzet:proxmox"})
-    assert r.status_code == 303
-    with app.state.engine.connect() as conn:
-        assert "proxmox" in [w["kind"] for w in desk.widgets(conn)]
+        offer = next(i for i in desk.catalog(conn) if i["stat"] == "proxmox")
+    assert offer["tab"] == "statystyki" and 'data-new-stat="proxmox"' in admin.get("/?edycja=1").text
 
 
 def test_rozmiar_widzetu(app, admin):
@@ -407,3 +402,110 @@ def test_logo_czeka_w_kafelku(app, admin):
     with app.state.engine.begin() as conn:
         kv_set(conn, desk.LAYOUT_KEY, {"icons": "logo"})
     assert 'src="/static/logo.png"' in admin.get("/").text
+
+
+# ───────────────────────── nowa statystyka ─────────────────────────
+GOOD = {"metrics": ["cpu", "ram"], "view": "paski", "warn": {"cpu": 85, "ram": 90}, "crit": {"cpu": 95, "ram": 97}, "alert": True}
+
+
+def proxmox_source(app, cpu=0.23):
+    with app.state.engine.begin() as conn:
+        iid = conn.execute(integration.insert().values(type="proxmox", name="Proxmox Main", config={})).inserted_primary_key[0]
+        conn.execute(observed_state.insert().values(integration_id=iid, external_id="node/pve", state="ok", summary="", observed_at=time.time(),
+                                                    data={"cpu": cpu, "mem": 32 * 2**30, "maxmem": 64 * 2**30, "uptime": 18 * 86400}))
+    return iid
+
+
+def test_zapis_nowej_i_edycja_statystyki(app, admin):
+    token = csrf(admin)
+    r = api(admin, "statystyka", token, kind="proxmox", title=" Serwer ", config=GOOD)
+    assert r.status_code == 200
+    new = r.json()["id"]
+    with app.state.engine.connect() as conn:
+        row = next(w for w in desk.widgets(conn) if w["id"] == new)
+    assert row["title"] == "Serwer" and row["config"]["warn"] == {"cpu": 85, "ram": 90} and row["config"]["alert"] is True
+    assert api(admin, "statystyka", token, id=new, kind="proxmox", title="", config={**GOOD, "metrics": ["cpu"]}).status_code == 200
+    with app.state.engine.connect() as conn:
+        row = next(w for w in desk.widgets(conn) if w["id"] == new)
+    assert row["config"]["metrics"] == ["cpu"] and row["config"]["warn"] == {"cpu": 85}       # progi tylko dla wybranych
+
+
+@pytest.mark.parametrize("kind,config,message", [
+    ("nie-ma", GOOD, "Nie ma takiej"), ("proxmox", {**GOOD, "metrics": []}, "co najmniej jedną"), ("proxmox", {**GOOD, "metrics": ["x"]}, "Nieznana metryka"),
+    ("proxmox", {**GOOD, "view": "x"}, "wygląd"), ("proxmox", {**GOOD, "warn": {"cpu": 101}}, "od 1 do 100"),
+    ("proxmox", {**GOOD, "warn": {"cpu": 96}}, "wyższy"), ("proxmox", "x", "format")])
+def test_zla_statystyka_odrzucona(app, admin, kind, config, message):
+    r = api(admin, "statystyka", csrf(admin), kind=kind, config=config)
+    assert r.status_code == 400 and message in r.json()["blad"]
+
+
+def test_edycja_nieistniejacej_statystyki(app, admin):
+    assert api(admin, "statystyka", csrf(admin), id=999, kind="proxmox", config=GOOD).status_code == 400
+
+
+def test_podglad_z_prawdziwych_danych_nic_nie_zapisuje(app, admin):
+    proxmox_source(app)
+    with app.state.engine.connect() as conn:
+        before = len(desk.widgets(conn))
+    r = api(admin, "podglad", csrf(admin), kind="proxmox", title="<b>x</b>", config={**GOOD, "metrics": ["cpu"]})
+    html = r.json()["html"]
+    assert "CPU" in html and "23%" in html and "RAM" not in html and "z: Proxmox Main" in html
+    assert "<b>x</b>" not in html and "&lt;b&gt;x" in html
+    assert 'left: 85%' in html                                            # kreska progu
+    with app.state.engine.connect() as conn:
+        assert len(desk.widgets(conn)) == before
+
+
+def test_przekroczony_prog_trafia_do_alertow_i_wraca(app, admin):
+    from denali import alerts
+    source = proxmox_source(app, cpu=0.96)
+    token = csrf(admin)
+    api(admin, "statystyka", token, kind="proxmox", title="Serwer", config=GOOD)
+    now = time.time()
+    with app.state.engine.begin() as conn:
+        alerts.evaluate(conn, now)
+        row = next(a for a in alerts.active(conn, now=now) if a["rule"] == "widget")
+    assert row["severity"] == alerts.CRIT and "Serwer: CPU 96% (próg 95%)" in row["message"] and row["integration_id"] == source
+    assert "Serwer: CPU 96%" in admin.get("/").text                       # w „Wymaga uwagi”
+    with app.state.engine.begin() as conn:
+        conn.execute(observed_state.update().where(observed_state.c.integration_id == source).values(data={"cpu": 0.1, "mem": 1, "maxmem": 2}))
+        alerts.evaluate(conn, now + 60)
+        alerts.evaluate(conn, now + 60 + alerts.RESOLVE_AFTER + 1)
+        assert not [a for a in alerts.active(conn, now=now) if a["rule"] == "widget"]
+
+
+def test_bez_ostrzegania_prog_tylko_na_pasku(app, admin):
+    from denali import alerts
+    proxmox_source(app, cpu=0.96)
+    api(admin, "statystyka", csrf(admin), kind="proxmox", title="Serwer", config={**GOOD, "alert": False})
+    with app.state.engine.begin() as conn:
+        alerts.evaluate(conn)
+        assert not [a for a in alerts.active(conn) if a["rule"] == "widget"]
+    assert 'class="track crit"' in admin.get("/").text
+
+
+def test_wyglad_liczby(app, admin):
+    proxmox_source(app)
+    html = api(admin, "podglad", csrf(admin), kind="proxmox", title="", config={**GOOD, "view": "liczby"}).json()["html"]
+    assert "stat-num" in html and "class=\"track" not in html
+
+
+def test_widzet_ze_wskazanym_obiektem(app):
+    source = proxmox_source(app)
+    with app.state.engine.begin() as conn:
+        conn.execute(observed_state.insert().values(integration_id=source, external_id="node/pve2", state="ok", summary="", observed_at=1, data={"cpu": 0.5}))
+        row = {"id": 1, "kind": "proxmox", "title": "", "size": 1, "config": {"ref": f"{source}:node/pve2"}}
+        assert deskview.widget(conn, row)["name"] == "pve2"
+
+
+def test_awaria_zrodla_nie_zabiera_pulpitu(app, admin, monkeypatch):
+    def boom(*_a):
+        raise RuntimeError("x")
+    monkeypatch.setitem(deskview.WIDGET_DATA, "proxmox", boom)
+    assert "Brak danych z tego źródła" in admin.get("/").text
+
+
+def test_okno_pokazuje_czego_nie_ma(app, admin):
+    page = admin.get("/?edycja=1").text
+    for text in ("Home Assistant", "AdGuard", "panel nie zbiera historii CPU", "+ Podłącz integrację", "Dodaj do Statystyk"):
+        assert text in page

@@ -397,6 +397,7 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
   adres, strona panelu (też terminal konkretnej maszyny), adres do skopiowania (`\\\\nas\\zdjecia`, `smb://`, `nfs://`, `ssh://`:
   kliknięcie kopiuje, bo przeglądarka tego nie otworzy) albo urządzenie (wtedy ikona pokazuje jego stan). Panel proponuje jednym kliknięciem aplikacje
   z adresem, integracje i swoje strony. Kategorie możesz nazwać i ułożyć po swojemu; ikony znajdzie też Ctrl+K.
+- **Statystyki** na pulpicie to widżety z integracji. W trybie edycji *Dodaj statystykę* prowadzi przez źródło, metryki i progi, z podglądem na prawdziwych danych. Progi działają jak zwykłe alerty: trafiają do „Wymaga uwagi”, a powiadomienie idzie po 5 minutach (wyłączysz je jednym polem).
 - **Pulpit** zaczyna się od jednego zdania: „Wszystko działa”, „Nie odpowiada: … (jeszcze nie awaria)” albo
   „1 problem: …” z linkiem do incydentu. Obok widżet **Nadchodzące**: wygasające certyfikaty, opłaty OVH,
   aktualizacje bezpieczeństwa czekające ponad 7 dni, stara kopia Denali i magazyny, które się zapełniają.

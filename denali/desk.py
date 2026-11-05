@@ -37,6 +37,25 @@ WIDGETS = {"proxmox": ("Proxmox", "Proxmox", "CPU, RAM, maszyny, czas działania
            "kontenery": ("Kontenery", "Komodo", "stacki, problemy, nowe obrazy"),
            "siec": ("Sieć", "OpenWrt, TP-Link", "urządzenia w sieci, Wi-Fi, nowe adresy"),
            "certyfikaty": ("Certyfikaty", "sprawdzenia HTTP", "ważne i najbliżej wygaśnięcia")}
+# Metryki: (klucz, nazwa, jak wygląda). Progi mają tylko te w procentach.
+WIDGET_METRICS = {
+    "proxmox": [("cpu", "CPU", "pasek"), ("ram", "RAM", "pasek"), ("maszyny", "Uruchomione VM i LXC", "tekst"), ("czas", "Czas działania hosta", "tekst")],
+    "pula": [("zajete", "Zajętość puli", "pasek"), ("stan", "Stan puli", "wiersz"), ("dyski", "Dyski z problemem", "wiersz"), ("temp", "Temperatury dysków", "wiersz")],
+    "kopie": [("zadania", "Snapshoty i replikacja", "lista"), ("maszyny", "Kopie maszyn z PBS", "lista")],
+    "kontenery": [("liczba", "Działające stacki", "liczba"), ("problemy", "Stacki z problemem", "wiersz"), ("obrazy", "Nowe obrazy", "wiersz")],
+    "siec": [("urzadzenia", "Urządzenia w sieci", "wiersz"), ("wifi", "Wi-Fi i przewód", "wiersz"), ("nowe", "Nowe, do zatwierdzenia", "wiersz"),
+             ("slaby", "Słaby sygnał", "wiersz"), ("router", "Stan routera", "tekst")],
+    "certyfikaty": [("liczba", "Ważne certyfikaty", "liczba"), ("najblizszy", "Najbliżej wygaśnięcia", "wiersz")],
+}
+THRESHOLDS = {"cpu": (85, 95), "ram": (90, 97), "zajete": (85, 95)}          # domyślnie (ostrzeżenie, awaria), %
+# Typy integracji, z których widżet bierze dane. None: dane ma sam panel.
+WIDGET_SOURCES = {"proxmox": {"proxmox"}, "pula": {"truenas"}, "kopie": {"truenas", "pbs"}, "kontenery": {"komodo"},
+                  "siec": {"openwrt", "tplink"}, "certyfikaty": None}
+# Pokazujemy uczciwie, czego jeszcze nie da się wybrać i dlaczego.
+WIDGET_MISSING = {"proxmox": (("Wykres CPU z 24 h", "panel nie zbiera historii CPU"), ("Temperatura CPU", "wymaga agenta na hoście")),
+                  "siec": (("Transfer Mb/s", "router go nie zgłasza"), ("Zablokowane zapytania", "wymaga integracji AdGuard"))}
+OFFLINE_SOURCES = ("AdGuard", "Nginx Proxy Manager", "Pangolin", "Home Assistant")
+WIDGET_VIEWS = ("paski", "liczby")
 # Panel boczny: klucz, nazwa, czy gotowe. Asystent czeka na swoją funkcję: miejsce w układzie już ma.
 SIDE = [("uwaga", "Wymaga uwagi", True), ("awaria", "Skąd ta awaria", True), ("zdarzenia", "Ostatnie zdarzenia", True),
         ("nadchodzace", "Nadchodzące", True), ("asystent", "Asystent AI", False)]
@@ -132,7 +151,7 @@ def url_choices(conn):
     return [{"name": n, "url": u} for n, u in PAGES + ADMIN_PAGES + terminals(conn) if u not in _NOT_A_TILE]
 
 
-def suggestions(conn, with_widgets=False):
+def suggestions(conn):
     """Czego jeszcze nie ma na pulpicie, a panel już zna: {key, name, url, group}. Klucz rozwiązuje add_suggestion."""
     current = tiles(conn)
     pinned = {t["device_id"] for t in current}
@@ -161,25 +180,19 @@ def suggestions(conn, with_widgets=False):
     for s in conn.execute(select(share.c.title, share.c.target).where(share.c.kind == "adres").order_by(share.c.position)):
         if is_copy(s.target):
             offer(f"adres:{s.target}", s.title, s.target, "Do skopiowania")
-    if with_widgets:
-        have = {w["kind"] for w in widgets(conn)}
-        out += [{"key": f"widzet:{k}", "name": v[0], "url": v[2], "group": "Statystyki"} for k, v in WIDGETS.items() if k not in have]
     return out
 
 
 def catalog(conn):
     """Lista okna „Dodaj do pulpitu”: co można dodać i co już jest. tab: aplikacje | statystyki | strony | terminale."""
-    tabs = {"Aplikacje": "aplikacje", "Integracje": "aplikacje", "Do skopiowania": "aplikacje", "Statystyki": "statystyki",
-            "Strony panelu": "strony", "Terminale": "terminale"}
-    out = [{"tab": tabs[s["group"]], "name": s["name"], "detail": s["url"], "icon": s["name"][:1].upper(), "key": s["key"]}
-           for s in suggestions(conn, with_widgets=True)]
+    tabs = {"Aplikacje": "aplikacje", "Integracje": "aplikacje", "Do skopiowania": "aplikacje", "Strony panelu": "strony", "Terminale": "terminale"}
+    out = [{"tab": tabs[s["group"]], "name": s["name"], "detail": s["url"], "icon": s["name"][:1].upper(), "key": s["key"], "stat": ""}
+           for s in suggestions(conn)]
+    out += [{"tab": "statystyki", "name": v[0], "detail": v[2], "icon": v[0][:1].upper(), "key": "", "stat": k} for k, v in WIDGETS.items()]
     for t in tiles(conn):
         tab = "terminale" if t["url"].startswith("/terminale/") else "strony" if t["url"].startswith("/") else "aplikacje"
-        out.append({"tab": tab, "name": t["name"], "detail": t["url"], "icon": t["name"][:1].upper(), "key": ""})
-    for w in widgets(conn):
-        name, _source, what = WIDGETS.get(w["kind"], (w["kind"], "", ""))
-        out.append({"tab": "statystyki", "name": w["title"] or name, "detail": what, "icon": name[:1].upper(), "key": ""})
-    out.sort(key=lambda x: (x["key"] == "", x["name"].lower()))
+        out.append({"tab": tab, "name": t["name"], "detail": t["url"], "icon": t["name"][:1].upper(), "key": "", "stat": ""})
+    out.sort(key=lambda x: (not (x["key"] or x["stat"]), x["name"].lower()))
     return out
 
 
@@ -299,11 +312,9 @@ def pin_device(conn, device_id, category_id):
 
 def add_suggestion(conn, key, category_id):
     """Dodaje propozycję po kluczu — adres bierze z bazy, a nie z formularza."""
-    found = next((s for s in suggestions(conn, with_widgets=True) if s["key"] == key), None)
+    found = next((s for s in suggestions(conn) if s["key"] == key), None)
     if not found:
         raise DeskError("Tej propozycji już nie ma — pewnie jest na pulpicie.")
-    if key.startswith("widzet:"):
-        return add_widget(conn, key.split(":", 1)[1])
     if key.startswith("urzadzenie:"):
         return add_tile(conn, category_id, device_id=int(key.split(":", 1)[1]))
     return add_tile(conn, category_id, found["name"], found["url"])
@@ -314,10 +325,53 @@ def widgets(conn):
     return conn.execute(select(desk_widget).order_by(desk_widget.c.position, desk_widget.c.id)).mappings().all()
 
 
-def add_widget(conn, kind):
+def _percent(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 1 <= value <= 100:
+        raise DeskError("Próg to liczba od 1 do 100.")
+    return int(value)
+
+
+def clean_widget(kind, title, config):
+    """Sprawdza to, co przyszło z okna „Nowa statystyka”, i zostawia tylko znane pola."""
     if kind not in WIDGETS:
         raise DeskError("Nie ma takiej statystyki.")
-    return conn.execute(desk_widget.insert().values(kind=kind, position=_next_position(conn, desk_widget))).inserted_primary_key[0]
+    if not isinstance(config, dict):
+        raise DeskError("Zły format ustawień.")
+    title = str(title or "").strip()
+    if len(title) > 100:
+        raise DeskError("Nazwa jest za długa.")
+    known = [m[0] for m in WIDGET_METRICS[kind]]
+    metrics = config.get("metrics")
+    if not isinstance(metrics, list) or not all(m in known for m in metrics):
+        raise DeskError("Nieznana metryka.")
+    metrics = [m for m in known if m in metrics]
+    if not metrics:
+        raise DeskError("Wybierz co najmniej jedną metrykę.")
+    if config.get("view", "paski") not in WIDGET_VIEWS:
+        raise DeskError("Nieznany wygląd.")
+    warn, crit = {}, {}
+    for key in metrics:
+        if key not in THRESHOLDS:
+            continue
+        low, high = (config.get("warn") or {}).get(key), (config.get("crit") or {}).get(key)
+        if low not in (None, ""):
+            warn[key] = _percent(low)
+        if high not in (None, ""):
+            crit[key] = _percent(high)
+        if key in warn and key in crit and crit[key] <= warn[key]:
+            raise DeskError("Próg awarii musi być wyższy niż próg ostrzeżenia.")
+    return title, {"metrics": metrics, "view": config.get("view", "paski"), "warn": warn, "crit": crit,
+                   "alert": bool(config.get("alert")), "ref": str(config.get("ref") or "")[:250]}
+
+
+def save_widget(conn, widget_id, kind, title, config):
+    """Nowy widżet (widget_id = None) albo zmiana istniejącego. Zwraca id."""
+    title, config = clean_widget(kind, title, config)
+    if widget_id is None:
+        return conn.execute(desk_widget.insert().values(kind=kind, title=title, config=config, position=_next_position(conn, desk_widget))).inserted_primary_key[0]
+    if not conn.execute(desk_widget.update().where(desk_widget.c.id == widget_id).values(kind=kind, title=title, config=config)).rowcount:
+        raise DeskError("Tej statystyki już nie ma.")
+    return widget_id
 
 
 def resize_widget(conn, widget_id, size):

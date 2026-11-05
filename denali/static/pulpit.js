@@ -56,6 +56,8 @@
     if (step.type === "uklad") { done = post("uklad", step.before); }
     else if (step.type === "nazwa") { done = post("nazwa", { id: step.id, name: step.name }); }
     else if (step.type === "rozmiar") { done = post("widzet", { id: step.id, size: step.size }); }
+    else if (step.type === "statystyka") { done = post("statystyka", { id: step.id, kind: step.kind, title: step.title, config: step.config }); }
+    else if (step.type === "kosz-nowa") { done = post("usun", { kind: "widzet", id: step.id }); }
     else { done = post("cofnij", { token: step.token }); }
     done.then(function () { location.reload(); }).catch(fail);
   }
@@ -240,6 +242,109 @@
     e.preventDefault();
     var first = dialog.querySelector("[data-item]:not([hidden]) button[name=key]");
     if (first) { first.click(); }
+  });
+
+  // ───── okno „Nowa statystyka” ─────
+  var stat = document.getElementById("statystyka");
+  var statKind = "", statId = null, statView = "paski", statTimer = null, statBefore = null, statSeq = 0;
+  var preview = stat.querySelector("[data-stat-preview]");
+  var statError = stat.querySelector("[data-stat-error]");
+  var statTitle = stat.querySelector("[data-stat-title]");
+
+  function panel() { return stat.querySelector('[data-stat-panel="' + statKind + '"]'); }
+
+  function statConfig() {
+    var box = panel(), warn = {}, crit = {};
+    var metrics = [].filter.call(box.querySelectorAll("[data-stat-metric]"), function (i) { return i.checked; })
+      .map(function (i) { return i.dataset.statMetric; });
+    [].forEach.call(box.querySelectorAll("[data-stat-warn]"), function (i) { warn[i.dataset.statWarn] = i.value === "" ? null : Number(i.value); });
+    [].forEach.call(box.querySelectorAll("[data-stat-crit]"), function (i) { crit[i.dataset.statCrit] = i.value === "" ? null : Number(i.value); });
+    var alert = box.querySelector("[data-stat-alert]"), ref = box.querySelector("[data-stat-ref]");
+    return { metrics: metrics, view: statView, warn: warn, crit: crit, alert: !!(alert && alert.checked), ref: ref ? ref.value : "" };
+  }
+
+  function showError(text) { statError.textContent = text; statError.hidden = !text; }
+
+  function refreshPreview() {
+    var mine = ++statSeq;
+    var box = panel();
+    [].forEach.call(box.querySelectorAll("[data-stat-metric]"), function (i) {
+      var off = !i.checked;
+      [].forEach.call(box.querySelectorAll('[data-limit="' + i.dataset.statMetric + '"], [data-limit-label="' + i.dataset.statMetric + '"]'), function (el) { el.hidden = off; });
+    });
+    post("podglad", { kind: statKind, title: statTitle.value, config: statConfig() }).then(function (d) {
+      if (mine !== statSeq) { return; }
+      showError("");
+      preview.innerHTML = d.html;
+      [].forEach.call(preview.querySelectorAll("[data-style]"), function (el) { el.style.cssText = el.getAttribute("data-style"); });
+    }).catch(function (e) { if (mine === statSeq) { showError(e.message); } });
+  }
+  function soon() { clearTimeout(statTimer); statTimer = setTimeout(refreshPreview, 200); }
+
+  function pickSource(kind) {
+    statKind = kind;
+    [].forEach.call(stat.querySelectorAll("[data-stat-panel]"), function (p) { p.hidden = p.dataset.statPanel !== kind; });
+    [].forEach.call(stat.querySelectorAll("[data-stat-source]"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.statSource === kind)); });
+    refreshPreview();
+  }
+
+  function pickView(view) {
+    statView = view;
+    [].forEach.call(stat.querySelectorAll("[data-stat-view]"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.statView === view)); });
+  }
+
+  function fill(kind, title, cfg) {
+    var box = stat.querySelector('[data-stat-panel="' + kind + '"]');
+    statTitle.value = title || "";
+    pickView(cfg.view || "paski");
+    [].forEach.call(box.querySelectorAll("[data-stat-metric]"), function (i) {
+      i.checked = !cfg.metrics || cfg.metrics.indexOf(i.dataset.statMetric) >= 0;
+    });
+    [].forEach.call(box.querySelectorAll("[data-stat-warn]"), function (i) {
+      var v = (cfg.warn || {})[i.dataset.statWarn];
+      i.value = v !== undefined ? v : i.defaultValue;
+    });
+    [].forEach.call(box.querySelectorAll("[data-stat-crit]"), function (i) {
+      var v = (cfg.crit || {})[i.dataset.statCrit];
+      i.value = v !== undefined ? v : i.defaultValue;
+    });
+    var alert = box.querySelector("[data-stat-alert]"), ref = box.querySelector("[data-stat-ref]");
+    if (alert) { alert.checked = cfg.alert !== undefined ? cfg.alert : true; }
+    if (ref) { ref.value = cfg.ref || ""; }
+  }
+
+  function openStat(kind, id, title, cfg) {
+    statId = id;
+    statBefore = id ? { type: "statystyka", id: id, kind: kind, title: title, config: cfg } : null;
+    fill(kind, title, cfg);
+    stat.querySelector("[data-stat-heading]").textContent = id ? "Ustawienia statystyki" : "Nowa statystyka";
+    stat.querySelector("[data-stat-save]").textContent = id ? "Zapisz" : "Dodaj do Statystyk";
+    showError("");
+    pickSource(kind);
+    stat.showModal();
+  }
+
+  stat.addEventListener("click", function (e) {
+    var src = e.target.closest("[data-stat-source]");
+    if (src && src.dataset.statSource !== statKind) { fill(src.dataset.statSource, statTitle.value, {}); pickSource(src.dataset.statSource); }
+    var view = e.target.closest("[data-stat-view]");
+    if (view) { pickView(view.dataset.statView); soon(); }
+    if (e.target.closest("[data-close]") || e.target === stat) { stat.close(); }
+  });
+  stat.addEventListener("input", soon);
+  stat.addEventListener("change", soon);
+  stat.querySelector("[data-stat-form]").addEventListener("submit", function (e) {
+    e.preventDefault();
+    post("statystyka", { id: statId, kind: statKind, title: statTitle.value, config: statConfig() }).then(function (d) {
+      push(statBefore || { type: "kosz-nowa", id: d.id });
+      location.href = "/?edycja=1";
+    }).catch(function (err) { showError(err.message); });
+  });
+  desk.addEventListener("click", function (e) {
+    var fresh = e.target.closest("[data-new-stat]");
+    if (fresh) { dialog.close(); openStat(fresh.dataset.newStat, null, "", {}); }
+    var edit = e.target.closest("[data-stat-edit]");
+    if (edit) { openStat(edit.dataset.kind, Number(edit.closest("[data-widget]").dataset.widget), edit.dataset.title, JSON.parse(edit.dataset.config || "{}")); }
   });
 
   if (desk.dataset.openAdd !== undefined) {

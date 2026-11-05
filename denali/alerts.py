@@ -56,6 +56,7 @@ RULES = {
     "term": ("Termin przy urządzeniu", WARN),
     "cluster_quorum": ("Klaster Proxmox bez kworum", CRIT),
     "internet_down": ("Brak internetu w domu", CRIT),
+    "widget": ("Próg statystyki z pulpitu", WARN),
 }
 
 
@@ -132,6 +133,10 @@ def collect(conn, now=None):
         router = conn.execute(select(device.c.id).where(device.c.kind.in_(("modem", "router", "firewall")))
                               .order_by(device.c.kind.desc()).limit(1)).scalar()
         add("internet_down", router, "uplink", CRIT, "Brak internetu w domu: 1.1.1.1, 8.8.8.8 i 9.9.9.9 nie odpowiadają")
+    from . import deskview                  # deskview czyta alerty do panelu bocznego, więc import dopiero tutaj
+    for b in deskview.breaches(conn, now):
+        if b["device_id"] is None or watched(b["device_id"]):
+            add("widget", b["device_id"], b["key"], b["severity"], b["text"], b["integration_id"], b["external_id"])
     return list(found.values()), silent
 
 

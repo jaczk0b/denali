@@ -775,6 +775,13 @@ a.tile:hover, button.tile:hover { border-color: var(--border-strong); color: var
 .track { display: block; height: 6px; border-radius: var(--radius-full); background: var(--sunk); overflow: hidden; }
 .track i { display: block; height: 6px; border-radius: var(--radius-full); background: var(--muted); }
 .track.hi i { background: var(--warn); }
+.track.crit i { background: var(--down); }
+.stat-bar .tracked { position: relative; display: block; }
+.track-tick { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--warn); }
+.stat-num { display: flex; flex-direction: column; gap: 2px; }
+.stat-num span:first-child { font-size: 12px; color: var(--muted); }
+.stat-num b { font-size: 22px; line-height: 28px; font-weight: 600; }
+.stat-nums { display: flex; flex-wrap: wrap; gap: 12px 24px; }
 .stat-big { display: flex; align-items: baseline; gap: 8px; }
 .stat-rows, .stat-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .stat-rows li { display: flex; justify-content: space-between; gap: 8px; }
@@ -900,6 +907,37 @@ a.tile:hover, button.tile:hover { border-color: var(--border-strong); color: var
 .dlg-foot a { color: var(--muted); }
 .dlg-foot kbd { font-family: var(--mono); border: 1px solid var(--border-strong); border-radius: 4px; padding: 0 4px; color: var(--muted); }
 
+/* okno „Nowa statystyka” */
+.dlg-wide { width: min(960px, calc(100% - 32px)); max-height: min(760px, calc(100vh - 32px)); }
+.dlg-bar { padding: 16px 24px; border-bottom: 1px solid var(--border); }
+.stat-dlg { flex: 1; min-height: 0; display: flex; overflow: auto; }
+.stat-dlg-form { flex: 1 1 0; min-width: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+.stat-panel { display: flex; flex-direction: column; gap: 20px; }
+.stat-panel[hidden] { display: none; }
+.stat-dlg-side { flex: 0 0 340px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; background: var(--sunk); border-left: 1px solid var(--border); }
+.stat-dlg-side p { margin: 0; }
+.stat-dlg-side .field { margin: 0; }
+fieldset.bare { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 6px; }
+fieldset.bare legend { padding: 0; margin-bottom: 10px; font-size: 12px; font-weight: 500; letter-spacing: .02em; color: var(--muted); }
+.source-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.source-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: var(--radius-full); border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text); font: inherit; font-size: 13px; font-weight: 500; text-decoration: none; cursor: pointer; }
+.source-chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.source-chip.off { color: var(--muted); cursor: default; font-weight: 400; }
+.source-chip.add { border: 1px dashed var(--border-strong); background: none; color: var(--muted); font-weight: 400; }
+.metric { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; border-radius: 10px; }
+.metric:has(input:checked) { background: var(--surface-2); }
+.metric.off { color: var(--subtle); }
+.metric input { width: 18px; height: 18px; accent-color: var(--accent); }
+.limits { display: grid; grid-template-columns: minmax(80px, auto) repeat(2, minmax(0, 1fr)); gap: 8px 12px; align-items: center; font-size: 13px; }
+.limits [hidden] { display: none; }
+.limits input { width: 72px; height: 36px; padding: 0 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--sunk); color: var(--text); font: inherit; font-size: 16px; }
+.limit-warn { font-size: 12px; color: var(--warn-text); }
+.limit-crit { font-size: 12px; color: var(--down-text); }
+.stat-error { color: var(--down-text); }
+.stat-error[hidden] { display: none; }
+.dlg-actions { justify-content: flex-end; gap: 8px; font-size: 14px; }
+
 /* dok: tylko na telefonie, reszta ma górny pasek */
 .dock { display: none; }
 @media (max-width: 640px) {
@@ -927,6 +965,9 @@ a.tile:hover, button.tile:hover { border-color: var(--border-strong); color: var
   .grip { width: 44px; height: 44px; margin: -10px; }
   .mini { width: 36px; height: 36px; }
   .toast { left: 16px; right: 16px; transform: none; bottom: 16px; border-radius: var(--radius); }
+  .stat-dlg { flex-direction: column; }
+  .stat-dlg-form, .stat-dlg-side { flex: none; padding: 16px; }
+  .stat-dlg-side { border-left: 0; border-top: 1px solid var(--border); }
 }
 
 /* tablet: te same karty co pulpit, większe pola dotyku */
