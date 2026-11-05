@@ -73,6 +73,14 @@ def ack(conn, incident_id, user, now=None):
     _event(conn, incident_id, "potwierdzony", f"{user} zajmuje się tym.", user, now)
 
 
+def mute(conn, incident_id, until, user, now=None):
+    """„Wycisz do…”: baner zwija się, przypomnienia czekają. Status bez zmian, więc po czasie wszystko wraca. None = przywróć."""
+    _get(conn, incident_id)
+    conn.execute(incident.update().where(incident.c.id == incident_id).values(muted_until=until))
+    text = f"Wyciszone do {time.strftime('%d.%m %H:%M', time.localtime(until))}." if until else "Wyciszenie zdjęte."
+    _event(conn, incident_id, "wyciszenie", text, user, now)
+
+
 def close(conn, incident_id, user, cause_md=None, fix_md=None, now=None, text="Zamknięty."):
     inc = _get(conn, incident_id)
     values = {}
@@ -113,6 +121,8 @@ def record_finding(conn, graph, finding, now=None, why=""):
         new = _add_devices(conn, iid, finding.effects, "skutek")
         if new:
             _event(conn, iid, "skutek", "Przestało też działać: " + ", ".join(names(d) for d in new) + ".", now=now)
+            # awaria się rozlała: wyciszenie dotyczyło mniejszego problemu
+            conn.execute(incident.update().where(incident.c.id == iid).values(muted_until=None))
         _add_devices(conn, iid, finding.degraded, "gorzej")
         return iid, False
 

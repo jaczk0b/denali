@@ -1,9 +1,11 @@
 """Incydenty (log problemów), procedury, runbooki i kontakty."""
+import time
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
-from .. import auth, docs, incidents, inventory as inv
+from .. import auth, deskview, docs, incidents, inventory as inv
 from ..models import contact, device, runbook, runbook_device
 from ..templating import render
 from .deps import NotFound, client_ip, require_admin, require_user
@@ -86,6 +88,19 @@ def _incident_change(request, incident_id, fn):
 @router.post("/incydenty/{incident_id}/potwierdz")
 def incident_ack(request: Request, incident_id: int, sess: dict = Depends(require_admin)):
     return _incident_change(request, incident_id, lambda c: incidents.ack(c, incident_id, sess["login"]))
+
+
+@router.post("/incydenty/{incident_id}/wycisz")
+def incident_mute(request: Request, incident_id: int, do: str = Form(""), sess: dict = Depends(require_admin)):
+    """Wycisz do wybranej chwili. Pusty wybór zdejmuje wyciszenie. Wraca na pulpit, bo stamtąd się to klika."""
+    now = time.time()
+    until = next((at for key, _label, at in deskview.mute_options(now) if key == do), None)
+    with request.app.state.engine.begin() as conn:
+        try:
+            incidents.mute(conn, incident_id, until, sess["login"], now)
+        except incidents.IncidentError as e:
+            raise NotFound(str(e)) from None
+    return RedirectResponse("/", 303)
 
 
 @router.post("/incydenty/{incident_id}/notatka")

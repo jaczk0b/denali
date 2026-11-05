@@ -121,17 +121,18 @@ def test_propozycje_z_urzadzen_integracji_i_stron(app, admin):
         inv.create_device(conn, "Grafana", "usluga", app_url="https://grafana.lan")
         integrations.save(conn, app.state.box, "pbs", "Kopie", {"url": "https://pbs.lan:8007", "token_id": "a@pbs!b"},
                           {"token_secret": "c"})
-    page = admin.get("/pulpit/ikony").text
-    for name in ("+ Grafana", "+ Kopie", "+ Mapa", "+ Integracje"):
-        assert name in page
-    assert "+ Pulpit" not in page and "+ Konto" not in page
+    page = admin.get("/?edycja=1").text
+    with app.state.engine.connect() as conn:
+        names = {i["name"] for i in desk.catalog(conn) if i["key"]}
+    assert {"Grafana", "Kopie", "Mapa", "Integracje"} <= names and not {"Pulpit", "Konto i sesje"} & names
+    assert "<b>Grafana</b>" in page
     ops = category(app, "Zarządzanie")
     with app.state.engine.connect() as conn:
         key = next(s["key"] for s in desk.suggestions(conn) if s["name"] == "Kopie")
     r = admin.post("/pulpit/ikony/propozycja", data={"csrf_token": csrf_from(page), "key": key, "category_id": ops})
-    assert r.status_code == 303 and r.headers["location"] == f"/pulpit/ikony?kategoria={ops}"
+    assert r.status_code == 303 and r.headers["location"] == f"/?edycja=1&dodaj={ops}"
     page = admin.get(r.headers["location"]).text
-    assert "+ Kopie" not in page and f'<option value="{ops}" selected>' in page
+    assert f'data-open-add="{ops}"' in page and "Na pulpicie" in page
     # Podwójne kliknięcie nie dubluje ikony.
     r = admin.post("/pulpit/ikony/propozycja", data={"csrf_token": csrf_from(page), "key": key, "category_id": ops})
     assert r.status_code == 400
@@ -140,40 +141,9 @@ def test_propozycje_z_urzadzen_integracji_i_stron(app, admin):
 
 
 def test_propozycja_nie_przyjmuje_cudzego_adresu(admin):
-    page = admin.get("/pulpit/ikony").text
+    page = admin.get("/?edycja=1").text
     r = admin.post("/pulpit/ikony/propozycja", data={"csrf_token": csrf_from(page), "key": "strona:javascript:alert(1)"})
     assert r.status_code == 400
-
-
-def test_kolejnosc_ikon_i_kategorii(app, admin):
-    a = add(app, name="A", url="/a")
-    b = add(app, name="B", url="/b")
-    page = admin.get("/pulpit/ikony").text
-    token = csrf_from(page)
-    assert admin.post(f"/pulpit/ikony/{b}/przesun", data={"csrf_token": token, "kierunek": "gora"}).status_code == 303
-    with app.state.engine.connect() as conn:
-        assert [t["id"] for t in desk.tiles(conn)] == [b, a]
-    ops = category(app, "Zarządzanie")
-    assert admin.post(f"/pulpit/kategorie/{ops}/przesun", data={"csrf_token": token, "kierunek": "gora"}).status_code == 303
-    with app.state.engine.connect() as conn:
-        assert [c["name"] for c in desk.categories(conn)] == ["Zarządzanie", "Na co dzień"]
-
-
-def test_kategoria_nazwa_i_usuwanie_razem_z_ikonami(app, admin):
-    with app.state.engine.begin() as conn:
-        did = inv.create_device(conn, "Immich", "usluga")
-    home = category(app, "Na co dzień")
-    add(app, name="A", url="/a")
-    with app.state.engine.begin() as conn:
-        desk.pin_device(conn, did, home)
-    token = csrf_from(admin.get("/pulpit/ikony").text)
-    r = admin.post(f"/pulpit/kategorie/{home}/nazwa", data={"csrf_token": token, "name": "zarządzanie"})
-    assert r.status_code == 400 and "już jest" in r.text
-    assert admin.post(f"/pulpit/kategorie/{home}/nazwa", data={"csrf_token": token, "name": "Dom"}).status_code == 303
-    assert admin.post(f"/pulpit/kategorie/{home}/usun", data={"csrf_token": token}).status_code == 303
-    with app.state.engine.connect() as conn:
-        assert not conn.execute(select(desk_tile)).first()
-        assert inv.get_device(conn, did)                                 # samo urządzenie zostaje
 
 
 def test_bez_kategorii_powstaje_domyslna(app, admin):
@@ -190,7 +160,7 @@ def test_podglad_widzi_ikony_ale_nie_zmienia(app, viewer):
     add(app, name="Audyt", url="/admin/audyt")
     page = viewer.get("/").text
     assert "Grafana" in page and "Audyt" not in page
-    assert "Zarządzanie" not in page and "/pulpit/ikony" not in page       # pusta kategoria i edycja są ukryte
+    assert "Zarządzanie" not in page and "edycja=1" not in page            # pusta kategoria i edycja są ukryte
     assert viewer.get("/pulpit/ikony").status_code == 403
     assert viewer.post("/pulpit/kategorie", data={"csrf_token": csrf_from(page) if "csrf_token" in page else "", "name": "X"}).status_code == 403
 

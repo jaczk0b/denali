@@ -393,7 +393,7 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
   `DENALI_OIDC_USER_GROUP`. Reszta panelu jest dla tej roli zamknięta, ale do sieci wpuszcza Tailscale: osoba musi być
   zaproszona do tailnetu (udostępnione urządzenie nie przekazuje podsieci subnet routera), a ACL ma ograniczać ją
   do SMB i panelu. Bez tego ma dostęp do całego LAN-u.
-- **Ikony pulpitu** dodajesz przyciskiem „+” w kategorii albo przez *Ułóż ikony i kategorie* (`/pulpit/ikony`): dowolny
+- **Ikony pulpitu** dodajesz przyciskiem „+” w kategorii albo w trybie *Edytuj pulpit* (przeciąganie za uchwyt albo strzałki z klawiatury, nazwa kategorii w miejscu, usuwanie z „Cofnij”, okno „Dodaj do pulpitu”): dowolny
   adres, strona panelu (też terminal konkretnej maszyny), adres do skopiowania (`\\\\nas\\zdjecia`, `smb://`, `nfs://`, `ssh://`:
   kliknięcie kopiuje, bo przeglądarka tego nie otworzy) albo urządzenie (wtedy ikona pokazuje jego stan). Panel proponuje jednym kliknięciem aplikacje
   z adresem, integracje i swoje strony. Kategorie możesz nazwać i ułożyć po swojemu; ikony znajdzie też Ctrl+K.
@@ -414,7 +414,6 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
 - **Kanały**: Discord, ntfy, Telegram, e-mail (menu konta → *Kanały powiadomień*). Krytyczny incydent bez reakcji może wracać co 1–24 h (*Powtórki*).
 - **Producent po MAC** na zakładce *Sieć*: lista IEEE, pobierana raz na miesiąc do katalogu danych.
 - **Ctrl+K** (albo `/`) — szybkie przejście do urządzenia, procedury, incydentu albo strony panelu.
-- **Motyw**: menu konta → kółka obok „Motyw”: *Grafit* albo *Zorza* (noc nad Denali). Zapamiętany w przeglądarce.
 - **Dla innych programów**: ustaw `DENALI_METRICS_TOKEN` w `.env`, a panel wystawi `/metrics` (Prometheus) i
   `/api/stan` (JSON). Oba wymagają nagłówka `Authorization: Bearer <token>`; bez tokenu w `.env` ich nie ma.
   Home Assistant, `configuration.yaml`:

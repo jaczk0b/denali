@@ -62,16 +62,12 @@ def test_pulpit_pokazuje_werdykt_i_podpowiedzi(app):
     assert d
 
 
-# ───────────────────────── motyw i Ctrl+K ─────────────────────────
-def test_motyw_w_ciasteczku(app):
+# ───────────────────────── wygląd i Ctrl+K ─────────────────────────
+def test_jeden_motyw(app):
     c = viewer(app)
     page = c.get("/procedury").text
-    assert 'data-theme="grafit"' in page
-    r = c.post("/motyw", data={"csrf_token": csrf_from(page), "motyw": "zorza", "next": "/procedury"})
-    assert r.status_code == 303 and r.headers["location"] == "/procedury"
-    assert 'data-theme="zorza"' in c.get("/procedury").text
-    c.post("/motyw", data={"csrf_token": csrf_from(page), "motyw": "<script>", "next": "//zly.pl"})
-    assert 'data-theme="grafit"' in c.get("/procedury").text
+    assert "data-theme" not in page and "Motyw" not in page
+    assert c.post("/motyw", data={"csrf_token": csrf_from(page), "motyw": "zorza"}).status_code == 404
 
 
 def test_szybkie_przejscie(app):

@@ -72,9 +72,9 @@ def test_kazda_strona_sie_renderuje(admin, lab):
 
 def test_pulpit_pokazuje_przyczyne_i_skutki(admin, lab):
     html = admin.get("/").text
-    assert "truenas nie działa" in html and "Co się stało" in html
-    assert "<b>Serwery · truenas</b><span>tu jest przyczyna</span>" in html   # truenas to VM, więc warstwa „Serwery”
-    assert "bez danych" in html and "Skutek, nie osobna awaria" in html   # ikona Immich: skutek, nie osobna awaria
+    assert "truenas nie działa" in html and "Pokaż, co się stało" in html
+    assert 'class="is-cause"' in html and "Skąd ta awaria" in html            # łańcuch z zaznaczoną przyczyną
+    assert "Bez danych" in html and "Skutek, nie osobna awaria" in html   # ikona Immich: skutek, nie osobna awaria
     assert 'href="https://immich.lan"' in html and 'rel="noopener noreferrer"' in html
 
 

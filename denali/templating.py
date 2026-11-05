@@ -18,7 +18,7 @@ from .status import initials, tile_color
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent / "templates")
 # Wersja plików statycznych w adresie (?v=…): po wdrożeniu przeglądarka bierze nowy CSS/JS, a nie stary z pamięci.
 STATIC_V = hashlib.sha256(b"".join((Path(__file__).resolve().parent / "static" / n).read_bytes()
-                                   for n in ("denali.css", "denali.js"))).hexdigest()[:10]
+                                   for n in ("denali.css", "denali.js", "pulpit.js"))).hexdigest()[:10]
 # Markdown bez surowego HTML; markdown-it sam odrzuca linki javascript: i data:
 # Strony odświeżane na żywo (SSE). Tylko widoki do patrzenia — nie strona po wysłaniu formularza (błąd albo
 # odsłonięte hasło zniknęłyby przy podmianie) ani karta urządzenia ze skarbcem.
@@ -95,20 +95,10 @@ def _counts(request: Request) -> dict:
         }
 
 
-THEME_COOKIE = "denali_motyw"
-THEMES = ("grafit", "zorza")            # pierwszy = domyślny
-THEME_LABELS = {"grafit": "Grafit", "zorza": "Zorza (noc nad Denali)"}
-
-
-templates.env.globals["THEME_LABELS"] = THEME_LABELS
-
-
 def render(request: Request, name: str, ctx: dict | None = None, status: int = 200):
     sess = getattr(request.state, "sess", None)
     signed_in = bool(sess) and sess["kind"] != "pending"
-    theme = request.cookies.get(THEME_COOKIE, "")
     base = {"sess": sess, "csrf": sess["csrf"] if sess else "", "path": request.url.path,
-            "theme": theme if theme in THEMES else THEMES[0],
             # Konto „uzytkownik” nie dostaje liczników: nawet sama liczba incydentów to wiedza o infrastrukturze.
             "counts": _counts(request) if signed_in and sess["role"] != USER_ROLE else {}, "live_version": ""}
     if signed_in and request.method == "GET" and name in LIVE_TEMPLATES and status == 200:

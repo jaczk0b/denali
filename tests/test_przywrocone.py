@@ -680,7 +680,7 @@ def test_dzial_powiadomienia(app, client):
     from denali.models import incident as inc_table
     admin(app, client)
     page = client.get("/incydenty").text
-    top = page[page.index('class="nav"'):page.index("</nav>")]
+    top = page[page.index('class="nav nav-main"'):page.index("</nav>")]
     assert 'href="/powiadomienia"' in top and "/alerty" not in top and "/aktualizacje" not in top
     for path, tab in (("/incydenty", "Incydenty"), ("/alerty", "Alerty"), ("/aktualizacje", "Aktualizacje"), ("/os-czasu", "Oś czasu")):
         html = client.get(path).text

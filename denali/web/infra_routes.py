@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import func, or_, select
 
-from .. import (actions, alerts, auth, changes, checks, configs, desk, discovery, docs, files, forecast, history, incidents, infra_views, integrations,
+from .. import (actions, alerts, auth, changes, checks, configs, desk, deskview, discovery, docs, files, forecast, history, incidents, infra_views, integrations,
                inventory as inv, live, maintenance, profiles, racks, status, tablet, terms, upcoming, updates, vault)
 from ..db import kv_get
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
@@ -38,9 +38,10 @@ def _int(v):
 
 # ───────────────────────── pulpit ─────────────────────────
 @router.get("/")
-def pulpit(request: Request, sess: dict = Depends(require_user)):
+def pulpit(request: Request, edycja: str = "", dodaj: str = "", sess: dict = Depends(require_user)):
     with request.app.state.engine.connect() as conn:
-        devices = conn.execute(select(device.c.id, device.c.name, device.c.kind)).mappings().all()
+        devices = deskview.device_rows(conn)
+        names = {d["id"]: d["name"] for d in devices}
         marks = status.device_marks(conn)
         states = live.saved(conn)
         open_inc = status.open_incidents(conn)
@@ -50,16 +51,28 @@ def pulpit(request: Request, sess: dict = Depends(require_user)):
                    incidents.incident_device.c.role.in_(("skutek", "gorzej")))).scalar() for i in open_inc}
         last_closed = conn.execute(select(incident.c.ended_at).where(incident.c.status == "zamkniety")
                                    .order_by(incident.c.ended_at.desc()).limit(1)).mappings().first()
+        checks_now = deskview.load_checks(conn)
+        board = deskview.decorate(desk.board(conn, sess["role"]), marks, states, checks_now)
+        banner = deskview.banner(conn, open_inc, states, names)
+        settings = desk.look(conn)
+        rows, more, good = deskview.attention(conn, open_inc, devices, states)
+        edit = edycja == "1" and sess["role"] == "admin" and sess["kind"] != "kiosk"
         ctx = {
-            "board": desk.board(conn, sess["role"]), "marks": marks, "open_incidents": open_inc, "effects": effects,
+            "board": board, "sections": desk.sections(board, settings), "marks": marks, "open_incidents": open_inc, "effects": effects,
             "layers": [l for l in status.layers(devices, marks, states) if l["state"] != "none"],
-            "recent": status.recent_events(conn),
             "no_devices": not devices, "has_live": bool(states),
             "verdict": status.verdict(devices, states, open_inc, maintenance.active(conn), last_closed),
-            "upcoming": upcoming.items(conn),
-            "open_alerts": [a for a in alerts.active(conn) if not a["silenced"]],
+            "banner": banner, "chain": deskview.chain(conn, banner, states, names),
+            "kpis": deskview.kpis(conn, devices, states, checks_now),
+            "widgets": deskview.widgets(conn, desk.widgets(conn), {k: v[0] for k, v in desk.WIDGETS.items()}),
+            "attention": rows, "attention_more": more, "attention_good": good,
+            "events": deskview.events(conn), "upcoming": upcoming.items(conn),
+            "side": desk.side(conn), "look": settings, "edit": edit,
             "suggest": desk.suggestions(conn)[:8] if sess["role"] == "admin" else [],
         }
+        if edit:
+            ctx.update(catalog=desk.catalog(conn), open_add=_int(dodaj), layout=desk.snapshot(conn),
+                       live_version="")          # odświeżanie na żywo przerwałoby przeciąganie
     now = datetime.now()
     ctx.update(clock=now.strftime("%H:%M"), date=f"{DAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]}")
     if sess["kind"] == "kiosk":
@@ -86,7 +99,8 @@ def _wall(request, conn, sess, devices, states, open_inc):
     return {
         "prefs": tablet.prefs(request.cookies.get(tablet.PREFS_COOKIE)), "flash": flash, "spark": spark,
         "stats": {**counts, "total": len(devices), "incidents": len(open_inc)},
-        "alarm_ids": " ".join(str(i["id"]) for i in open_inc if i["status"] == "trwa"),
+        # potwierdzona albo wyciszona awaria nie alarmuje: widać ją, ale nie krzyczy
+        "alarm_ids": " ".join(str(i["id"]) for i in open_inc if i["status"] == "trwa" and not deskview.muted(i, time.time())),
         "has_pin": bool(tablet.pin_info(conn, sess["public_id"])),
         "hosts": [d for d in devices if d["kind"] == "host"],
     }

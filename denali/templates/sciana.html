@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_makra.html" import st, nav_icon %}
 {% block title %}Tablet{% endblock %}
-{% block body_class %}wall-body wall-{{ prefs.mode }}{% if verdict.state == "down" %} alarm{% elif verdict.state == "warn" %} attention{% endif %}{% if sess.elevated %} unlocked{% endif %}{% endblock %}
+{% block body_class %}wall-body wall-{{ prefs.mode }}{% if verdict.state == "down" and alarm_ids %} alarm{% elif verdict.state in ("down", "warn") %} attention{% endif %}{% if sess.elevated %} unlocked{% endif %}{% endblock %}
 {% block chrome %}
 {#- Tablet przy szafie: na ścianie podgląd i alarmy, w ręku (po PIN-ie) SSH, VNC i akcje. Zachowanie (przyciemnianie,
     dźwięk, wybudzanie ekranu w Fully Kiosk) w static/denali.js — tu tylko dane w atrybutach. -#}
@@ -11,9 +11,9 @@
   <header class="wall-head">
     <div class="wall-clock"><span class="clock">{{ clock }}</span><span class="muted">{{ date }}</span></div>
     <div class="wall-stats" aria-label="Urządzenia">
-      <span>{{ st("ok", 14) }} {{ stats.ok }}</span>
-      {% if stats.warn %}<span class="warn">{{ st("warn", 14) }} {{ stats.warn }}</span>{% endif %}
-      {% if stats.down %}<span class="down">{{ st("down", 14) }} {{ stats.down }}</span>{% endif %}
+      <span>{{ st("ok", 16) }} {{ stats.ok }}</span>
+      {% if stats.warn %}<span class="warn">{{ st("warn", 16) }} {{ stats.warn }}</span>{% endif %}
+      {% if stats.down %}<span class="down">{{ st("down", 16) }} {{ stats.down }}</span>{% endif %}
       <span class="muted">z {{ stats.total }}</span>
       {% if counts.updates %}<span class="muted">· aktualizacje: {{ counts.updates }}</span>{% endif %}
     </div>
@@ -32,9 +32,20 @@
     <div class="verdict-text">
       {% if v.link %}<a class="verdict-head" href="{{ v.link }}">{{ v.headline }}</a>{% else %}<span class="verdict-head">{{ v.headline }}</span>{% endif %}
       <span class="verdict-sub">{% if v.since %}od {{ v.since | hm }}{% if v.sub %} · {% endif %}{% endif %}{{ v.sub }}</span>
+      {% if banner and banner.cause %}<span class="wall-cause"><b>Przyczyna:</b> {{ banner.cause }}</span>{% endif %}
+      {% if banner and banner.note %}<span class="wall-cause"><b>Notatka:</b> {{ banner.note }}</span>{% endif %}
+      {% if banner and banner.muted_until %}<span class="verdict-pause">Wyciszone do {{ banner.muted_until | hm }}</span>{% endif %}
       {% for i in v["items"] %}<a class="verdict-more" href="{{ i.link }}">+ {{ i.title }} · od {{ i.since | hm }}</a>{% endfor %}
       {% for p in v.pauses %}<span class="verdict-pause">{{ st("warn", 14) }} Planowana przerwa: {{ p }}</span>{% endfor %}
     </div>
+  </section>
+
+  <section class="kpis wall-kpis" aria-label="Stan labu">
+    {% for k in kpis %}
+    <div class="kpi"><span class="kpi-label">{{ k.label }}</span>
+      <span class="num">{{ k.value }}{% if k.unit %}<small>{{ k.unit }}</small>{% endif %}</span>
+      <span class="kpi-note {{ k.state }}">{{ st(k.state, 14) }}{{ k.note }}</span></div>
+    {% endfor %}
   </section>
 
   {% if sess.elevated %}
@@ -50,6 +61,15 @@
 
   <div class="wall-grid">
     <section class="widget" aria-labelledby="w-warstwy">
+      {% if chain %}
+      <h2 id="w-warstwy">Skąd ta awaria</h2>
+      <ol class="chain">
+        {% for c in chain %}
+        <li class="{{ 'is-cause' if c.cause }}"><span class="chain-mark">{{ st(c.state, 20) }}</span>
+          <span class="chain-text"><span class="chain-name">{{ c.name }}{% if c.cause %}<span class="tag down">przyczyna</span>{% endif %}</span><span class="chain-why">{{ c.detail }}</span></span></li>
+        {% endfor %}
+      </ol>
+      {% else %}
       <h2 id="w-warstwy">Gdzie jest problem</h2>
       <ol class="layers">
         {% for l in layers %}
@@ -58,6 +78,7 @@
           <span class="layer-text"><b>{{ l.title }}</b><span>{{ l.text }}</span></span></a></li>
         {% endfor %}
       </ol>
+      {% endif %}
     </section>
 
     <div class="wall-col">
@@ -66,8 +87,8 @@
         <div class="avail-head"><h2 id="w-ping">Ping do {{ spark.name }}, 24 h</h2>
           <span class="muted small mono">{% if spark.avg is not none %}śr. {{ spark.avg }} ms{% endif %}{% if spark.fails %} · przerwy: {{ spark.fails | length }}{% endif %}</span></div>
         <svg viewBox="0 0 {{ spark.w }} {{ spark.h + 6 }}" preserveAspectRatio="none" role="img" aria-label="Czas odpowiedzi routera">
-          <path d="{{ spark.d }}" fill="none" stroke="#6aa8ff" stroke-width="2" vector-effect="non-scaling-stroke"/>
-          {% for x in spark.fails %}<rect x="{{ x }}" y="{{ spark.h + 1 }}" width="3" height="5" fill="#ff6b6b"/>{% endfor %}
+          <path d="{{ spark.d }}" fill="none" stroke="#a6aed4" stroke-width="2" vector-effect="non-scaling-stroke"/>
+          {% for x in spark.fails %}<rect x="{{ x }}" y="{{ spark.h + 1 }}" width="3" height="5" fill="#ff6b61"/>{% endfor %}
         </svg>
       </section>
       {% endif %}
@@ -79,12 +100,20 @@
       </section>
     </div>
 
-    <section class="widget" aria-labelledby="w-ostatnio">
-      <h2 id="w-ostatnio">Ostatnio</h2>
-      {% if recent %}<ol class="recent">
-        {% for e in recent %}<li><span class="when">{{ e.ts | hm }}</span><a href="/incydenty/{{ e.incident_id }}">{{ e.text }}</a></li>{% endfor %}
-      </ol>{% else %}<p class="muted small">Nic się nie działo.</p>{% endif %}
-    </section>
+    <div class="wall-col">
+      <section class="widget" aria-labelledby="w-uwaga">
+        <h2 id="w-uwaga">Wymaga uwagi</h2>
+        {% if attention %}<ul class="att">
+          {% for r in attention[:4] %}<li><a href="{{ r.link }}">{{ st(r.state, 18) }}<span class="att-text"><b>{{ r.title }}</b><span>{{ r.detail }}</span></span>{% if r.when %}<span class="att-when">{{ r.when }}</span>{% endif %}</a></li>{% endfor %}
+        </ul>{% else %}<p class="muted small">Nic nie wymaga uwagi.</p>{% endif %}
+      </section>
+      <section class="widget" aria-labelledby="w-ostatnio">
+        <h2 id="w-ostatnio">Ostatnie zdarzenia</h2>
+        {% if events %}<ol class="events">
+          {% for e in events %}<li class="{{ 'hot' if e.hot }}"><span class="ev-when">{{ e.when }}</span><a href="{{ e.link }}"><span class="ev-title">{{ e.text }}</span><span class="ev-detail">{{ e.detail }}</span></a></li>{% endfor %}
+        </ol>{% else %}<p class="muted small">Nic się nie działo.</p>{% endif %}
+      </section>
+    </div>
   </div>
 
   <details class="wall-settings">

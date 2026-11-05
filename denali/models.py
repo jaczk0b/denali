@@ -120,6 +120,18 @@ desk_tile = Table(
     Column("name", String(200), nullable=False, default="", server_default=""),
     Column("url", String(500), nullable=False, default="", server_default=""),  # http(s):// albo ścieżka panelu
     Column("icon", String(64), nullable=False, default="", server_default=""),
+    Column("logo", String(200), nullable=False, default="", server_default=""),  # adres logo aplikacji (na razie puste)
+    Column("position", Integer, nullable=False, default=0, server_default="0"),
+)
+
+# Widżety sekcji Statystyki. kind wskazuje źródło danych (deskview.WIDGET_DATA), config czeka na metryki i progi.
+desk_widget = Table(
+    "desk_widget", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("kind", String(32), nullable=False),
+    Column("title", String(100), nullable=False, default="", server_default=""),
+    Column("size", Integer, nullable=False, default=1, server_default="1"),         # 1 albo 2 kolumny
+    Column("config", JSON, nullable=False, default=dict, server_default="{}"),
     Column("position", Integer, nullable=False, default=0, server_default="0"),
 )
 
@@ -340,6 +352,7 @@ vault_secret = Table(
 incident = Table(
     "incident", metadata,
     Column("reminded_at", Float),                           # ostatnia powtórka powiadomienia
+    Column("muted_until", Float),                           # „Wycisz do…”: zwinięty baner i bez przypomnień do tej chwili
     Column("id", Integer, primary_key=True),
     Column("title", String(200), nullable=False),
     Column("root_device_id", Integer, ForeignKey("device.id", ondelete="SET NULL"), index=True),

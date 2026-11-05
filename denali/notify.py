@@ -358,6 +358,8 @@ async def reminders(conn, box, base_url, transport=None, now=None):
                                                    incident.c.notified_at.isnot(None))).mappings().all():
         if now - max(row["notified_at"], row["reminded_at"] or 0) < hours * 3600:
             continue
+        if row["muted_until"] and row["muted_until"] > now:
+            continue
         payload = message(incidents.get_incident(conn, row["id"]), base_url)
         payload["embeds"][0]["title"] = f"Nadal: {row['title']}"[:256]
         if await deliver(conn, box, payload, "krytyczny", transport, now):

@@ -399,8 +399,7 @@ def test_terminale_nie_zaleza_od_profili(app, pve, console, admin):
 
 def test_terminale_w_dolnym_pasku(app, pve, console, admin):
     home = admin.get("/").text
-    assert '<nav class="dock"' in home and home.count('href="/terminale"') == 1
-    assert 'href="/terminale"' in admin.get("/incydenty").text                  # górne menu na pozostałych stronach
+    assert '<nav class="dock"' in home and home.count('href="/terminale"') == 2  # górny pasek i dok na telefonie
     assert "docker" in admin.get("/terminale/vnc").text
 
 

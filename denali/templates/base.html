@@ -1,6 +1,6 @@
 <!doctype html>
-{% from "_makra.html" import search_icon, account_menu, st, notice_badge %}
-<html lang="pl" data-theme="{{ theme or 'grafit' }}">
+{% from "_makra.html" import search_icon, account_menu, st, notice_badge, nav_icon %}
+<html lang="pl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -30,7 +30,7 @@
     <a href="/moje" {% if path == "/moje" %}aria-current="page"{% endif %}>Moje usługi</a>
     <a href="/moje/status" {% if path == "/moje/status" %}aria-current="page"{% endif %}>Status</a>
   </nav>
-  <div class="top-right">{{ account_menu(sess, counts, csrf, theme, path) }}</div>
+  <div class="top-right">{{ account_menu(sess, counts, csrf) }}</div>
 </header>
 {% elif signed_in %}
 <header class="top">
@@ -38,7 +38,7 @@
     <span class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 13.5L6 5l2.6 4.2L10.5 7l4 6.5z" fill="#0e1114"/></svg></span>
     Denali
   </a>
-  <nav class="nav" aria-label="Główne menu">
+  <nav class="nav nav-main" aria-label="Główne menu">
     <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>Pulpit</a>
     <a href="/infrastruktura/mapa" {% if path.startswith(("/urzadzenia", "/runbooki", "/infrastruktura")) %}aria-current="page"{% endif %}>Infrastruktura</a>
     <a href="/powiadomienia" {% if path.startswith(("/powiadomienia", "/incydenty", "/alerty", "/aktualizacje", "/os-czasu")) %}aria-current="page"{% endif %}>Powiadomienia{% if counts %} {{ notice_badge(counts) }}{% endif %}</a>
@@ -49,14 +49,24 @@
     <form class="search" method="get" action="/szukaj" role="search">
       {{ search_icon() }}
       <label class="sr" for="q-top">Szukaj</label>
-      <input id="q-top" type="search" name="q" placeholder="Szukaj: urządzenie, IP, MAC, procedura…" value="{{ q or '' }}">
+      <input id="q-top" type="search" name="q" placeholder="Szukaj aplikacji, urządzenia, IP…" value="{{ q or '' }}">
       <button type="button" class="kbd" data-palette title="Szybkie przejście">Ctrl K</button>
     </form>
-    {% if sess.kind != "kiosk" %}{{ account_menu(sess, counts, csrf, theme, path) }}{% endif %}
+    {% block top_actions %}{% endblock %}
+    {% if sess.kind != "kiosk" %}{{ account_menu(sess, counts, csrf) }}{% endif %}
   </div>
 </header>
 {% endif %}
 {% block body %}<main class="page">{% block content %}{% endblock %}</main>{% endblock %}
+{% if signed_in and sess.role != "uzytkownik" %}
+<nav class="dock" aria-label="Dok">
+  <a href="/" {% if path == "/" %}aria-current="page"{% endif %}>{{ nav_icon("pulpit") }}Pulpit</a>
+  <a href="/urzadzenia" {% if path.startswith(("/urzadzenia", "/runbooki", "/infrastruktura")) %}aria-current="page"{% endif %}>{{ nav_icon("infra") }}Infrastruktura</a>
+  <a href="/powiadomienia" {% if path.startswith(("/powiadomienia", "/incydenty", "/alerty", "/aktualizacje", "/os-czasu")) %}aria-current="page"{% endif %}>{{ nav_icon("incydenty") }}Powiadomienia{% if counts %}{{ notice_badge(counts) }}{% endif %}</a>
+  <a href="/procedury" {% if path.startswith("/procedury") %}aria-current="page"{% endif %}>{{ nav_icon("procedury") }}Procedury</a>
+  {% if sess.role == "admin" and (sess.kind != "kiosk" or sess.elevated) %}<a href="/terminale" {% if path.startswith("/terminale") %}aria-current="page"{% endif %}>{{ nav_icon("terminale") }}Terminale</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}
 </body>
 </html>

@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from .. import auth
 from ..models import app_user, audit_log
-from ..templating import THEME_COOKIE, THEMES, render
+from ..templating import render
 from .deps import (COOKIE, PRELOGIN_COOKIE, check_csrf, client_ip, get_session, require_admin, require_user,
                    safe_next, set_cookie)
 
@@ -108,14 +108,6 @@ async def second_factor(request: Request):
         token = auth.create_session(conn, user["id"], "zwykla", ip, ua)
         auth.audit(conn, "login", user=user["login"], ip=ip, params={"2fa": method})
     return _signed_in(request, token, nxt or "/")
-
-
-@router.post("/motyw")
-def theme(request: Request, motyw: str = Form(""), next: str = Form(""), sess: dict = Depends(require_user)):
-    """Motyw wyglądu tej przeglądarki (ciasteczko, nie konto — tablet może mieć inny niż telefon)."""
-    resp = RedirectResponse(safe_next(next) or "/", 303)
-    set_cookie(resp, THEME_COOKIE, motyw if motyw in THEMES else THEMES[0], 365 * 86400, _secure(request))
-    return resp
 
 
 @router.post("/logout")

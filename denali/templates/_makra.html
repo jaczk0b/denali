@@ -4,11 +4,11 @@
 {% macro st(state, size=16, label="") -%}
 {%- set lbl = label or {"ok": "Działa", "down": "Nie działa", "warn": "Ostrzeżenie", "effect": "Skutek, nie osobna awaria", "unknown": "Brak danych"}.get(state, state) -%}
 <svg class="st" width="{{ size }}" height="{{ size }}" viewBox="0 0 16 16" role="img" aria-label="{{ lbl }}">
-{%- if state == "ok" %}<circle cx="8" cy="8" r="7" fill="#45c486"/><path d="M4.6 8.2l2.3 2.3 4.6-4.7" stroke="#0e1114" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-{%- elif state == "down" %}<path d="M5 1h6l4 4v6l-4 4H5l-4-4V5z" fill="#ff6b6b"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#2a1517" stroke-width="1.8" stroke-linecap="round"/>
-{%- elif state == "warn" %}<path d="M8 1.5l7 12.5H1z" fill="#f2a93b"/><path d="M8 6v3.5M8 11.6v.01" stroke="#33280f" stroke-width="1.6" stroke-linecap="round"/>
-{%- elif state == "effect" %}<circle cx="8" cy="8" r="6.5" fill="none" stroke="#b3bcc6" stroke-width="1.8" stroke-dasharray="2.5 2"/>
-{%- else %}<circle cx="8" cy="8" r="6" fill="none" stroke="#6b7580" stroke-width="1.6"/>{% endif -%}
+{%- if state == "ok" %}<circle cx="8" cy="8" r="7" fill="#3fc7b3"/><path d="M4.6 8.2l2.3 2.3 4.6-4.7" stroke="#0e1114" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+{%- elif state == "down" %}<path d="M5 1h6l4 4v6l-4 4H5l-4-4V5z" fill="#ff6b61"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#2a1517" stroke-width="1.8" stroke-linecap="round"/>
+{%- elif state == "warn" %}<path d="M8 1.5l7 12.5H1z" fill="#ffc85a"/><path d="M8 6v3.5M8 11.6v.01" stroke="#33280f" stroke-width="1.6" stroke-linecap="round"/>
+{%- elif state == "effect" %}<circle cx="8" cy="8" r="6.5" fill="none" stroke="#b5bbe0" stroke-width="1.8" stroke-dasharray="2.5 2"/>
+{%- else %}<circle cx="8" cy="8" r="6" fill="none" stroke="#8f98a8" stroke-width="1.6" stroke-dasharray="2.4 2"/>{% endif -%}
 </svg>
 {%- endmacro %}
 
@@ -41,7 +41,7 @@
 {%- endmacro %}
 
 {% macro search_icon() -%}
-<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="#9ba5b0" stroke-width="1.6" fill="none"/><path d="M11 11l3.5 3.5" stroke="#9ba5b0" stroke-width="1.6" stroke-linecap="round"/></svg>
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="#a6aed4" stroke-width="1.6" fill="none"/><path d="M11 11l3.5 3.5" stroke="#a6aed4" stroke-width="1.6" stroke-linecap="round"/></svg>
 {%- endmacro %}
 
 {% macro nav_icon(name) -%}
@@ -131,7 +131,7 @@
 {% endmacro %}
 
 {# menu konta: login, admin, liczniki — bez JavaScriptu (details) #}
-{% macro account_menu(sess, counts, csrf, theme='grafit', path='/') %}
+{% macro account_menu(sess, counts, csrf) %}
 <details class="menu">
   <summary>{% if counts.queue and sess.role == "admin" %}<span class="badge">{{ counts.queue }}</span>{% endif %}
     <span class="menu-who">{{ sess.login }} · {{ {"admin": "admin", "uzytkownik": "użytkownik"}.get(sess.role, "podgląd") }}</span>
@@ -149,11 +149,6 @@
     <hr>
     {% endif %}
     <a href="/konto">Konto i sesje</a>
-    <form class="theme-pick" method="post" action="/motyw">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="next" value="{{ path }}">
-      <span class="muted small">Motyw</span>
-      {% for key, label in THEME_LABELS.items() %}<button type="submit" name="motyw" value="{{ key }}" class="swatch sw-{{ key }}"{% if theme == key %} aria-pressed="true"{% endif %} title="{{ label }}"><span class="sr">{{ label }}</span></button>{% endfor %}
-    </form>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <button type="submit">Wyloguj</button>

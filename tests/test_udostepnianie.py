@@ -14,9 +14,9 @@ from .conftest import csrf_from, do_login, enable_2fa, make_user, new_client
 
 PW = "dlugie-haslo-uzytkownika"
 SECRET = "pve-tajny-host"
-# Trasy bez sesji: logowanie, zdrowie, token metryk, motyw (ciasteczko), parowanie tabletu kodem jednorazowym,
+# Trasy bez sesji: logowanie, zdrowie, token metryk, parowanie tabletu kodem jednorazowym,
 # skrypt agenta i jego rejestracja kodem.
-PUBLIC = {"/login", "/login/2fa", "/login/oidc", "/login/oidc/callback", "/logout", "/health", "/motyw", "/metrics",
+PUBLIC = {"/login", "/login/2fa", "/login/oidc", "/login/oidc/callback", "/logout", "/health", "/metrics",
           "/api/stan", "/tablet", "/agent/denali-agent.py", "/agent/denali-agent.py.sha256", "/api/agent/v1/rejestracja"}
 
 

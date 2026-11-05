@@ -15,7 +15,7 @@ Cel, do którego odnosi się każda decyzja:
 | Temat | Decyzja |
 |---|---|
 | Zakres | Dom + VPS. Sklep nie wchodzi; jeśli kiedyś dostanie panel, to osobna instancja z lokalizacją w ustawieniach |
-| Pulpit | Wersja B z makiety: pulpit jak ekran systemu — ikony aplikacji ze stanem, widżet „Gdzie jest problem” (warstwy), dok na dole |
+| Pulpit | Baner awarii z wyciszaniem, „Stan labu”, kafelki ze stanem i „tylko w domu”, Statystyki z integracji, panel boczny, tryb edycji na samym pulpicie; górny pasek, dok tylko na telefonie |
 | Tablet | Pulpit ma działać na tablecie na ścianie (obok Home Assistanta) — tryb kiosku, dotyk, poziomo i pionowo |
 | Nawigacja | 5 działów: Pulpit · Infrastruktura (Mapa, Proxmox, TrueNAS, Docker, Sieć) · Incydenty · Aktualizacje · Procedury |
 | Sieć | AX23 v1 → OpenWrt (router, pełny adapter); AX10 zostaje na fabrycznym oprogramowaniu (AP, adapter TP-Link tylko do odczytu) |
@@ -70,7 +70,7 @@ Nazwa repozytorium, pakietu Pythona i obrazu Dockera: `denali`.
 | Serwer HTTP | **FastAPI** + uvicorn (zamiast Flask + waitress) | Adaptery odpytują kilka systemów naraz — `async` + `httpx` robi to równolegle bez wątków. Walidacja danych z adapterów przez Pydantic. Wbudowany opis API (przydaje się do testów) |
 | Baza | **SQLite (WAL)** + SQLAlchemy 2 (Core) + **Alembic** | Jeden plik = łatwy backup i restore (wymóg). Kilkadziesiąt urządzeń to dla SQLite nic. Alembic zamiast ręcznych migracji z HLC |
 | Interfejs | Szablony **Jinja** renderowane na serwerze + **htmx** + odświeżanie przez **SSE** | Bez kroku budowania i bez frameworka JS. Tablet dostaje zmiany na żywo przez SSE. Te same szablony generują eksport statyczny procedur |
-| Wygląd | Własne tokeny CSS z makiety (statusy kolorem i kształtem, kontrast ≥ 4,5:1), czcionka IBM Plex Sans/Mono hostowana lokalnie | Panel nie może zależeć od Google Fonts, gdy padnie internet |
+| Wygląd | Własne tokeny CSS z makiety (statusy kolorem i kształtem, kontrast ≥ 4,5:1), jeden motyw Zorza ze statusami i typografią HLC Design System, czcionka Geist/Geist Mono hostowana lokalnie | Panel nie może zależeć od Google Fonts, gdy padnie internet |
 | Zadania w tle | Osobny proces **worker** (asyncio, harmonogram w kodzie) | Odpytywanie integracji nie blokuje UI; restart workera nie wyłącza panelu |
 | Eksport PDF | **WeasyPrint** (w kontenerze) | PDF procedur do druku i do telefonu |
 | Agent | Jeden plik Pythona (stdlib), odchudzony agent z HLC | Apt, reboot-required, NFS (z wykrywaniem ukrytych danych). Od 5.11.2026 też dyski, pamięć, usługi failed i kontenery (osobna usługa root bez sieci): API Proxmoxa nie zna dysku wewnątrz VM, a Komodo warstwy kontenera |

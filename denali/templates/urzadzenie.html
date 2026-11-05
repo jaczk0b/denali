@@ -134,9 +134,9 @@
   <div class="spark">
     <div class="avail-head"><span>{{ l.label }} — czas odpowiedzi, 24 h</span><span class="muted small mono">{% if l.avg is not none %}śr. {{ l.avg }} ms · maks. {{ l.max }} ms{% endif %}{% if l.fails %} · bez odpowiedzi: {{ l.fails | length }}×{% endif %}</span></div>
     <svg viewBox="0 0 {{ l.w }} {{ l.h + 6 }}" preserveAspectRatio="none" role="img" aria-label="{{ l.label }}: czas odpowiedzi">
-      <path d="{{ l.d }}" fill="none" stroke="#6aa8ff" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-      {% for x, y in l.dots %}<rect x="{{ x - 2 }}" y="{{ y - 2 }}" width="4" height="4" fill="#6aa8ff"/>{% endfor %}
-      {% for x in l.fails %}<rect x="{{ x }}" y="{{ l.h + 1 }}" width="3" height="5" fill="#ff6b6b"/>{% endfor %}
+      <path d="{{ l.d }}" fill="none" stroke="#5eead4" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+      {% for x, y in l.dots %}<rect x="{{ x - 2 }}" y="{{ y - 2 }}" width="4" height="4" fill="#5eead4"/>{% endfor %}
+      {% for x in l.fails %}<rect x="{{ x }}" y="{{ l.h + 1 }}" width="3" height="5" fill="#ff6b61"/>{% endfor %}
     </svg>
   </div>
   {% endfor %}

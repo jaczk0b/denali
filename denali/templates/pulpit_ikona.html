@@ -3,7 +3,7 @@
 {% block title %}{{ "Edycja ikony" if t.id else "Nowa ikona" }}{% endblock %}
 {% block content %}
 <div>
-  <p class="muted small"><a href="/">Pulpit</a> / <a href="/pulpit/ikony">Ikony pulpitu</a></p>
+  <p class="muted small"><a href="/">Pulpit</a> / <a href="/?edycja=1">Edycja pulpitu</a></p>
   <h1>{{ "Edycja ikony" if t.id else "Nowa ikona" }}</h1>
 </div>
 {{ alerts(error) }}
@@ -24,7 +24,7 @@
       {% for d in devices %}<option value="{{ d.id }}" {% if d.id == t.device_id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></label>
   <div class="form-row">
     <button class="btn primary" type="submit">Zapisz</button>
-    <a class="btn" href="/pulpit/ikony">Anuluj</a>
+    <a class="btn" href="/?edycja=1">Anuluj</a>
   </div>
 </form>
 {% endblock %}

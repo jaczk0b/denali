@@ -7,7 +7,7 @@ import time
 
 from sqlalchemy import select
 
-from .models import incident, incident_device, incident_event
+from .models import incident, incident_device
 
 # Od góry to, czego używasz, na dole to, na czym stoi.
 LAYERS = [
@@ -129,11 +129,6 @@ def verdict(devices, states, open_inc, breaks, last_closed=None, now=None):
         calm = " · bez awarii od " + ("dziś" if days == 0 else ("wczoraj" if days == 1 else f"{days} dni"))
     out.update(state="ok", headline="Wszystko działa", sub=f"sprawdzono {checked} {_devices_word(checked)}{calm}")
     return out
-
-
-def recent_events(conn, limit=5):
-    return conn.execute(select(incident_event.c.ts, incident_event.c.text, incident_event.c.incident_id)
-                        .order_by(incident_event.c.ts.desc(), incident_event.c.id.desc()).limit(limit)).mappings().all()
 
 
 def tile_color(name):

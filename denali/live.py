@@ -97,6 +97,8 @@ def version(conn, now=None):
         "incydenty": [list(r) for r in conn.execute(
             select(incident.c.id, incident.c.status, incident.c.severity, incident.c.title, incident.c.ended_at)
             .where(incident.c.status != "zamkniety").order_by(incident.c.id))],
+        # koniec wyciszenia ma rozwinąć baner bez przeładowania
+        "wyciszone": [r.id for r in conn.execute(select(incident.c.id).where(incident.c.muted_until > now).order_by(incident.c.id))],
         "zdarzenie": conn.execute(select(func.max(incident_event.c.id))).scalar(),
         "urzadzenia": list(conn.execute(select(func.count(), func.max(device.c.updated_at))).one()),
         "kolejka": conn.execute(select(func.count()).select_from(external_ref)
