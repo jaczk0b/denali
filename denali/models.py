@@ -24,7 +24,7 @@ app_user = Table(
     Column("id", Integer, primary_key=True),
     Column("login", String(64), nullable=False, unique=True),
     Column("pw_hash", String(255), nullable=False),
-    Column("role", String(16), nullable=False),                 # admin | podglad
+    Column("role", String(16), nullable=False),                 # admin | podglad | uzytkownik
     Column("totp_ct", Text),                                     # sekret TOTP, zaszyfrowany; NULL = 2FA wyłączone
     Column("totp_pending_ct", Text),                             # sekret w trakcie włączania 2FA
     Column("totp_last_step", Integer, nullable=False, default=0),  # ostatni użyty krok czasu — kod nie zadziała drugi raz
@@ -121,6 +121,24 @@ desk_tile = Table(
     Column("url", String(500), nullable=False, default="", server_default=""),  # http(s):// albo ścieżka panelu
     Column("icon", String(64), nullable=False, default="", server_default=""),
     Column("position", Integer, nullable=False, default=0, server_default="0"),
+)
+
+# Usługi udostępniane kontom z rolą „uzytkownik”.
+share = Table(
+    "share", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("title", String(200), nullable=False),
+    Column("kind", String(16), nullable=False),                  # link | adres | instrukcja | status
+    Column("target", String(500), nullable=False, default="", server_default=""),  # adres aplikacji albo udziału SMB
+    Column("device_id", Integer, ForeignKey("device.id", ondelete="SET NULL")),    # stąd stan; nazwy nie pokazujemy
+    Column("body_md", Text, nullable=False, default="", server_default=""),
+    Column("position", Integer, nullable=False, default=0, server_default="0"),
+)
+
+share_user = Table(
+    "share_user", metadata,
+    Column("share_id", Integer, ForeignKey("share.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", Integer, ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True),
 )
 
 device_address = Table(

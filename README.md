@@ -168,7 +168,8 @@ Własne konto (hasło + 2FA) zostaje zawsze — gdy Pocket ID nie działa, loguj
 `DENALI_OIDC_ADMIN_GROUP=denali-admins` i `DENALI_OIDC_VIEWER_GROUP=denali-podglad`. Wtedy osoba z grupy dostaje konto
 w Denali przy pierwszym logowaniu (bez hasła — tylko przez Pocket ID), rola idzie za grupą przy każdym logowaniu,
 a usunięcie z grup odbiera dostęp. Ostatni administrator nigdy nie traci roli. Bez ustawionych grup wchodzą tylko
-konta połączone ręcznie.
+konta połączone ręcznie. `DENALI_OIDC_USER_GROUP` (np. `denali-uzytkownicy`) robi to samo dla kont z rolą `uzytkownik`
+(zob. *Udostępnianie*); usługi przydzielasz im po pierwszym logowaniu.
 
 Zasady:
 - konto łączy się wyłącznie po identyfikatorze z Pocket ID, nigdy po nazwie — ktoś z nazwą `jakub` w Pocket ID nie
@@ -347,6 +348,12 @@ polecenia zlecić się nie da. Na maszynie: `sudo python3 /opt/denali-agent/dena
   spokoju: jedno powiadomienie i jedno „rozwiązane” zamiast serii.
 - **Powiadomienia** mówią, co dokładnie zgłosiło źródło (np. „192.168.1.10 nie odpowiada”, „port 5432 zamknięty”),
   a „rozwiązane” — co było, co jest teraz i ile trwało.
+- **Udostępnianie** (menu konta → *Udostępnianie*) daje wybranym osobom własną stronę: tylko przydzielone usługi (link
+  albo adres do skopiowania, np. SMB), status bez nazw urządzeń i powodów awarii oraz instrukcje, np. gotową do Tailscale.
+  Konto ma rolę `uzytkownik`: panel wygeneruje mu hasło albo konto powstanie samo przy logowaniu Pocket ID z grupy
+  `DENALI_OIDC_USER_GROUP`. Reszta panelu jest dla tej roli zamknięta, ale do sieci wpuszcza Tailscale: osoba musi być
+  zaproszona do tailnetu (udostępnione urządzenie nie przekazuje podsieci subnet routera), a ACL ma ograniczać ją
+  do SMB i panelu. Bez tego ma dostęp do całego LAN-u.
 - **Ikony pulpitu** dodajesz przyciskiem „+” w kategorii albo przez *Ułóż ikony i kategorie* (`/pulpit/ikony`): dowolny
   adres, strona panelu albo urządzenie (wtedy ikona pokazuje jego stan). Panel proponuje jednym kliknięciem aplikacje
   z adresem, integracje i swoje strony. Kategorie możesz nazwać i ułożyć po swojemu; ikony znajdzie też Ctrl+K.

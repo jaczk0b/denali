@@ -197,12 +197,13 @@ def finish(settings, st: dict, params: dict, transport=None, now: float | None =
 
 # ───────────────────────── konta ─────────────────────────
 def groups_set(settings) -> bool:
-    return bool(settings.oidc_admin_group.strip() or settings.oidc_viewer_group.strip())
+    return bool(settings.oidc_admin_group.strip() or settings.oidc_viewer_group.strip() or settings.oidc_user_group.strip())
 
 
 def role_for(settings, groups) -> str | None:
     have = {g.lower() for g in groups}
-    for role, gname in (("admin", settings.oidc_admin_group), ("podglad", settings.oidc_viewer_group)):
+    for role, gname in (("admin", settings.oidc_admin_group), ("podglad", settings.oidc_viewer_group),
+                        (auth.USER_ROLE, settings.oidc_user_group)):
         if gname.strip() and gname.strip().lower() in have:
             return role
     return None

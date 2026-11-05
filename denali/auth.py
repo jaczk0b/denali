@@ -16,7 +16,8 @@ from sqlalchemy import delete, func, insert, select, update
 
 from .models import app_user, audit_log, login_attempt, session
 
-ROLES = ("admin", "podglad")
+USER_ROLE = "uzytkownik"        # widzi tylko przydzielone usługi (web/deps.py: lista dozwolonych ścieżek)
+ROLES = ("admin", "podglad", USER_ROLE)
 MIN_PASSWORD = 12
 
 IDLE_TIMEOUT = 12 * 3600        # zwykła sesja wygasa po 12 h bezczynności…

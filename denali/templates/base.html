@@ -20,7 +20,19 @@
 </div>
 {% endif %}
 {% block chrome %}
-{% if signed_in %}
+{% if signed_in and sess.role == "uzytkownik" %}
+<header class="top">
+  <a class="brand" href="/moje">
+    <span class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 13.5L6 5l2.6 4.2L10.5 7l4 6.5z" fill="#0e1114"/></svg></span>
+    Denali
+  </a>
+  <nav class="nav" aria-label="Główne menu">
+    <a href="/moje" {% if path == "/moje" %}aria-current="page"{% endif %}>Moje usługi</a>
+    <a href="/moje/status" {% if path == "/moje/status" %}aria-current="page"{% endif %}>Status</a>
+  </nav>
+  <div class="top-right">{{ account_menu(sess, counts, csrf, theme, path) }}</div>
+</header>
+{% elif signed_in %}
 <header class="top">
   <a class="brand" href="/">
     <span class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 13.5L6 5l2.6 4.2L10.5 7l4 6.5z" fill="#0e1114"/></svg></span>

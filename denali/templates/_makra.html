@@ -134,7 +134,7 @@
 {% macro account_menu(sess, counts, csrf, theme='grafit', path='/') %}
 <details class="menu">
   <summary>{% if counts.queue and sess.role == "admin" %}<span class="badge">{{ counts.queue }}</span>{% endif %}
-    <span class="menu-who">{{ sess.login }} · {{ "admin" if sess.role == "admin" else "podgląd" }}</span>
+    <span class="menu-who">{{ sess.login }} · {{ {"admin": "admin", "uzytkownik": "użytkownik"}.get(sess.role, "podgląd") }}</span>
     <span class="avatar" aria-hidden="true">{{ sess.login[:1] | upper }}</span></summary>
   <div class="menu-panel">
     {% if sess.role == "admin" %}
@@ -143,6 +143,7 @@
     <a href="/admin/powiadomienia">Powiadomienia</a>
     <a href="/admin/profile">Profile urządzeń</a>
     <a href="/akcje">Akcje</a>
+    <a href="/admin/udostepnianie">Udostępnianie</a>
     <a href="/admin/tablet">Tablet na ścianie</a>
     <a href="/admin/audyt">Audyt</a>
     <hr>

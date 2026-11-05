@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st %}
+{% block title %}Status{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block content %}
+<div>
+  <h1>Status</h1>
+  <p class="muted">Strona odświeża się sama co minutę.</p>
+</div>
+<section class="verdict {{ summary.state }}" aria-live="polite">
+  {{ st(summary.state, 34, summary.text) }}
+  <div class="verdict-text"><span class="verdict-head">{{ summary.text }}</span></div>
+</section>
+{% if items %}
+<section class="card">
+  <ul class="plain share-status">
+    {% for s in items %}<li>{{ st(s.status.state, 18, s.status.text) }}<b>{{ s.title }}</b><span class="muted">{{ s.status.text }}</span></li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

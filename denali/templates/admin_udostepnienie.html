@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}{{ "Edycja usługi" if s.id else "Nowa usługa" }}{% endblock %}
+{% block content %}
+<div>
+  <p class="muted small"><a href="/admin/udostepnianie">Udostępnianie</a></p>
+  <h1>{{ "Edycja usługi" if s.id else "Nowa usługa" }}</h1>
+</div>
+{{ alerts(error) }}
+<form class="card narrow-form wide-form" method="post" action="{{ '/admin/udostepnianie/uslugi/%d' % s.id if s.id else '/admin/udostepnianie/uslugi/nowa' }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label class="field">Nazwa<input name="title" value="{{ s.title }}" required maxlength="200" autofocus placeholder="np. Immich"></label>
+  <label class="field">Rodzaj
+    <select name="kind">{% for k, v in share_kinds.items() %}<option value="{{ k }}" {% if s.kind == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+  <label class="field">Adres <span class="muted small">(link: https://…; udział SMB: \\nas\zdjecia)</span><input name="target" value="{{ s.target }}" maxlength="500"></label>
+  <label class="field">Stan z urządzenia <span class="muted small">(opcjonalnie; użytkownik zobaczy tylko „działa / nie działa”, bez nazwy urządzenia)</span>
+    <select name="device_id"><option value="">— bez stanu —</option>
+      {% for d in devices %}<option value="{{ d.id }}" {% if d.id == s.device_id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></label>
+  <label class="field">Instrukcja <span class="muted small">(Markdown; opcjonalnie poza rodzajem „Instrukcja”)</span><textarea name="body_md" rows="12">{{ s.body_md }}</textarea></label>
+  <div class="form-row">
+    <button class="btn primary" type="submit">Zapisz</button>
+    <a class="btn" href="/admin/udostepnianie">Anuluj</a>
+  </div>
+</form>
+{% endblock %}

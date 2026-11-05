@@ -22,9 +22,10 @@ class Settings(BaseSettings):
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
     oidc_label: str = "Zaloguj przez Pocket ID"
-    # Grupy u dostawcy → rola w Denali. Obie puste: wchodzą tylko konta połączone ręcznie (Konto → Połącz).
+    # Grupy u dostawcy → rola w Denali. Wszystkie puste: wchodzą tylko konta połączone ręcznie (Konto → Połącz).
     oidc_admin_group: str = ""
     oidc_viewer_group: str = ""
+    oidc_user_group: str = ""             # konta widzące tylko przydzielone usługi
 
     @property
     def oidc_enabled(self) -> bool:

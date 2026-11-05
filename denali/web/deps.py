@@ -21,6 +21,8 @@ LIVE_HEADER = "X-Denali-Live"
 CSP = "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 CSP_XTERM = CSP + "; style-src 'self' 'unsafe-inline'"     # xterm.js wstawia własne style: tylko strona terminala
 RESUME_PATH = "/potwierdz/dokoncz"
+# Konto „uzytkownik” wchodzi tylko tutaj (i niżej). Wszystko inne jest zamknięte, także trasy dodane w przyszłości.
+USER_PATHS = ("/moje", "/konto", "/potwierdz")
 PENDING_VALID = 600     # tyle czeka zapamiętane działanie na hasło
 
 
@@ -74,10 +76,18 @@ async def check_csrf(request: Request, expected: str) -> None:
         raise CsrfError()
 
 
+def _user_path(path: str) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in USER_PATHS)
+
+
 async def require_user(request: Request) -> dict:
     sess = get_session(request)
     if not sess or sess["kind"] == "pending":
         raise Redirect(f"/login?next={quote(request.url.path)}")
+    if sess["role"] == auth.USER_ROLE and not _user_path(request.url.path):
+        if request.url.path == "/":
+            raise Redirect("/moje")
+        raise Forbidden()
     # Po zalogowaniu przez Pocket ID drugim składnikiem jest klucz dostępu u dostawcy — 2FA Denali nie jest wymagane.
     # Odblokowany tablet ma rolę administratora z PIN-u — 2FA jest na koncie, które PIN ustawiło.
     if (sess["role"] == "admin" and not sess["totp_ct"] and sess["method"] != "oidc" and not sess.get("elevated")

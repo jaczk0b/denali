@@ -10,6 +10,7 @@ from markupsafe import Markup
 from sqlalchemy import func, select
 
 from . import discovery, incidents, inventory, live, updates
+from .auth import USER_ROLE
 from .models import external_ref, incident
 from .status import initials, tile_color
 
@@ -104,7 +105,8 @@ def render(request: Request, name: str, ctx: dict | None = None, status: int = 2
     theme = request.cookies.get(THEME_COOKIE, "")
     base = {"sess": sess, "csrf": sess["csrf"] if sess else "", "path": request.url.path,
             "theme": theme if theme in THEMES else THEMES[0],
-            "counts": _counts(request) if signed_in else {}, "live_version": ""}
+            # Konto „uzytkownik” nie dostaje liczników: nawet sama liczba incydentów to wiedza o infrastrukturze.
+            "counts": _counts(request) if signed_in and sess["role"] != USER_ROLE else {}, "live_version": ""}
     if signed_in and request.method == "GET" and name in LIVE_TEMPLATES and status == 200:
         with request.app.state.engine.connect() as conn:
             base["live_version"] = live.version(conn)

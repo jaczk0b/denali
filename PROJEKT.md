@@ -98,6 +98,8 @@ settings              klucz → wartość (nazwa lokalizacji, progi, kanały dom
 device                id, name, kind, role (do czego służy), criticality P1–P3, parent_id (na czym działa),
                       place (gdzie fizycznie), serial, notes_md, icon, app_url (adres aplikacji),
                       profile_id (puste = profil po typie), created_at, updated_at
+share                 id, title, kind (link | adres | instrukcja | status), target, device_id (stan), body_md, position
+share_user            share_id, user_id — co widzi konto z rolą uzytkownik
 desk_category         id, name, position — kategorie ikon na pulpicie
 desk_tile             id, category_id, device_id (opcjonalnie, jedna ikona na urządzenie), name, url (http(s) albo ścieżka
                       panelu), icon, position — puste pola bierze z urządzenia
@@ -250,6 +252,7 @@ Własne logowanie:
 |---|---|---|
 | **admin** | wszystko | dokumentacja, integracje, akcje z listy dozwolonych, skarbiec |
 | **podgląd** | pulpit, infrastruktura, incydenty, procedury, runbooki | czytać; bez haseł, bez akcji, bez ustawień |
+| **użytkownik** | tylko `/moje` (przydzielone usługi, status, instrukcje) i własne konto | wszystko inne zamknięte listą dozwolonych ścieżek (`USER_PATHS`), także nowe trasy |
 
 ### Tablet na ścianie (tryb kiosku)
 

@@ -14,7 +14,7 @@ from .crypto import Box
 from .db import kv_get, make_engine
 from .templating import render
 from .web import (action_routes, admin_routes, agent_routes, auth_routes, desk_routes, docs_routes, infra_routes, infra_tab_routes,
-                  integration_routes, live_routes, metrics_routes, notify_routes, oidc_routes, terminal_routes)
+                  integration_routes, live_routes, metrics_routes, notify_routes, oidc_routes, share_routes, terminal_routes)
 from .web.deps import CSP, CsrfError, Forbidden, NotFound, Redirect
 
 WORKER_LATE_AFTER = 120  # s bez sygnału życia = worker nie działa
@@ -51,7 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(Forbidden)
     async def _forbidden(request: Request, exc: Forbidden):
-        return render(request, "blad.html", {"title": "Brak dostępu", "text": "Ta strona jest tylko dla administratora."}, 403)
+        return render(request, "blad.html", {"title": "Brak dostępu", "text": "Nie masz dostępu do tej strony."}, 403)
 
     @app.exception_handler(CsrfError)
     async def _csrf(request: Request, exc: CsrfError):
@@ -64,7 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     for r in (auth_routes, infra_routes, infra_tab_routes, docs_routes, admin_routes, integration_routes, notify_routes, live_routes,
-              agent_routes, action_routes, oidc_routes, terminal_routes, metrics_routes, desk_routes):
+              agent_routes, action_routes, oidc_routes, terminal_routes, metrics_routes, desk_routes, share_routes):
         app.include_router(r.router)
 
     @app.get("/health")

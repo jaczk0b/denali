@@ -3,7 +3,7 @@
 {% block content %}
 <div>
   <h1>Konto: {{ sess.login }}</h1>
-  <p class="muted">Rola: {{ "administrator" if sess.role == "admin" else "podgląd" }} ·
+  <p class="muted">Rola: {{ {"admin": "administrator", "uzytkownik": "użytkownik"}.get(sess.role, "podgląd") }} ·
     {% if has_password %}logowanie dwuetapowe: {% if sess.totp_ct %}włączone{% else %}<a href="/konto/2fa">wyłączone — włącz</a>{% endif %}
     {% else %}logowanie tylko przez Pocket ID{% endif %}</p>
 </div>

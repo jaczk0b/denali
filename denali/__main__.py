@@ -38,7 +38,7 @@ def main(argv=None):
     sub.add_parser("worker")
     c = sub.add_parser("create-user")
     c.add_argument("login")
-    c.add_argument("--role", choices=("admin", "podglad"), default="admin")
+    c.add_argument("--role", choices=("admin", "podglad", "uzytkownik"), default="admin")
     r = sub.add_parser("reset-password")
     r.add_argument("login")
     r.add_argument("--disable-2fa", action="store_true", help="wyłącz też logowanie dwuetapowe (zgubiony telefon)")

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_makra.html" import st %}
+{% block title %}Moje usługi{% endblock %}
+{% block content %}
+<div>
+  <h1>Moje usługi</h1>
+  {% if sess.role == "admin" %}<p class="muted">Podgląd administratora: widzisz wszystkie usługi, a konto widzi tylko przydzielone.</p>{% endif %}
+</div>
+{% if not items %}
+<div class="card"><p class="muted">Nic tu jeszcze nie ma. Usługi pojawią się, gdy administrator je udostępni.</p></div>
+{% else %}
+<div class="share-grid">
+  {% for s in items %}
+  <section class="card share" aria-labelledby="u-{{ s.id }}">
+    <div class="share-head">
+      <span class="icon {{ s.title | tile_color }}" aria-hidden="true">{{ s.title | initials }}</span>
+      <div>
+        <h2 id="u-{{ s.id }}">{{ s.title }}</h2>
+        {% if s.status %}<span class="share-state">{{ st(s.status.state, 14, s.status.text) }} {{ s.status.text }}</span>{% endif %}
+      </div>
+    </div>
+    {% if s.kind == "adres" %}<code class="share-address">{{ s.target }}</code>{% endif %}
+    <div class="share-actions">
+      {% if s.kind == "link" %}<a class="btn primary" href="{{ s.target }}" target="_blank" rel="noopener noreferrer">Otwórz ↗</a>{% endif %}
+      {% if s.kind == "adres" %}<button class="btn primary" type="button" data-copy="{{ s.target }}">Kopiuj adres</button>{% endif %}
+      {% if s.body_md %}<a class="btn" href="/moje/{{ s.id }}">{{ "Otwórz instrukcję" if s.kind == "instrukcja" else "Instrukcja" }}</a>{% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

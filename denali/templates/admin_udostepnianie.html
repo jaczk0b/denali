@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_makra.html" import alerts %}
+{% block title %}Udostępnianie{% endblock %}
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Udostępnianie</h1>
+    <p class="muted">Konta dla osób, którym coś udostępniasz. Widzą tylko przydzielone usługi, ich ogólny stan i instrukcje.</p>
+  </div>
+  <a class="btn" href="/moje">Zobacz stronę użytkownika</a>
+</div>
+{{ alerts(error) }}
+{% if revealed %}
+<div class="alert ok" role="status">
+  <div>
+    <p>Hasło konta <b>{{ revealed.login }}</b> (widać je tylko teraz): <code class="mono">{{ revealed.password }}</code></p>
+    <button class="btn small" type="button" data-copy="{{ revealed.password }}">Kopiuj hasło</button>
+  </div>
+</div>
+{% endif %}
+
+<section class="card" aria-labelledby="konta">
+  <h2 id="konta">Konta</h2>
+  {% if not accounts %}<p class="muted small">Nie ma jeszcze żadnego konta.</p>{% endif %}
+  <div class="share-accounts">
+  {% for a in accounts %}
+    <article class="share-account">
+      <div class="row-between">
+        <div>
+          <b>{{ a.login }}</b>{% if a.disabled %} <span class="badge down">wyłączone</span>{% endif %}
+          <span class="muted small">{{ "hasło" if a.has_password else "" }}{% if a.has_password and a.oidc_sub %} i {% endif %}{{ "Pocket ID" if a.oidc_sub else "" }}</span>
+        </div>
+        <div class="desk-row-tools">
+          {% if a.has_password %}<form class="inline" method="post" action="/admin/udostepnianie/konta/{{ a.id }}/haslo"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Nowe hasło</button></form>{% endif %}
+          <form class="inline" method="post" action="/admin/udostepnianie/konta/{{ a.id }}/wlacz"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="wylacz" value="{{ '' if a.disabled else '1' }}"><button class="btn small {{ '' if a.disabled else 'danger' }}" type="submit">{{ "Włącz" if a.disabled else "Wyłącz" }}</button></form>
+        </div>
+      </div>
+      <form method="post" action="/admin/udostepnianie/konta/{{ a.id }}/uslugi">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <div class="share-checks">
+          {% for s in shares %}<label><input type="checkbox" name="share" value="{{ s.id }}" {% if s.id in a.share_ids %}checked{% endif %}> {{ s.title }}</label>{% endfor %}
+        </div>
+        <button class="btn small" type="submit">Zapisz usługi</button>
+      </form>
+    </article>
+  {% endfor %}
+  </div>
+  <form class="form-row mt" method="post" action="/admin/udostepnianie/konta">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input class="grow" name="login" required maxlength="64" placeholder="login" aria-label="Login nowego konta">
+    <button class="btn" type="submit">Utwórz konto</button>
+  </form>
+  <p class="muted small">Panel wygeneruje hasło i pokaże je raz. Konta z Pocket ID powstają same po pierwszym logowaniu osoby z grupy użytkowników.</p>
+</section>
+
+<section class="card" aria-labelledby="uslugi">
+  <div class="row-between">
+    <h2 id="uslugi">Usługi</h2>
+    <a class="btn small" href="/admin/udostepnianie/uslugi/nowa">Dodaj usługę</a>
+  </div>
+  <ul class="desk-rows">
+    {% for s in shares %}
+    <li>
+      <span class="desk-row-text"><b>{{ s.title }}</b><span class="muted small">{{ share_kinds[s.kind] }}{% if s.target %} · {{ s.target }}{% endif %}{% if s.device_id %} · pokazuje stan{% endif %}</span></span>
+      <span class="desk-row-tools">
+        <a class="btn small" href="/admin/udostepnianie/uslugi/{{ s.id }}">Edytuj</a>
+        <form class="inline" method="post" action="/admin/udostepnianie/uslugi/{{ s.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small danger" type="submit">Usuń</button></form>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}
