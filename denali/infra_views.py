@@ -283,8 +283,36 @@ def _current_ips(conn):
     return out
 
 
+def router_networks(conn):
+    """Sieci lokalne (VLAN-y) z routerów OpenWrt: [{"name", "cidr", "vlan", "gateway", "net"}], najwęższe pierwsze."""
+    out, seen = [], set()
+    for r in conn.execute(select(observed_state.c.data).join(integration, integration.c.id == observed_state.c.integration_id)
+                          .where(integration.c.type == "openwrt", observed_state.c.external_id == "router")):
+        for n in (r.data or {}).get("networks") or []:
+            try:
+                net = ipaddress.ip_network(n["cidr"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if net not in seen:
+                seen.add(net)
+                out.append({**n, "net": net})
+    return sorted(out, key=lambda n: -n["net"].prefixlen)
+
+
+def network_of(ip, routed):
+    """(sieć, nazwa albo None) dla adresu: sieć z routera, a bez niej /24 z samego adresu."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return None, None
+    for n in routed:
+        if addr in n["net"]:
+            return n["net"], n["name"] + (f" · VLAN {n['vlan']}" if n.get("vlan") else "")
+    return (ipaddress.ip_network(f"{ip}/24", strict=False), None) if addr.version == 4 else (None, None)
+
+
 def addresses(conn):
-    """Sieci /24 wyliczone same z adresów: każda pozycja .1–.254 zajęta (przez co) albo wolna.
+    """Sieci z routera OpenWrt (VLAN-y), a bez niego /24 z samych adresów: każdy adres zajęty (przez co) albo wolny.
 
     Źródła: adresy urządzeń w dokumentacji (ręczne i z integracji) oraz to, co widzą integracje, a nie jest jeszcze
     przypięte (kolejka „do zatwierdzenia”). Dwa urządzenia pod jednym adresem: jeśli integracja wie, kto ma go teraz
@@ -308,7 +336,9 @@ def addresses(conn):
                 if not lst:     # nieprzypisany klient pod adresem, który już ma urządzenie — to samo, nie konflikt
                     lst.append({"ref_id": r.id, "name": prop.get("name") or a["value"], "kind": "nowy",
                                 "type": prop.get("kind", ""), "source": "integracja", "stale": False})
-    nets = {}
+    routed = router_networks(conn)
+    nets = {n["net"]: {} for n in routed}               # sieci z routera widać, nawet gdy puste
+    names = {n["net"]: n["name"] + (f" · VLAN {n['vlan']}" if n.get("vlan") else "") for n in routed}
     for ip, own in owners.items():
         try:
             addr = ipaddress.ip_address(ip)
@@ -317,12 +347,14 @@ def addresses(conn):
         # Tylko prywatne IPv4 z LAN-u: adresy Tailscale (100.64/10) przydziela Tailscale, a publiczne — dostawca.
         if addr.version != 4 or not addr.is_private or addr.is_loopback or addr.is_link_local:
             continue
-        net = ipaddress.ip_network(f"{ip}/24", strict=False)
+        net, _name = network_of(ip, routed)
         nets.setdefault(net, {})[int(addr) - int(net.network_address)] = own
     out = []
     for net, used in sorted(nets.items(), key=lambda kv: int(kv[0].network_address)):
         cells, free = [], []
-        for host in range(1, 255):
+        # cała sieć do /22; większa — tylko zajęte adresy (siatka z 65 tys. pól nic by nie pokazała)
+        hosts = range(1, net.num_addresses - 1) if net.num_addresses <= 1024 else sorted(used)
+        for host in hosts:
             ip = str(net.network_address + host)
             own = used.get(host, [])
             devs = [o for o in own if o["kind"] == "urzadzenie"]
@@ -339,7 +371,8 @@ def addresses(conn):
                           "stale": any(o["stale"] for o in own)})
             if state == "wolny":
                 free.append(host)
-        out.append({"net": str(net), "prefix": str(net.network_address).rsplit(".", 1)[0], "cells": cells,
+        out.append({"net": str(net), "name": names.get(net), "routed": net in names,
+                    "prefix": str(net.network_address).rsplit(".", 1)[0], "cells": cells,
                     "used": sum(1 for c in cells if c["state"] != "wolny"), "free": len(free),
                     "free_ranges": _ranges(free), "conflicts": [c for c in cells if c["state"] == "konflikt"],
                     "stale": [c for c in cells if c["stale"]]})

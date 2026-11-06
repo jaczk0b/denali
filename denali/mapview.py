@@ -9,7 +9,7 @@ do serwera. Linie:
 - cienka szara: aplikacja → maszyna, na której działa.
 Klienci sieci (komputery, telefony) domyślnie schowani; po włączeniu stoją pod routerem / AP.
 Z lewej „z zewnątrz” (VPS) i internet od dostawcy (stan łącza z uplink.py, modem), od którego zależy brama.
-Linie widać po najechaniu (przeglądarka), poza przerwanymi danymi. Kolor paska na kafelku = podsieć (VLAN) adresu.
+Linie widać po najechaniu (przeglądarka), poza przerwanymi danymi. Kolor paska na kafelku = sieć adresu: VLAN z routera OpenWrt, a bez niego /24.
 Układ można zmienić przeciąganiem: zapisane pozycje (kv map.layout) przesuwają ramkę z maszynami albo kafelek.
 
 Każde urządzenie ma w data-rel listę tego, od czego zależy i co od niego zależy (przechodnio) — przeglądarka
@@ -20,7 +20,7 @@ import ipaddress
 
 from sqlalchemy import select
 
-from . import inventory as inv, uplink
+from . import infra_views, inventory as inv, uplink
 from .db import kv_get, kv_set
 from .models import cable, dependency, device, device_address
 
@@ -89,16 +89,25 @@ def build(conn, live, marks, with_clients=False, simulate=None):
     nodes, rect = [], {}                            # rect: device_id → (x, y, w, h)
     layers = []                                     # to samo jako lista warstw — na wąski ekran telefonu
 
-    nets = {}                                       # podsieć → kolor, w kolejności adresów
+    routed = infra_views.router_networks(conn)
+
+    def net_of(ip):
+        """Etykieta sieci lokalnej adresu: „iot · VLAN 30 · 192.168.30.0/24” z routera albo samo /24. Publiczne — None."""
+        net, name = infra_views.network_of(ip, routed) if ip else (None, None)
+        if not net or not net.is_private:
+            return None
+        return f"{name} · {net}" if name else str(net)
+
+    nets = {}                                       # sieć → kolor, w kolejności adresów
     for ip in sorted(ips.values(), key=_ip_key):
-        n = _net(ip)
+        n = net_of(ip)
         if n and n not in nets:
             nets[n] = NET_COLORS[len(nets) % len(NET_COLORS)]
 
     def node(d, x, y, sub=None, nested=False, box=None):
         rect[d["id"]] = (x, y, W, H)
         s = _state(d["id"], live, marks)
-        net = _net(ips.get(d["id"], ""))
+        net = net_of(ips.get(d["id"], ""))
         nodes.append({"id": d["id"], "x": x, "y": y, "name": d["name"], "short": _short(d["name"], 24),
                       "sub": sub or ips.get(d["id"]) or "", "kind": kind(d), "state": s, "label": STATE_LABEL.get(s, s),
                       "box": box, "net": net, "color": nets.get(net)})
@@ -266,14 +275,6 @@ def save_layout(conn, positions):
                 and all(isinstance(c, (int, float)) and not isinstance(c, bool) and 0 <= c <= 20000 for c in v):
             clean[str(k)] = [round(v[0]), round(v[1])]
     kv_set(conn, LAYOUT_KEY, {**(kv_get(conn, LAYOUT_KEY) or {}), **clean})
-
-
-def _net(ip):
-    # shortcut: podsieć jako /24 z adresu, bez prawdziwych masek VLAN-ów; do zmiany, gdy OpenWrt poda sieci
-    try:
-        return str(ipaddress.ip_network(f"{ip}/24", strict=False)) if ip and ":" not in ip else None
-    except ValueError:
-        return None
 
 
 def _ip_key(ip):

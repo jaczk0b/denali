@@ -14,6 +14,7 @@ niej, bo archiwum zawiera hasła Wi-Fi i skróty haseł kont. Denali zapisuje je
 Klienci jak przy TP-Linku: kolejka „do zatwierdzenia”, dopasowanie po MAC, zależność „sieć” od routera / AP
 (Wi-Fi twarda, kabel miękka). Kody połączenia te same (HOST_5G, WIRED…), więc zakładka Sieć jest wspólna.
 """
+import ipaddress
 import re
 from urllib.parse import urlsplit
 
@@ -138,6 +139,27 @@ def neighbours(text, skip_devs=()):
         if dev in skip_devs or not MAC.match(mac):
             continue
         out[mac] = parts[0]
+    return out
+
+
+def networks(ifaces):
+    """Sieci lokalne routera z network.interface dump: [{"name", "cidr", "gateway", "device", "vlan"}].
+    Bez WAN-ów i loopbacka; VLAN z nazwy urządzenia (br-lan.30, lan.30, eth0.30) albo None."""
+    out = []
+    for i in ifaces:
+        name = str(i.get("interface") or "")
+        if not name or name.startswith("wan") or name == "loopback":
+            continue
+        dev = str(i.get("l3_device") or i.get("device") or "")
+        vlan = re.search(r"\.(\d{1,4})$", dev)
+        for a in i.get("ipv4-address") or []:
+            try:
+                net = ipaddress.ip_network(f"{a.get('address')}/{int(a.get('mask'))}", strict=False)
+            except (TypeError, ValueError):
+                continue
+            if net.is_private and not net.is_loopback:
+                out.append({"name": name[:40], "cidr": str(net), "gateway": a.get("address"), "device": dev[:40],
+                            "vlan": int(vlan.group(1)) if vlan else None})
     return out
 
 
@@ -408,7 +430,7 @@ class Openwrt(Adapter):
             "target": (board.get("release") or {}).get("target") or "", "uptime": info.get("uptime"),
             "load": round((info.get("load") or [0])[0] / 65536, 2) if info.get("load") else None,
             "memory_used": mem_used, "wan": wan, "ports": ports, "wifi": wifi, "clients": n_all,
-            "updates": len(updates) if updates is not None else None}))
+            "updates": len(updates) if updates is not None else None, "networks": networks(d["ifaces"])}))
         if updates is not None:
             out.updates = [Update("router", name, "pakiet", cur, new) for name, cur, new in updates]
         return out

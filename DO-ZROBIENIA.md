@@ -61,7 +61,10 @@ Kod sprawdzony testami i w przeglądarce na lokalnej bazie demo, nie na prawdziw
 - [ ] Powiadomienia przy niedziałającym Discordzie: panel nie zwalnia (wysyłka już nie trzyma blokady bazy).
 - [ ] Mapa: Internet od dostawcy (stan łącza), VPS w „Z zewnątrz”, kolory podsieci, linie po najechaniu, *Ułóż mapę*
       (przeciąganie, zapis, układ automatyczny) — sprawdzić na prawdziwym labie i na tablecie (dotyk).
-- [ ] Zostało: sieci/VLAN-y z OpenWrt — prawdziwe maski i nazwy VLAN-ów w *Adresach IP* i w legendzie mapy (dziś /24 z adresu).
+- [ ] VLAN-y z OpenWrt (bez zmian w ACL — to samo `network.interface dump`): po odczycie routera *Adresy IP* pokazują
+      sieci z nazwą i numerem VLAN (np. „iot · VLAN 30”), prawdziwą maską, także puste; „Poza sieciami routera” = adres do
+      sprawdzenia. Legenda mapy z tymi nazwami. Do sprawdzenia: czy VLAN z nazwy urządzenia (`br-lan.30`) zgadza się z DSA
+      na AX23 (przy VLAN-ach na mostku urządzenie może nazywać się inaczej — wtedy numer zostanie pusty, nazwa i sieć działają).
 
 ## 2. Bezpieczeństwo — do domknięcia
 

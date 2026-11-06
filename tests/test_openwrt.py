@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from denali import actions, auth, configs, discovery, integrations, profiles
 from denali.adapters import AdapterError
-from denali.adapters.openwrt import Openwrt, band, leases, neighbours, speed, upgradable
+from denali.adapters.openwrt import Openwrt, band, leases, neighbours, networks, speed, upgradable
 from denali.models import audit_log, config_backup, update_item
 
 from .conftest import csrf_from, do_login, enable_2fa, make_user, new_client
@@ -148,6 +148,8 @@ def test_odczyt_routera_klientow_i_aktualizacji():
                                     {"name": "wan", "up": True, "speed": "1 Gb/s"}]
     assert [w["ssid"] for w in router.data["wifi"]] == ["Dom", "Dom"]      # bez połączenia klienta (sta)
     assert router.data["memory_used"] == 50 and router.data["load"] == 0.5
+    assert router.data["networks"] == [{"name": "lan", "cidr": "192.168.1.0/24", "gateway": "192.168.1.1",
+                                        "device": "br-lan", "vlan": None}]          # bez WAN-u
     assert [(u.component, u.current, u.available) for u in res.updates][0] == ("luci-base", "24.10.0-r1", "24.10.1-r1")
 
 
@@ -304,3 +306,37 @@ def test_zakladka_siec_i_strona_integracji(app, router):
     assert "uhttpd -m" in form and "denali-kopia" in form
     page = cli.get(f"/admin/integracje/{router['iid']}").text
     assert "Akcje — osobny token" in page and "denali-kopia" in page
+
+
+def test_sieci_i_vlany_z_routera():
+    ifaces = [
+        {"interface": "lan", "l3_device": "br-lan", "ipv4-address": [{"address": "192.168.10.1", "mask": 24}]},
+        {"interface": "iot", "l3_device": "br-lan.30", "ipv4-address": [{"address": "192.168.30.1", "mask": 23}]},
+        {"interface": "wan", "l3_device": "wan", "ipv4-address": [{"address": "83.1.2.3", "mask": 24}]},
+        {"interface": "loopback", "l3_device": "lo", "ipv4-address": [{"address": "127.0.0.1", "mask": 8}]},
+        {"interface": "zly", "ipv4-address": [{"address": "x", "mask": "y"}]},
+    ]
+    assert networks(ifaces) == [
+        {"name": "lan", "cidr": "192.168.10.0/24", "gateway": "192.168.10.1", "device": "br-lan", "vlan": None},
+        {"name": "iot", "cidr": "192.168.30.0/23", "gateway": "192.168.30.1", "device": "br-lan.30", "vlan": 30}]
+
+
+def test_adresy_i_mapa_z_vlanow_routera(app, router):
+    from denali import infra_views, inventory as inv, mapview
+    from denali.models import observed_state
+    with app.state.engine.begin() as c:
+        c.execute(observed_state.update().where(observed_state.c.external_id == "router").values(data={"networks": [
+            {"name": "lan", "cidr": "192.168.1.0/24", "vlan": None},
+            {"name": "iot", "cidr": "192.168.30.0/23", "vlan": 30}]}))
+        cam = inv.create_device(c, "kamera", "inne")
+        inv.add_address(c, cam, "ip", "192.168.31.7")                  # druga połowa /23 — ta sama sieć
+        nets = {n["net"]: n for n in infra_views.addresses(c)}
+        assert nets["192.168.30.0/23"]["name"] == "iot · VLAN 30" and nets["192.168.30.0/23"]["routed"]
+        assert len(nets["192.168.30.0/23"]["cells"]) == 510 and "192.168.31.0/24" not in nets
+        m = mapview.build(c, {}, {})
+        assert "iot · VLAN 30 · 192.168.30.0/23" in m["nets"]
+    make_user(app, "admin")
+    cli = new_client(app)
+    do_login(cli, "admin")
+    enable_2fa(cli, app, "admin")
+    assert "iot · VLAN 30" in cli.get("/infrastruktura/adresy").text

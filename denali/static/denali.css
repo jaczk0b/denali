@@ -120,6 +120,9 @@ svg.st { flex: none; vertical-align: -2px; }
 .menu > summary::-webkit-details-marker { display: none; }
 .menu > summary:hover { color: var(--text); }
 details.menu[open] > summary { margin-bottom: 0; }
+.net-block { margin-bottom: 12px; }
+.net-block > summary { cursor: pointer; padding: 12px 14px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.net-block[open] > summary { margin-bottom: 12px; }
 .dropdown { position: relative; }
 .dropdown > summary { list-style: none; }
 .dropdown > summary::-webkit-details-marker { display: none; }

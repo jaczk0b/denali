@@ -408,7 +408,7 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
   Serwer fizyczny ma *Bezpieczny restart…*: kolejność wyłączania i uruchamiania maszyn liczona z zależności,
   przerwa jednym kliknięciem, stan na żywo. Sam restart węzła robisz w Proxmoxie — panel nie ma do tego uprawnień.
 - **Mapa**: od lewej *Z zewnątrz* (VPS), *Internet* (łącze od dostawcy — stan z testu łącza), sieć, serwery w ramkach,
-  aplikacje. Kolor paska na kafelku = podsieć (VLAN). Powiązania widać po najechaniu na urządzenie (albo wszystkie
+  aplikacje. Kolor paska na kafelku = sieć (VLAN z routera OpenWrt, bez niego /24 z adresu). Powiązania widać po najechaniu na urządzenie (albo wszystkie
   przyciskiem), przerwane dane zawsze. *Ułóż mapę* (administrator): przeciągasz ramki i kafelki, *Zapisz układ*;
   *Układ automatyczny* wraca do rysowanego samego. *Co jeśli…?* pokazuje, co przestanie działać, gdy wybrane urządzenie
   padnie (symulacja, nic nie jest wyłączane).

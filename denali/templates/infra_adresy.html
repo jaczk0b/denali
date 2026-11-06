@@ -4,12 +4,22 @@
 {% block content %}
 <h1>Infrastruktura</h1>
 {{ infra_nav(tabs, "adresy") }}
+{% if nets and not nets | selectattr("routed") | list %}
+<p class="muted small">Sieci są wyliczone z samych adresów jako /24. Po podłączeniu routera OpenWrt (<em>Integracje</em>)
+  pojawią się prawdziwe sieci i VLAN-y z nazwami.</p>
+{% endif %}
 {% if not nets %}
 <div class="card"><p class="muted">Żadne urządzenie nie ma jeszcze adresu IP w sieci lokalnej.</p></div>
 {% endif %}
 {% for n in nets %}
+<details class="net-block"{% if n.conflicts or nets | length == 1 %} open{% endif %}>
+<summary><strong>{{ n.name or ("Poza sieciami routera" if nets | selectattr("routed") | list else "Sieć") }}</strong> <span class="mono">{{ n.net }}</span>
+  <span class="muted small">· zajęte {{ n.used }} · wolne {{ n.free }}</span>
+  {% if n.conflicts %}<span class="pill down">{{ st("down", 12) }} konflikt: {{ n.conflicts | length }}</span>{% endif %}
+  {% if n.stale %}<span class="pill warn">stare adresy: {{ n.stale | length }}</span>{% endif %}</summary>
 <section class="stats" aria-label="Podsumowanie {{ n.net }}">
-  <div class="stat"><span class="muted small">Sieć</span><b class="mono">{{ n.net }}</b></div>
+  <div class="stat"><span class="muted small">{{ n.name or "Sieć" }}</span><b class="mono">{{ n.net }}</b>
+    {% if not n.routed %}<span class="muted small">wyliczona z adresów (/24)</span>{% endif %}</div>
   <div class="stat"><span class="muted small">Zajęte</span><b>{{ n.used }}</b></div>
   <div class="stat"><span class="muted small">Wolne</span><b>{{ n.free }}</b></div>
   <div class="stat"><span class="muted small">Do sprawdzenia</span><b>{{ n.conflicts | length + n.stale | length }}</b></div>
@@ -24,7 +34,7 @@
 
 <section class="card" aria-labelledby="mapa-{{ loop.index }}">
   <div class="row-between">
-    <h2 id="mapa-{{ loop.index }}">Mapa adresów</h2>
+    <h2 id="mapa-{{ loop.index }}">Mapa adresów{% if n.name %} · {{ n.name }}{% endif %}</h2>
     <span class="muted small">najedź albo kliknij, żeby zobaczyć urządzenie</span>
   </div>
   <div class="ipgrid" role="list">
@@ -71,5 +81,6 @@
     </table>
   </div>
 </section>
+</details>
 {% endfor %}
 {% endblock %}
