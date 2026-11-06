@@ -10,7 +10,7 @@ from markdown_it import MarkdownIt
 from markupsafe import Markup
 from sqlalchemy import func, or_, select
 
-from . import discovery, incidents, inventory, live, updates
+from . import discovery, incidents, inventory, live, profiles, updates
 from .auth import USER_ROLE
 from .models import alert, external_ref, incident
 from .status import initials, tile_color
@@ -75,7 +75,7 @@ def _uptime(s) -> str:
 
 templates.env.filters.update(dt=_dt, hm=_hm, md=_md_filter, initials=initials, tile_color=tile_color, size=_size,
                              bytes=_bytes, pct=_pct, uptime=_uptime)
-templates.env.globals.update(KINDS=inventory.KINDS, DEP_TYPES=inventory.DEP_TYPES, VIA=incidents.VIA,
+templates.env.globals.update(MONITOR=profiles.MONITOR, KINDS=inventory.KINDS, DEP_TYPES=inventory.DEP_TYPES, VIA=incidents.VIA,
                              version_text=updates.version_text, STATIC_V=STATIC_V,
                              PRIORITY={1: "P1", 2: "P2", 3: "P3"})
 

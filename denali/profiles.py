@@ -8,11 +8,26 @@ from sqlalchemy import delete, select
 
 from .models import device, device_override, profile
 
+# Sposób sprawdzania jak w HLC. Proxmox, Komodo i TrueNAS liczą się zawsze (np. „wyłączona celowo”); wybór mówi,
+# co rozstrzyga „żyje / nie żyje”. Szczegóły w live.compute.
+MONITOR = {
+    "auto": "automatycznie",
+    "agent": "tylko agent",
+    "ping": "tylko ping",
+    "adres": "tylko adres:port / HTTP",
+    "brak": "nie sprawdzaj",
+}
+
+
+def monitored(conn, device_id):
+    return value(conn, device_id, "monitor") != "brak"
+
+
 # klucz → (typ albo dozwolone wartości, wartość domyślna, opis)
 SETTINGS = {
-    "monitor": (bool, True, "Monitoruj stan"),
+    "monitor": (tuple(MONITOR), "auto", "Jak sprawdzać, czy działa"),
     "down_after_s": (int, 120, "Po ilu sekundach niedziałania zgłosić awarię"),
-    "notify": (bool, True, "Powiadamiaj na Discordzie"),
+    "notify": (bool, True, "Powiadamiaj o awariach"),
     "updates": (("powiadom", "ignoruj"), "powiadom", "Dostępne aktualizacje"),
     "notify_warn": (bool, True, "Powiadamiaj o alertach (dysk, kopie, NFS…)"),
     "disk_warn": (int, 85, "Dysk: ostrzeżenie od (%)"),

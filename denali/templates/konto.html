@@ -81,4 +81,11 @@
   </form>
 </section>
 {% endif %}
+{% if sess.role == "admin" %}
+<section class="card" aria-labelledby="dodatki">
+  <h2 id="dodatki">Dodatki</h2>
+  <p class="muted small">Rzadziej używane: <a href="/admin/tablet">Tablet na ścianie</a> · <a href="/admin/udostepnianie">Udostępnianie domownikom</a>
+    · <a href="/infrastruktura/szafa">Szafa</a> (zakładka pojawi się w Infrastrukturze, gdy dodasz pierwszą).</p>
+</section>
+{% endif %}
 {% endblock %}

@@ -131,3 +131,26 @@ def test_dodanie_kanalu_w_panelu(app):
         assert r.status_code == 200 and "wiadomość testowa" in r.text
         assert "abc-tajne" not in r.text
     assert discord.sent[0]["embeds"][0]["title"] == "Test powiadomień Denali"
+
+
+def test_wysylka_nie_blokuje_bazy(app):
+    """Podczas czekania na Discord panel musi móc zapisywać (worker.sending: bez długiej transakcji)."""
+    import sqlite3
+    from denali import worker
+    with app.state.engine.begin() as c:
+        lab(c, app)
+        notify.save_channel(c, app.state.box, "Discord 2", WEBHOOK)   # po 1. kanale zapis, potem czekanie na 2.
+    db = app.state.settings.db_path
+
+    def handle(request):
+        other = sqlite3.connect(db, timeout=0.5)        # drugi proces (panel) zapisuje w trakcie wysyłki
+        other.execute("UPDATE setting SET updated_at = updated_at")
+        other.execute("INSERT OR REPLACE INTO setting (key, value, updated_at) VALUES ('test.w_trakcie', '1', 0)")
+        other.commit()
+        other.close()
+        return httpx.Response(204)
+
+    with worker.sending(app.state.engine) as conn:
+        assert run(notify.process(conn, app.state.box, "https://denali.lan", httpx.MockTransport(handle), now=1070)) == 1
+    with app.state.engine.connect() as c:
+        assert c.execute(select(incident.c.notified_at)).scalar() == 1070

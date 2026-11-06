@@ -16,12 +16,13 @@
       {% set val = p.settings.get(key, defs[key][1]) %}
       <tr>
         <td>{{ defs[key][2] }}</td>
-        <td>{% if val is sameas true %}tak{% elif val is sameas false %}nie{% else %}{{ val }}{% endif %}
+        <td>{% if key == "monitor" %}{{ MONITOR.get(val, val) }}{% elif val is sameas true %}tak{% elif val is sameas false %}nie{% else %}{{ val }}{% endif %}
           {% if key not in p.settings %}<span class="muted small">(domyślne)</span>{% endif %}</td>
         <td>
           <form class="inline" method="post" action="/admin/profile/{{ p.id }}">
             <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="key" value="{{ key }}">
             {% if val is sameas true or val is sameas false %}<input type="hidden" name="value" value="{{ 'nie' if val else 'tak' }}"><button class="link" type="submit">zmień na „{{ 'nie' if val else 'tak' }}”</button>
+            {% elif key == "monitor" %}<select name="value" aria-label="Jak sprawdzać">{% for k, label in MONITOR.items() %}<option value="{{ k }}"{% if k == val %} selected{% endif %}>{{ label }}</option>{% endfor %}</select> <button class="link" type="submit">zapisz</button>
             {% elif key == "updates" %}{% set other = "ignoruj" if val == "powiadom" else "powiadom" %}<input type="hidden" name="value" value="{{ other }}"><button class="link" type="submit">zmień na „{{ other }}”</button>
             {% else %}<input class="small-input" name="value" inputmode="numeric" value="{{ val }}" aria-label="{{ defs[key][2] }} — {{ p.name }}"> <button class="link" type="submit">zapisz</button>{% endif %}
           </form>

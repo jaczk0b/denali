@@ -524,7 +524,27 @@ def secret_remove(request: Request, device_id: int, secret_id: int, sess: dict =
 def _queue_page(request, conn, error=None, status_code=200):
     sources = {r.id: r.name for r in conn.execute(select(integration.c.id, integration.c.name))}
     all_devices = conn.execute(select(device.c.id, device.c.name).order_by(device.c.name)).mappings().all()
-    return render(request, "kolejka.html", {"rows": discovery.pending(conn), "gone": discovery.gone(conn),
+    rows = discovery.pending(conn)
+    # „na czym działa” po nazwie, nie jako node/pve albo IP
+    by_ref = {(r.integration_id, r.external_id): r for r in conn.execute(select(external_ref))}
+    names = {d["id"]: d["name"] for d in all_devices}
+    pending_ip = {a["value"]: r["proposed"]["name"] for r in rows for a in r["proposed"].get("addresses") or []}
+
+    def parent_name(r):
+        par = r["proposed"].get("parent") or {}
+        if "ref" in par:
+            x = by_ref.get((r["integration_id"], par["ref"]))
+            if not x:
+                return par["ref"]
+            return names.get(x.device_id) or (x.proposed or {}).get("name") or par["ref"]
+        if "ip" in par:
+            d = inv.find_by_address(conn, "ip", par["ip"])
+            return names.get(d) if d else pending_ip.get(par["ip"], par["ip"])
+        return None
+    parents = {r["id"]: parent_name(r) for r in rows}
+    clients = [r for r in rows if r["external_id"].startswith("mac/")]     # telefony, laptopy — z routera i AP
+    return render(request, "kolejka.html", {"rows": [r for r in rows if r not in clients], "clients": clients,
+                                            "parents": parents, "gone": discovery.gone(conn),
                                             "integrations": sources,
                                             "matches": discovery.suggest_matches(conn),
                                             "all_devices": all_devices, "error": error}, status_code)

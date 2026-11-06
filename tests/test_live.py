@@ -142,7 +142,51 @@ def test_awaria_wyzej_przejmuje_incydent(app):
 def test_bez_monitorowania_brak_stanu(app):
     iid, ids = setup_lab(app)
     with app.state.engine.begin() as c:
-        profiles.set_override(c, ids["truenas"], "monitor", False)
+        profiles.set_override(c, ids["truenas"], "monitor", "brak")
         live.evaluate(c, now=1000)
         assert ids["truenas"] not in live.saved(c, now=1000)
         assert live.saved(c, now=1000 + live.STALE_AFTER + 1) == {}   # stary stan = worker nie działa
+
+
+def _fail(conn, device_id, kind, target, since, now):
+    spec = checks.Spec(device_id, kind, target)
+    checks.record(conn, [(spec, checks.Result(False, f"{target} nie odpowiada"))], [spec], since)
+    checks.record(conn, [(spec, checks.Result(False, f"{target} nie odpowiada"))], [spec], now)
+
+
+def test_ping_blokowany_przez_vlan_nie_jest_awaria_gdy_proxmox_mowi_dziala(app):
+    """Sposób „auto” jak w HLC: Proxmox potwierdza, że VM działa — milczący ping (firewall między VLAN-ami) to nie awaria."""
+    _iid, ids = setup_lab(app)
+    with app.state.engine.begin() as c:
+        _fail(c, ids["docker"], "ping", "192.168.20.20", 1000, 1300)
+        assert live.compute(c, now=1300)[ids["docker"]]["state"] == "ok"
+        _fail(c, ids["docker"], "tcp", "192.168.20.20:22", 1000, 1300)
+        assert live.compute(c, now=1300)[ids["docker"]]["state"] == "warn"      # konkretny port leży — tylko uwaga
+        _fail(c, ids["docker"], "http", "http://192.168.20.20", 1000, 1300)
+        assert live.compute(c, now=1300)[ids["docker"]]["state"] == "down"      # aplikacja nie odpowiada — awaria
+
+
+def test_tylko_ping_rozstrzyga_mimo_proxmoxa(app):
+    _iid, ids = setup_lab(app)
+    with app.state.engine.begin() as c:
+        profiles.set_override(c, ids["docker"], "monitor", "ping")
+        _fail(c, ids["docker"], "ping", "192.168.20.20", 1000, 1300)
+        assert live.compute(c, now=1300)[ids["docker"]]["state"] == "down"
+
+
+def test_tylko_agent_http_najwyzej_uwaga(app):
+    _iid, ids = setup_lab(app)
+    with app.state.engine.begin() as c:
+        profiles.set_override(c, ids["docker"], "monitor", "agent")
+        _fail(c, ids["docker"], "http", "http://192.168.20.20", 1000, 1300)
+        assert live.compute(c, now=1300)[ids["docker"]]["state"] == "warn"
+        profiles.set_override(c, ids["docker"], "monitor", "brak")
+        assert ids["docker"] not in live.compute(c, now=1300)
+
+
+def test_bez_integracji_wszystko_milczy_to_awaria(app):
+    _iid, ids = setup_lab(app)
+    with app.state.engine.begin() as c:
+        cam = inv.create_device(c, "kamera", "inne")
+        _fail(c, cam, "ping", "192.168.30.44", 1000, 1300)
+        assert live.compute(c, now=1300)[cam]["state"] == "down"

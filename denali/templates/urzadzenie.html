@@ -50,19 +50,20 @@
 
 {{ alerts(error, message) }}
 
-{% if open_alerts %}
-<section data-tab="przeglad" class="card" aria-labelledby="alerty-h">
-  <h2 id="alerty-h">Wymaga uwagi</h2>
-  <ul class="list-rows">
-    {% for a in open_alerts %}<li>{{ st("down" if a.severity == "krytyczny" else "warn", 14) }}<span class="grow">{{ a.message }}<br><span class="muted small">{{ a.label }} · od {{ a.first_seen | dt }}{% if a.silenced %} · wyciszony do {{ a.silenced_until | dt }}{% endif %}</span></span></li>{% endfor %}
-  </ul>
-  <p class="small"><a href="/alerty">Wycisz albo zobacz wszystkie</a></p>
-</section>
-{% endif %}
-
-{% if sources or checks %}
-<section data-tab="przeglad" aria-labelledby="zrodla">
-  <h2 id="zrodla">Stan ze źródeł</h2>
+<section data-tab="przeglad" class="card" aria-labelledby="zrodla">
+  <h2 id="zrodla">Stan i sprawdzenia</h2>
+  {% set m = settings.monitor %}
+  <div class="row-between">
+    <p class="small">Sprawdzam: <strong>{{ MONITOR.get(m.value, m.value) }}</strong>
+      <span class="muted">· {{ "wyjątek na tym urządzeniu" if m.source == "urzadzenie" else "z profilu " ~ profile_name }}</span></p>
+    {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/ustawienia">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="key" value="monitor">
+      <select name="value" aria-label="Jak sprawdzać, czy działa">{% for k, label in MONITOR.items() %}<option value="{{ k }}"{% if k == m.value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <button class="btn small" type="submit">Zmień</button></form>{% endif %}
+  </div>
+  {% if m.value == "auto" %}<p class="muted small">Automatycznie: żyje, gdy potwierdza to integracja (Proxmox, Komodo, agent) albo którekolwiek sprawdzenie —
+    wtedy milczący ping (np. firewall między VLAN-ami) nie jest awarią. Adres aplikacji, który nie odpowiada, jest awarią zawsze.</p>{% endif %}
+  {% if sources or checks %}
   <div class="source-grid">
     {% for s in sources %}
     <div class="card source">
@@ -77,38 +78,92 @@
     <div class="card source">
       <div class="source-head"><span>{{ {"ping": "Ping z LAN", "internet": "Z internetu (przez publiczny DNS)", "tcp": "Port TCP", "dns": "Nazwa w DNS", "tls": "Certyfikat TLS"}.get(c.kind, "Aplikacja (HTTP)") }}</span><span>{{ c.checked_at | hm }}</span></div>
       {% set waiting = not c.ok and c.first_fail_at and live and live.pending_until and c.kind not in ("internet", "dns") %}
-      <div class="source-state">{{ st("warn" if soon or waiting else ("ok" if c.ok else "down"), 15) }}
-        {{ ("Działa — uwaga" if soon else "Działa") if c.ok else ("Nie odpowiada — jeszcze nie awaria" if waiting else "Nie odpowiada") }}</div>
+      {% set ignored = not c.ok and c.kind == "ping" and m.value == "auto" and live and live.state in ("ok", "warn") %}
+      <div class="source-state">{{ st("unknown" if ignored else ("warn" if soon or waiting else ("ok" if c.ok else "down")), 15) }}
+        {{ ("Działa — uwaga" if soon else "Działa") if c.ok else ("Nie odpowiada — nie liczy się, inne źródło potwierdza, że działa" if ignored else ("Nie odpowiada — jeszcze nie awaria" if waiting else "Nie odpowiada")) }}</div>
       <div class="small">{{ c.summary }}{% if not c.ok and c.first_fail_at %} · od {{ c.first_fail_at | hm }}{% endif %}{% if waiting %} · awaria, jeśli nie wróci do {{ live.pending_until | hm }}{% endif %}</div>
       <div class="muted small mono">{{ c.target }}</div>
     </div>
     {% endfor %}
   </div>
+  {% elif m.value == "brak" %}<p class="muted">Nie sprawdzam — urządzenie jest tylko w dokumentacji.</p>
+  {% elif not addresses and not refs and not d.app_url %}<p class="muted">Nie ma czego sprawdzać: brak adresu IP, adresu aplikacji i integracji. Dodaj adres w zakładce <a href="#adresy" data-tab-link="dane">Adresy</a> albo własne sprawdzenie poniżej.</p>
+  {% else %}<p class="muted">Pierwszy wynik pojawi się w ciągu minuty (gdy działa worker).</p>{% endif %}
+  <h3 class="mt">Własne sprawdzenia <span class="muted small">— adres:port, HTTP, DNS, certyfikat; to, czego panel nie wyliczy sam</span></h3>
+    {% if custom_checks %}
+    <ul class="list-rows">
+      {% for c in custom_checks %}<li><span class="chip">{{ custom_kinds.get(c.kind, c.kind) }}</span><span class="grow mono small">{{ c.target }}{% if c.expect %} → {{ c.expect }}{% endif %}</span>
+        {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/sprawdzenia/{{ c.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if admin %}
+    <details class="mt"><summary>Dodaj sprawdzenie</summary>
+      <form method="post" action="/urzadzenia/{{ d.id }}/sprawdzenia" class="narrow-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <label class="field">Rodzaj<select name="kind">{% for k, v in custom_kinds.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+        <label class="field">Cel <span class="muted small">(adres, https://… albo adres:port)</span><input name="target" required maxlength="500"></label>
+        <label class="field">Oczekiwany adres <span class="muted small">(tylko DNS)</span><input name="expect" maxlength="200"></label>
+        <button class="btn" type="submit">Dodaj</button>
+      </form>
+    </details>
+    {% endif %}
+</section>
+{% if admin and (dev_actions or action_runs) %}
+  {% set allowed = settings.actions.value %}
+  <section data-tab="przeglad" class="card" aria-labelledby="akcje">
+    <h2 id="akcje">Akcje</h2>
+    {% if not actions_on %}<p class="muted small">Akcje są wyłączone w <a href="/akcje">Akcjach</a>.</p>{% endif %}
+    {% set ready = dev_actions | rejectattr("reason") | list %}
+    {% set blocked = dev_actions | selectattr("reason") | list %}
+    {% if ready %}<div class="actions">{% for o in ready %}<a class="btn small" href="/urzadzenia/{{ d.id }}/akcje/{{ o.ref_id }}/{{ o.key }}">{{ o.spec.label }}…</a>{% endfor %}</div>
+    {% elif dev_actions %}<p class="muted small">Żadna akcja nie jest teraz dostępna. <a href="/akcje">Co trzeba włączyć?</a></p>{% endif %}
+    {% if blocked %}
+    <details class="mt"><summary>Niedostępne: {{ blocked | length }}</summary>
+    <ul class="list-rows">
+      {% for o in blocked %}
+      <li><span class="grow">{{ o.spec.label }}{% if o.spec.dangerous %} <span class="pill warn">wymaga hasła</span>{% endif %}<br>
+          <span class="muted small">{{ o.integration.name }} · <span class="mono">{{ o.external_id }}</span>{% if o.reason %} · {{ o.reason }}{% endif %}</span></span>
+</li>
+      {% endfor %}
+    </ul>
+    </details>
+    {% endif %}
+    {% if dev_actions %}
+    <details class="mt">
+      <summary>Dozwolone akcje: {{ allowed | select("in", action_keys | map(attribute=0) | list) | list | length }} z {{ action_keys | length }}{% if settings.actions.source == "urzadzenie" %} · <span class="pill warn">inne niż profil</span>{% endif %}</summary>
+      <form method="post" action="/urzadzenia/{{ d.id }}/akcje-dozwolone" class="mt">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        {% for key, spec, cls in action_keys %}
+        <label class="check"><input type="checkbox" name="allow" value="{{ key }}" {% if key in allowed %}checked{% endif %}> {{ cls.label }}: {{ spec.label }}</label>
+        {% endfor %}
+        <div class="actions mt"><button class="btn small" type="submit">Zapisz jako wyjątek na tym urządzeniu</button></div>
+      </form>
+      {% if settings.actions.source == "urzadzenie" %}
+      <form method="post" action="/urzadzenia/{{ d.id }}/akcje-dozwolone"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="clear" value="1"><button class="link" type="submit">jak w profilu „{{ profile_name }}”</button></form>
+      {% endif %}
+      <p class="muted small">Najlepiej raz w <a href="/admin/profile">Profilach</a> — dla wszystkich urządzeń tego typu.</p>
+    </details>
+    {% endif %}
+    {% if action_runs %}
+    <h3 class="mt">Ostatnie</h3>
+    <ul class="list-rows">
+      {% for r in action_runs %}<li><a class="grow" href="/akcje/{{ r.id }}">{{ r.label }}</a><span class="muted small">{{ r.created_at | dt }} · {{ r.requested_by }}</span> {{ run_status(r.status) }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endif %}
+
+{% if open_alerts %}
+<section data-tab="przeglad" class="card" aria-labelledby="alerty-h">
+  <h2 id="alerty-h">Wymaga uwagi</h2>
+  <ul class="list-rows">
+    {% for a in open_alerts %}<li>{{ st("down" if a.severity == "krytyczny" else "warn", 14) }}<span class="grow">{{ a.message }}<br><span class="muted small">{{ a.label }} · od {{ a.first_seen | dt }}{% if a.silenced %} · wyciszony do {{ a.silenced_until | dt }}{% endif %}</span></span></li>{% endfor %}
+  </ul>
+  <p class="small"><a href="/alerty">Wycisz albo zobacz wszystkie</a></p>
 </section>
 {% endif %}
 
-{% if breaks or admin %}
-<section data-tab="przeglad" class="card break-card" aria-labelledby="przerwa">
-  <h2 id="przerwa">Planowana przerwa</h2>
-  {% for b in breaks %}
-  <div class="row-between">
-    <p>{{ st("warn", 13) }} Trwa do <b>{{ b.ends_at | hm }}</b>{% if b.reason %} — {{ b.reason }}{% endif %}
-      <span class="muted small">· {{ b.created_by }}. Awaria tego urządzenia i tego, co od niego zależy, nie otworzy incydentu.</span></p>
-    {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/przerwa/{{ b.id }}/koniec">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Zakończ teraz</button></form>{% endif %}
-  </div>
-  {% endfor %}
-  {% if admin and not breaks %}
-  <form class="break-form" method="post" action="/urzadzenia/{{ d.id }}/przerwa">
-    <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <label>Na <select name="minutes">{% for m in break_choices %}<option value="{{ m }}"{% if m == 30 %} selected{% endif %}>{{ m if m < 60 else m // 60 }} {{ "min" if m < 60 else "h" }}</option>{% endfor %}</select></label>
-    <label class="grow"><span class="sr">Powód</span><input name="reason" maxlength="200" placeholder="Powód, np. aktualizacja Proxmoxa"></label>
-    <button class="btn" type="submit">Zacznij przerwę</button>
-  </form>
-  <p class="muted small">Restart, aktualizacja, przeprowadzka: przez ten czas awaria nie otworzy incydentu ani nie wyśle powiadomienia.</p>
-  {% endif %}
-</section>
-{% endif %}
+
 
 {% if storage %}
 <section data-tab="przeglad" class="card" aria-labelledby="miejsce">
@@ -140,6 +195,31 @@
     </svg>
   </div>
   {% endfor %}
+</section>
+{% endif %}
+
+{% if breaks or admin %}
+<section data-tab="przeglad" class="card break-card" aria-label="Planowana przerwa">
+  {% if breaks %}<h2 id="przerwa">Planowana przerwa</h2>{% endif %}
+  {% for b in breaks %}
+  <div class="row-between">
+    <p>{{ st("warn", 13) }} Trwa do <b>{{ b.ends_at | hm }}</b>{% if b.reason %} — {{ b.reason }}{% endif %}
+      <span class="muted small">· {{ b.created_by }}. Awaria tego urządzenia i tego, co od niego zależy, nie otworzy incydentu.</span></p>
+    {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/przerwa/{{ b.id }}/koniec">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn small" type="submit">Zakończ teraz</button></form>{% endif %}
+  </div>
+  {% endfor %}
+  {% if admin and not breaks %}
+  <details><summary>Zaplanuj przerwę (restart, aktualizacja)</summary>
+  <form class="break-form" method="post" action="/urzadzenia/{{ d.id }}/przerwa">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label>Na <select name="minutes">{% for m in break_choices %}<option value="{{ m }}"{% if m == 30 %} selected{% endif %}>{{ m if m < 60 else m // 60 }} {{ "min" if m < 60 else "h" }}</option>{% endfor %}</select></label>
+    <label class="grow"><span class="sr">Powód</span><input name="reason" maxlength="200" placeholder="Powód, np. aktualizacja Proxmoxa"></label>
+    <button class="btn" type="submit">Zacznij przerwę</button>
+  </form>
+  <p class="muted small">Restart, aktualizacja, przeprowadzka: przez ten czas awaria nie otworzy incydentu ani nie wyśle powiadomienia.</p>
+  </details>
+  {% endif %}
 </section>
 {% endif %}
 
@@ -350,42 +430,6 @@
   </section>
   {% endif %}
 
-  {% if admin and (dev_actions or action_runs) %}
-  {% set allowed = settings.actions.value %}
-  <section data-tab="przeglad" class="card" aria-labelledby="akcje">
-    <h2 id="akcje">Akcje</h2>
-    {% if not actions_on %}<p class="muted small">Akcje są wyłączone w <a href="/akcje">Akcjach</a>.</p>{% endif %}
-    {% if dev_actions %}
-    <ul class="list-rows">
-      {% for o in dev_actions %}
-      <li><span class="grow">{{ o.spec.label }}{% if o.spec.dangerous %} <span class="pill warn">wymaga hasła</span>{% endif %}<br>
-          <span class="muted small">{{ o.integration.name }} · <span class="mono">{{ o.external_id }}</span>{% if o.reason %} · {{ o.reason }}{% endif %}</span></span>
-        {% if not o.reason %}<a class="btn small" href="/urzadzenia/{{ d.id }}/akcje/{{ o.ref_id }}/{{ o.key }}">{{ o.spec.label }}…</a>{% endif %}</li>
-      {% endfor %}
-    </ul>
-    <details class="mt">
-      <summary>Dozwolone akcje: {{ allowed | select("in", action_keys | map(attribute=0) | list) | list | length }} z {{ action_keys | length }}{% if settings.actions.source == "urzadzenie" %} · <span class="pill warn">inne niż profil</span>{% endif %}</summary>
-      <form method="post" action="/urzadzenia/{{ d.id }}/akcje-dozwolone" class="mt">
-        <input type="hidden" name="csrf_token" value="{{ csrf }}">
-        {% for key, spec, cls in action_keys %}
-        <label class="check"><input type="checkbox" name="allow" value="{{ key }}" {% if key in allowed %}checked{% endif %}> {{ cls.label }}: {{ spec.label }}</label>
-        {% endfor %}
-        <div class="actions mt"><button class="btn small" type="submit">Zapisz jako wyjątek na tym urządzeniu</button></div>
-      </form>
-      {% if settings.actions.source == "urzadzenie" %}
-      <form method="post" action="/urzadzenia/{{ d.id }}/akcje-dozwolone"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="clear" value="1"><button class="link" type="submit">jak w profilu „{{ profile_name }}”</button></form>
-      {% endif %}
-      <p class="muted small">Najlepiej raz w <a href="/admin/profile">Profilach</a> — dla wszystkich urządzeń tego typu.</p>
-    </details>
-    {% endif %}
-    {% if action_runs %}
-    <h3 class="mt">Ostatnie</h3>
-    <ul class="list-rows">
-      {% for r in action_runs %}<li><a class="grow" href="/akcje/{{ r.id }}">{{ r.label }}</a><span class="muted small">{{ r.created_at | dt }} · {{ r.requested_by }}</span> {{ run_status(r.status) }}</li>{% endfor %}
-    </ul>
-    {% endif %}
-  </section>
-  {% endif %}
 
   {% if admin and config_backups %}
   <section data-tab="dane" class="card" aria-labelledby="kopie">
@@ -410,13 +454,14 @@
       {% for key in edit_settings %}{% set s = settings[key] %}
       <tr>
         <td>{{ setting_defs[key][2] }}</td>
-        <td>{% if s.value is sameas true %}tak{% elif s.value is sameas false %}nie{% else %}{{ s.value }}{% endif %}
+        <td>{% if key == "monitor" %}{{ MONITOR.get(s.value, s.value) }}{% elif s.value is sameas true %}tak{% elif s.value is sameas false %}nie{% else %}{{ s.value }}{% endif %}
           {% if s.source == "urzadzenie" %}<span class="pill warn">inne niż profil</span>{% endif %}</td>
         <td>{% if admin %}
           <form class="inline" method="post" action="/urzadzenia/{{ d.id }}/ustawienia">
             <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="key" value="{{ key }}">
             {% if s.source == "urzadzenie" %}<input type="hidden" name="clear" value="1"><button class="link" type="submit">jak w profilu</button>
             {% elif s.value is sameas true or s.value is sameas false %}<input type="hidden" name="value" value="{{ 'nie' if s.value else 'tak' }}"><button class="link" type="submit">zmień na „{{ 'nie' if s.value else 'tak' }}”</button>
+            {% elif key == "monitor" %}<select name="value" aria-label="Jak sprawdzać">{% for k, label in MONITOR.items() %}<option value="{{ k }}"{% if k == s.value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select> <button class="link" type="submit">zapisz</button>
             {% elif key == "updates" %}{% set other = "ignoruj" if s.value == "powiadom" else "powiadom" %}<input type="hidden" name="value" value="{{ other }}"><button class="link" type="submit">zmień na „{{ other }}”</button>
             {% else %}<input class="small-input" name="value" inputmode="numeric" value="{{ s.value }}" aria-label="{{ setting_defs[key][2] }}"> <button class="link" type="submit">zapisz</button>{% endif %}
           </form>
@@ -451,29 +496,6 @@
   </section>
   {% endif %}
 
-  {% if custom_checks or admin %}
-  <section data-tab="ustawienia" class="card" aria-labelledby="wlasne">
-    <h2 id="wlasne">Własne sprawdzenia</h2>
-    <p class="muted small">Tylko to, czego panel nie policzy sam z adresów urządzenia.</p>
-    {% if custom_checks %}
-    <ul class="list-rows">
-      {% for c in custom_checks %}<li><span class="chip">{{ custom_kinds.get(c.kind, c.kind) }}</span><span class="grow mono small">{{ c.target }}{% if c.expect %} → {{ c.expect }}{% endif %}</span>
-        {% if admin %}<form class="inline" method="post" action="/urzadzenia/{{ d.id }}/sprawdzenia/{{ c.id }}/usun"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link" type="submit">usuń</button></form>{% endif %}</li>{% endfor %}
-    </ul>
-    {% endif %}
-    {% if admin %}
-    <details class="mt"><summary>Dodaj sprawdzenie</summary>
-      <form method="post" action="/urzadzenia/{{ d.id }}/sprawdzenia" class="narrow-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf }}">
-        <label class="field">Rodzaj<select name="kind">{% for k, v in custom_kinds.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
-        <label class="field">Cel <span class="muted small">(adres, https://… albo adres:port)</span><input name="target" required maxlength="500"></label>
-        <label class="field">Oczekiwany adres <span class="muted small">(tylko DNS)</span><input name="expect" maxlength="200"></label>
-        <button class="btn" type="submit">Dodaj</button>
-      </form>
-    </details>
-    {% endif %}
-  </section>
-  {% endif %}
 
   <section data-tab="ustawienia" class="card" aria-labelledby="szczegoly">
     <h2 id="szczegoly">Szczegóły</h2>

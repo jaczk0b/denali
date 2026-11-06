@@ -18,6 +18,13 @@ PRUNE_EVERY = 3600          # stara historia stanów i czasów odpowiedzi
 FORECAST_EVERY = 900        # „kończy się miejsce” i poniedziałkowe podsumowanie tygodnia
 
 
+def sending(engine):
+    """Połączenie do kroków, które czekają na sieć (Discord, SMTP, strażnik): każdy zapis od razu zatwierdzony.
+    W transakcji SQLite trzymałby blokadę zapisu przez całą wysyłkę — panel czekałby albo dostał „database is locked”,
+    a błąd w dalszym kroku cofnąłby „wysłano” i wiadomość wyszłaby drugi raz."""
+    return engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+
+
 def tick(engine, settings: Settings, state: dict, now: float | None = None) -> None:
     now = now or time.time()
     with engine.begin() as conn:
@@ -96,7 +103,7 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                 state["oui_task"] = asyncio.create_task(oui.refresh(settings.data_dir, state))
             if box:
                 try:
-                    with engine.begin() as conn:
+                    with sending(engine) as conn:
                         await notify.process(conn, box, settings.base_url)
                         await notify.process_alerts(conn, box, settings.base_url, live.saved(conn))
                         await notify.reminders(conn, box, settings.base_url)
@@ -105,16 +112,14 @@ async def run(settings: Settings, stop: asyncio.Event | None = None, interval: f
                 if time.time() - state.get("forecast_at", 0) >= FORECAST_EVERY:
                     state["forecast_at"] = time.time()
                     try:
-                        with engine.begin() as conn:
+                        with sending(engine) as conn:
                             await notify.forecast_alerts(conn, box, settings.base_url)
-                        with engine.begin() as conn:
                             await weekly.process(conn, box, settings.base_url)
-                        with engine.begin() as conn:
                             await weekly.process_month(conn, box, settings.base_url)
                     except Exception:
                         log.exception("Prognoza miejsca albo podsumowanie tygodnia nie powiodły się")
                 try:
-                    with engine.begin() as conn:
+                    with sending(engine) as conn:
                         await watchdog.ping(conn, box)
                 except Exception:
                     log.exception("Meldunek strażnika nie powiódł się")

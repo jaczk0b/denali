@@ -1,6 +1,6 @@
 # Do zrobienia
 
-Stan na 4.11.2026. Etapy 2 (rdzeń) i 3 (status) odebrane. Etapy 4 (aktualizacje) i 5 (akcje): wdrożone, panel za NPM, agent i akcje działają na testowej VM; zostają
+Stan na 6.11.2026. Etapy 2 (rdzeń) i 3 (status) odebrane. Etapy 4 (aktualizacje) i 5 (akcje): wdrożone, panel za NPM, agent i akcje działają na testowej VM; zostają
 pozostałe punkty 3 i 3a. Odłożone pomysły są w [POMYSLY.md](POMYSLY.md), decyzje w [PROJEKT.md](PROJEKT.md).
 
 ---
@@ -46,6 +46,20 @@ Kod sprawdzony testami na nagranych danych. **Na prawdziwych serwerach nie był 
 - [ ] Odłącz internet na chwilę (kabel WAN): VPS bez fałszywego incydentu, po powrocie wiadomość o przerwie.
 - [ ] Drugi kanał powiadomień (ntfy, Telegram albo e-mail).
 - [ ] Sprawdź, czy magazyny Proxmoxa są widoczne na karcie węzła (token PVEAuditor powinien je widzieć).
+
+## 1c. Porządki 6.11.2026 (gałąź `porzadki`) — do sprawdzenia
+
+Kod sprawdzony testami i w przeglądarce na lokalnej bazie demo, nie na prawdziwych serwerach.
+
+- [ ] *Deploy* (migracja 0023: „monitoruj tak/nie” → sposób sprawdzania; „nie” w profilu klientów sieci → „nie sprawdzaj”).
+- [ ] VM w innym VLAN-ie, do której ping nie dochodzi, a Proxmox mówi „running”: karta „Działa”, kafelek pingu
+      „nie liczy się”, bez incydentu.
+- [ ] *Profile*: „Jak sprawdzać, czy działa” — np. dla urządzeń bez integracji (kamera, drukarka) „tylko ping” albo
+      „tylko adres:port / HTTP” z własnym sprawdzeniem na karcie.
+- [ ] *Akcje*: lista kontrolna dla każdej integracji; zmiana profilu z tej strony nie kasuje akcji innych integracji.
+- [ ] *Do zatwierdzenia*: „Dodaj” i „Pomiń” jednym kliknięciem, klienci routera w zwiniętej sekcji.
+- [ ] Powiadomienia przy niedziałającym Discordzie: panel nie zwalnia (wysyłka już nie trzyma blokady bazy).
+- [ ] Zostało: sieci/VLAN-y z OpenWrt do zakładki *Adresy IP* (dziś zakłada /24), mapa — do omówienia, co w niej przeszkadza.
 
 ## 2. Bezpieczeństwo — do domknięcia
 

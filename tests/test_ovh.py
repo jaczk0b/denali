@@ -202,7 +202,7 @@ def test_zakladka_vps_i_terminal(app):
         device_id = c.execute(select(device.c.id).where(device.c.kind == "vps")).scalar_one()
         assert consoles.addresses(c, device_id)[0] == "51.68.1.2"
     assert cli.get(f"/terminale/{device_id}").status_code == 200
-    assert "Dodaj: OVHcloud" in cli.get("/admin/integracje").text
+    assert "/admin/integracje/nowa?typ=ovh" in cli.get("/admin/integracje").text
     form = cli.get("/admin/integracje/nowa?typ=ovh").text
     assert "createToken" in form and "ovh-eu" in form
     page = cli.get(f"/admin/integracje/{row['id']}")     # stan „konto” nie ma urządzenia ani wpisu w kolejce

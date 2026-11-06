@@ -27,7 +27,7 @@ def test_plan_bez_konfiguracji(conn):
     app_ = inv.create_device(conn, "Immich", "kontener", app_url="https://immich.lan")
     off = inv.create_device(conn, "stary", "host")
     inv.add_address(conn, off, "ip", "192.168.1.99")
-    profiles.set_override(conn, off, "monitor", False)
+    profiles.set_override(conn, off, "monitor", "brak")
     specs = set(checks.plan(conn))
     assert specs == {checks.Spec(pve, "ping", "192.168.1.10"), checks.Spec(nas, "ping", "nas.lan"),
                      checks.Spec(app_, "http", "https://immich.lan")}

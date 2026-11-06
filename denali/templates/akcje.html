@@ -5,8 +5,7 @@
 <div class="row-between">
   <div>
     <h1>Akcje</h1>
-    <p class="muted">Akcja wykona się tylko, gdy: akcje są włączone, jest na liście „Dozwolone akcje” urządzenia (profil albo wyjątek),
-      integracja ma do niej prawo (zakres albo token do akcji), a niebezpieczna — po potwierdzeniu hasłem i kodem. Każde zlecenie i wynik są w <a href="/admin/audyt">audycie</a>.</p>
+    <p class="muted">Restart, snapshot, Deploy, aktualizacje. Wszystko, co trzeba włączyć, jest na tej stronie. Każde zlecenie i wynik są w <a href="/admin/audyt">audycie</a>.</p>
   </div>
   <div class="actions">
     {% if on %}
@@ -19,16 +18,37 @@
 {% if not on %}<div class="alert error" role="alert">{{ st("down") }}<span>Akcje są wyłączone — panel nie zleci żadnej, nawet dozwolonej.</span></div>{% endif %}
 
 <section class="card">
-  <h2>Integracje z akcjami</h2>
-  <ul class="list-rows">
-    {% for t in tokens %}
-    <li>{{ st("ok" if t.ready else "unknown", 14) }}
-      <span class="grow"><a href="/admin/integracje/{{ t.row.id }}{{ '' if t.cls.push else ('#uprawnienia' if t.cls.grants else '#akcje') }}">{{ t.row.name }}</a><br>
-        <span class="muted small">{% for a in t.cls.actions %}{{ a.label }}{% if not loop.last %} · {% endif %}{% endfor %}</span></span>
-      <span class="small">{% if t.cls.push %}lokalna lista na maszynie{% elif t.cls.grants %}{{ "zakres nadany" if t.ready else "bez zakresu" }}{% elif t.ready %}token do akcji zapisany{% else %}<span class="muted">bez tokenu do akcji</span>{% endif %}</span>
-    </li>
-    {% else %}<li class="muted">Brak integracji, które mają akcje (Proxmox, Komodo, agent).</li>{% endfor %}
-  </ul>
+  <h2>Co trzeba, żeby akcja działała</h2>
+  <p class="muted small">Dla każdej integracji: czy ma prawo do akcji i na co pozwalają profile jej urządzeń. Pojedyncze wyjątki ustawiasz na karcie urządzenia.</p>
+  {% for t in tokens %}{% set type = t.cls.type %}
+  <div class="card mt">
+    <h3>{% if t.row %}<a href="/admin/integracje/{{ t.row.id }}">{{ t.row.name }}</a> <span class="muted small">· {{ t.cls.label }}</span>{% else %}Agenci na maszynach <span class="muted small">· {{ t.agents | length }}</span>{% endif %}</h3>
+    <ol class="steps">
+      <li>{{ st("ok" if on else "down", 13) }} Akcje w panelu {{ "włączone" if on else "wyłączone — przycisk na górze" }}</li>
+      <li>{% if t.cls.push %}{{ st("unknown", 13) }} Prawo nadaje sama maszyna — lokalna lista, której panel nie zmieni. Na maszynie:
+          <code class="mono">sudo python3 /opt/denali-agent/denali-agent.py pozwol &lt;akcja&gt;</code>
+          <span class="muted small">(akcje: {% for a in t.cls.actions if not a.terminal %}{{ a.key }}{% if not loop.last %}, {% endif %}{% endfor %})</span>
+        {% else %}{{ st("ok" if t.ready else "down", 13) }}
+          {% if t.ready %}Integracja ma prawo do akcji{% else %}Integracja nie ma prawa do akcji —
+          <a href="/admin/integracje/{{ t.row.id }}{{ '#uprawnienia' if t.cls.grants else '#akcje' }}">{{ "zaznacz „Akcje” w uprawnieniach" if t.cls.grants else "dodaj token do akcji" }}</a>{% endif %}{% endif %}</li>
+      <li>{{ st("ok" if t.profiles else "unknown", 13) }} Profile urządzeń z tej integracji:
+        {% if not t.profiles %}<span class="muted">jeszcze żadne urządzenie nie jest zatwierdzone.</span>{% endif %}
+        {% for pid, x in t.profiles.items() %}{% set allowed = (x.p.settings or {}).get("actions", []) %}
+        <details class="mt"><summary><strong>{{ x.p.name }}</strong> <span class="muted small">· {{ x.count }} urządz.</span> —
+          {% for a in t.cls.actions if not a.terminal and (type ~ "." ~ a.key) in allowed %}{{ a.label }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">nic nie wolno</span>{% endfor %}</summary>
+          <form method="post" action="/admin/profile/{{ pid }}/akcje" class="mt">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="/akcje"><input type="hidden" name="type" value="{{ type }}">
+            {% for a in t.cls.actions if not a.terminal %}
+            <label class="check"><input type="checkbox" name="allow" value="{{ type }}.{{ a.key }}" {% if (type ~ "." ~ a.key) in allowed %}checked{% endif %}> {{ a.label }}{% if a.dangerous %} <span class="muted small">(przy zlecaniu hasło i kod)</span>{% endif %}</label>
+            {% endfor %}
+            <div class="actions mt"><button class="btn small" type="submit">Zapisz dla profilu „{{ x.p.name }}”</button></div>
+          </form>
+        </details>
+        {% endfor %}</li>
+    </ol>
+    {% if t.agents %}<p class="small muted">Maszyny: {% for a in t.agents %}<a href="/admin/integracje/{{ a.id }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  </div>
+  {% else %}<p class="muted">Brak integracji, które mają akcje (Proxmox, Komodo, agent).</p>{% endfor %}
 </section>
 
 <section class="card table-wrap">

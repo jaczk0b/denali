@@ -281,3 +281,13 @@ def test_zly_kod_tabletu_liczy_sie_do_limitu(app):
         pair(app, "ZLYK-OD00")
     _c, r = pair(app, "ZLYK-OD00")
     assert r.status_code == 429
+
+
+def test_kolejka_przyciski_i_klienci_osobno(admin, lab, app):
+    from denali import discovery
+    with app.state.engine.begin() as c:
+        iid = c.execute(select(integration.c.id)).scalar()
+        discovery.upsert(c, iid, "mac/aa:bb:cc:dd:ee:01", {"name": "telefon", "kind": "inne"})
+    page = admin.get("/zatwierdz").text
+    assert f'formaction="/zatwierdz/{lab["ref"]}"' in page and "To już jest w Denali" in page
+    assert "Klienci sieci: 1" in page

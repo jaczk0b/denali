@@ -9,7 +9,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
 from .. import actions, auth, integrations, inventory as inv, profiles
-from ..models import integration, profile
+from ..models import device, external_ref, integration, profile
 from ..templating import render
 from .deps import NotFound, client_ip, require_admin, require_fresh
 
@@ -73,14 +73,36 @@ async def action_start(request: Request, device_id: int, ref_id: int, key: str, 
 
 
 # ───────────────────────── przebieg i historia ─────────────────────────
+def _profiles_of(conn, integration_id):
+    """Profile urządzeń zatwierdzonych z tej integracji: {id profilu: {"p": wiersz, "count": ile urządzeń}}."""
+    out = {}
+    ids = select(external_ref.c.device_id).where(external_ref.c.integration_id == integration_id,
+                                                 external_ref.c.status == "zatwierdzony")
+    for d in conn.execute(select(device).where(device.c.id.in_(ids))).mappings():
+        p = profiles.profile_for(conn, d)
+        if p:
+            out.setdefault(p["id"], {"p": p, "count": 0})["count"] += 1
+    return out
+
+
 @router.get("/akcje")
 def action_list(request: Request, sess: dict = Depends(require_admin)):
     with request.app.state.engine.connect() as conn:
         rows = actions.recent(conn, limit=200)
         ints = conn.execute(select(integration).order_by(integration.c.name)).mappings().all()
         types = actions.registry()
-        tokens = [{"row": r, "cls": types[r["type"]], "ready": actions.has_credentials(r)}
+        tokens = [{"row": r, "cls": types[r["type"]], "ready": actions.has_credentials(r),
+                   "profiles": _profiles_of(conn, r["id"])}
                   for r in ints if r["type"] in types and types[r["type"]].actions]
+        if any(t["row"]["type"] == "agent" for t in tokens):   # agenci: jeden wiersz na wszystkie maszyny
+            agents = [t for t in tokens if t["row"]["type"] == "agent"]
+            merged = {}
+            for t in agents:
+                for pid, x in t["profiles"].items():
+                    merged.setdefault(pid, {**x, "count": 0})["count"] += x["count"]
+            tokens = [t for t in tokens if t["row"]["type"] != "agent"] + [{
+                "row": None, "cls": types["agent"], "ready": True, "profiles": merged,
+                "agents": [t["row"] for t in agents]}]
         on = actions.enabled(conn)
     return render(request, "akcje.html", {"rows": rows, "tokens": tokens, "on": on, "labels": actions.STATUS_LABEL})
 
@@ -182,10 +204,15 @@ async def profile_allowed(request: Request, profile_id: int, sess: dict = Depend
         p = conn.execute(select(profile).where(profile.c.id == profile_id)).mappings().first()
         if not p:
             raise NotFound("Nie ma takiego profilu.")
+        back = "/akcje" if form.get("back") == "/akcje" else "/admin/profile"
+        keys = _keys(form)
+        if form.get("type"):    # formularz z /akcje pokazuje akcje jednego typu integracji — resztę zostawiamy
+            prefix = f"{form.get('type')}."
+            keys = [k for k in (p["settings"] or {}).get("actions", []) if not k.startswith(prefix)] +                    [k for k in keys if k.startswith(prefix)]
         try:
-            profiles.set_profile_setting(conn, profile_id, "actions", _keys(form))
+            profiles.set_profile_setting(conn, profile_id, "actions", keys)
         except profiles.ProfileError as e:
-            return render(request, "blad.html", {"title": "Nie zapisano", "text": str(e), "back": "/admin/profile"}, 400)
+            return render(request, "blad.html", {"title": "Nie zapisano", "text": str(e), "back": back}, 400)
         auth.audit(conn, "actions_allowed_profile", user=sess["login"], ip=client_ip(request), target=p["name"],
-                   params={"actions": sorted(set(_keys(form)))})
-    return RedirectResponse("/admin/profile", 303)
+                   params={"actions": sorted(set(keys))})
+    return RedirectResponse(back, 303)

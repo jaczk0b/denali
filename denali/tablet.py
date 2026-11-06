@@ -79,7 +79,7 @@ def unlock(conn, sess, pin, ip="", now=None):
         raise TabletError("Odblokowanie działa tylko na połączonym tablecie.")
     p = kv_get(conn, _pin_key(sess["public_id"]))
     if not p:
-        raise TabletError("Ten tablet nie ma PIN-u. Ustaw go w panelu: menu konta → Tablet na ścianie.")
+        raise TabletError("Ten tablet nie ma PIN-u. Ustaw go w panelu: Konto → Dodatki → Tablet na ścianie.")
     try:
         _ph.verify(p["hash"], (pin or "").strip())
     except (VerifyMismatchError, InvalidHashError):

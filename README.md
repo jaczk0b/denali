@@ -276,7 +276,7 @@ Restart VM, aktualizacja stacka, `apt upgrade` — z karty urządzenia (*Akcje*)
 które już przeszły zamki). Akcja wykona się tylko, gdy przejdzie
 wszystkie zamki, sprawdzane po stronie serwera przy każdym zleceniu (także przy bezpośrednim wywołaniu adresu):
 
-1. **akcje włączone** — *menu konta → Akcje*; „Wyłącz wszystkie akcje” działa od razu, włączenie wymaga hasła i kodu;
+1. **akcje włączone** — *menu konta → Akcje* (ta strona pokazuje też dla każdej integracji, czego brakuje, i pozwala od razu zmienić profile); „Wyłącz wszystkie akcje” działa od razu, włączenie wymaga hasła i kodu;
 2. akcja jest na liście **„Dozwolone akcje”** urządzenia — ustawiasz ją raz w *Profilach* (np. profil maszyn
    wirtualnych: snapshot, restart), na karcie urządzenia tylko wyjątki; domyślnie lista jest pusta;
 3. integracja ma **osobny token do akcji** (*Integracje → … → Akcje — osobny token*), zapisany oddzielnie od tokenu
@@ -387,7 +387,7 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
   spokoju: jedno powiadomienie i jedno „rozwiązane” zamiast serii.
 - **Powiadomienia** mówią, co dokładnie zgłosiło źródło (np. „192.168.1.10 nie odpowiada”, „port 5432 zamknięty”),
   a „rozwiązane” — co było, co jest teraz i ile trwało.
-- **Udostępnianie** (menu konta → *Udostępnianie*) daje wybranym osobom własną stronę: tylko przydzielone usługi (link
+- **Udostępnianie** (*Konto → Dodatki → Udostępnianie domownikom*) daje wybranym osobom własną stronę: tylko przydzielone usługi (link
   albo adres do skopiowania, np. SMB), status bez nazw urządzeń i powodów awarii oraz instrukcje, np. gotową do Tailscale.
   Konto ma rolę `uzytkownik`: panel wygeneruje mu hasło albo konto powstanie samo przy logowaniu Pocket ID z grupy
   `DENALI_OIDC_USER_GROUP`. Reszta panelu jest dla tej roli zamknięta, ale do sieci wpuszcza Tailscale: osoba musi być
@@ -433,7 +433,7 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
 
 Zamiast monitora z KVM: na ścianie podgląd i alarmy, a gdy go zdejmiesz — po PIN-ie SSH, konsole VNC i akcje.
 
-1. *Tablet na ścianie → Utwórz kod*, na tablecie otwórz `https://denali.serwispowers.com/tablet` i wpisz kod.
+1. *Konto → Dodatki → Tablet na ścianie → Utwórz kod*, na tablecie otwórz `https://denali.serwispowers.com/tablet` i wpisz kod.
    Tablet działa tylko z adresu, z którego się połączył — daj mu stały adres w DHCP.
 2. W tym samym miejscu przy tablecie: **Ustaw PIN** (6–12 cyfr, panel poprosi o hasło i kod 2FA).
 3. Na tablecie *Odblokuj* → PIN → tablet działa jako Twoje konto administratora: kafle SSH, Konsole, Akcje,

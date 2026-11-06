@@ -494,3 +494,20 @@ def test_uslugi_akcji_agenta():
     assert f"DirectoryNotEmpty={agent.JOBS_DIR}" in agent.unit_text("denali-agent-akcje.path")
     svc = agent.unit_text("denali-agent-akcje.service")
     assert "User=" not in svc and f"{agent.PROGRAM} akcje" in svc
+
+
+def test_akcje_jedna_strona_zmienia_tylko_swoja_integracje(app, pve, admin):
+    """/akcje: lista kontrolna per integracja, zapis profilu tylko dla akcji jednego typu — reszta zostaje."""
+    page = admin.get("/akcje").text
+    assert "Co trzeba, żeby akcja działała" in page and "Integracja ma prawo do akcji" in page
+    fresh_reauth(app, admin)
+    with app.state.engine.begin() as conn:
+        vm = profiles.profile_for(conn, {"profile_id": None, "kind": "vm"})
+        profiles.set_profile_setting(conn, vm["id"], "actions", ["komodo.restart", "proxmox.reboot"])
+    assert "Maszyna wirtualna" in admin.get("/akcje").text
+    r = admin.post(f"/admin/profile/{vm['id']}/akcje", data={"csrf_token": csrf_from(page), "back": "/akcje",
+                                                             "type": "proxmox", "allow": "proxmox.snapshot"})
+    assert r.status_code == 303 and r.headers["location"] == "/akcje"
+    with app.state.engine.connect() as conn:
+        assert profiles.profile_for(conn, {"profile_id": None, "kind": "vm"})["settings"]["actions"] == \
+            ["komodo.restart", "proxmox.snapshot"]

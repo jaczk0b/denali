@@ -67,13 +67,17 @@ def plan(conn):
         addrs.setdefault(a.device_id, []).append(a)
     specs = []
     for d in devices:
-        if not profiles.value(conn, d["id"], "monitor"):
+        mode = profiles.value(conn, d["id"], "monitor")
+        if mode in ("brak", "agent"):     # „tylko agent”: rozstrzyga raport agenta, bez pingu i HTTP
             continue
         own = addrs.get(d["id"], [])
         ip = next((a.value for a in own if a.kind == "ip" and ":" not in a.value), None)
         host = next((a.value for a in own if a.kind == "hostname"), None)
-        if ip or host:
+        if (ip or host) and mode != "adres":
             specs.append(Spec(d["id"], "ping", ip or host))
+        if mode == "ping":
+            continue
+        if ip or host:
             for port in ports(d["tcp_ports"]):
                 specs.append(Spec(d["id"], "tcp", f"{ip or host}:{port}"))
         for a in own:       # bez IP nie ma z czym porównać — samą nazwę i tak sprawdza ping
@@ -84,7 +88,7 @@ def plan(conn):
             if public_candidate(d["app_url"]):
                 specs.append(Spec(d["id"], "internet", d["app_url"]))
     for c in conn.execute(select(custom_check)).mappings():
-        if profiles.value(conn, c["device_id"], "monitor"):
+        if profiles.monitored(conn, c["device_id"]):
             specs.append(Spec(c["device_id"], c["kind"], c["target"], c["expect"]))
     return list(dict.fromkeys(specs))
 

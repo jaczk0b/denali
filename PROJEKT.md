@@ -40,7 +40,11 @@ test odtworzenia, sprawdzenia…). W Denali:
    montaż NFS → udział w TrueNAS (agent + TrueNAS), urządzenie → port routera / AP (OpenWrt, TP-Link).
    Ręcznie dopisujesz tylko to, czego nikt nie wie (np. „switch zasilany z UPS-a”).
 4. **Monitorowanie bez decyzji**: każde urządzenie z IP dostaje ping, każda aplikacja z adresem — sprawdzenie HTTP,
-   każdy obiekt z integracji — jej stan. Nie ma pola „sposób monitorowania”.
+   każdy obiekt z integracji — jej stan. Decyzja 6.11.2026 (VLAN-y: ping między sieciami bywa blokowany): **sposób
+   sprawdzania** jest ustawieniem profilu jak w HLC — *automatycznie* (domyślnie), *tylko agent*, *tylko ping*,
+   *tylko adres:port / HTTP*, *nie sprawdzaj*. „Automatycznie”: urządzenie żyje, gdy potwierdza to integracja albo
+   którekolwiek sprawdzenie — wtedy milczący ping nie jest awarią, niedziałający port to „uwaga”, a niedziałający adres
+   aplikacji (HTTP) zawsze jest awarią. Wyjątek na pojedynczym urządzeniu: wybór na górze jego karty.
 5. **Ustawienia na poziomie typu, nie urządzenia.** Progi alertów, dozwolone akcje i sposób aktualizacji ustawiasz
    raz dla **profilu** (np. „VM z Dockerem”, „stack Komodo”, „AP”, „VM krytyczna — bez akcji”). Urządzenie dziedziczy
    profil po typie; wyjątek na pojedynczym urządzeniu to świadoma decyzja, widoczna jako „inne niż profil”.

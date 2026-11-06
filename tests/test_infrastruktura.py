@@ -37,7 +37,7 @@ def full(app, monkeypatch):
 
 
 def test_zakladki_tylko_dla_podlaczonych_zrodel(app, conn):
-    assert [k for k, _l, _u in infra_views.tabs(conn)] == ["mapa", "lista", "adresy", "szafa"]
+    assert [k for k, _l, _u in infra_views.tabs(conn)] == ["mapa", "lista", "adresy"]   # Szafa: gdy jest jakaś
     integrations.save(conn, app.state.box, "komodo", "komodo", KOMODO_CONFIG, KOMODO_SECRETS)
     assert "docker" in [k for k, _l, _u in infra_views.tabs(conn)]
 

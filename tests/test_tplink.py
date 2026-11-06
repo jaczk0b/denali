@@ -86,7 +86,7 @@ def test_klienci_dopasowuja_sie_a_telefony_nie_robia_awarii(app, monkeypatch):
         phone_ref = next(r for r in discovery.pending(c) if r["external_id"] == "mac/aa:bb:cc:00:00:01")
         [phone] = discovery.approve(c, phone_ref["id"])
         assert profiles.effective(c, phone)[0] == "Komputery i telefony"
-        assert profiles.value(c, phone, "monitor") is False and profiles.value(c, phone, "notify") is False
+        assert profiles.value(c, phone, "monitor") == "brak" and profiles.value(c, phone, "notify") is False
         live.evaluate(c, now=1000)
         assert phone not in live.saved(c, now=1000)                       # nie monitorowany → nigdy awaria
         [src] = integrations.states_for_device(c, vm)

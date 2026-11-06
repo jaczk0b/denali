@@ -8,7 +8,7 @@ import pytest
 from cryptography.fernet import Fernet
 from sqlalchemy import func, select
 
-from denali import desk, docs, hlc_import, inventory as inv, vault
+from denali import desk, docs, hlc_import, inventory as inv, profiles, vault
 from denali.models import contact, cable, dependency, device, device_address, incident, runbook, vault_secret
 
 OLD_KEY = Fernet.generate_key().decode()
@@ -19,7 +19,7 @@ CREATE TABLE devices (id TEXT PRIMARY KEY, site_id TEXT, name TEXT, kind TEXT, i
   parent_id TEXT DEFAULT '', purpose TEXT DEFAULT '', access TEXT DEFAULT '', vault TEXT DEFAULT '', backup TEXT DEFAULT '',
   restore_tested TEXT DEFAULT '', place TEXT DEFAULT '', serial TEXT DEFAULT '', runbook TEXT DEFAULT '', notes TEXT DEFAULT '',
   cost TEXT, ports TEXT DEFAULT '[]', expiry TEXT DEFAULT '[]', panel TEXT DEFAULT '[]', checked TEXT DEFAULT '',
-  approved INTEGER DEFAULT 1, pve_type TEXT DEFAULT '');
+  approved INTEGER DEFAULT 1, pve_type TEXT DEFAULT '', monitor TEXT DEFAULT 'auto');
 CREATE TABLE deps (id TEXT PRIMARY KEY, device_id TEXT, parent_id TEXT, type TEXT DEFAULT 'siec', hard INTEGER DEFAULT 1, note TEXT DEFAULT '');
 CREATE TABLE links (id TEXT PRIMARY KEY, site_id TEXT, a TEXT, ap TEXT DEFAULT '', b TEXT, bp TEXT DEFAULT '');
 CREATE TABLE issues (id TEXT PRIMARY KEY, device_id TEXT, date TEXT, title TEXT, "desc" TEXT DEFAULT '', status TEXT DEFAULT 'open',
@@ -59,6 +59,7 @@ def make_hlc(tmp_path, key=OLD_KEY):
     db.execute("UPDATE devices SET runbook=?, notes=?, access=?, ports=? WHERE id='immich'", (
         "# Restart Immich\n\n1. docker compose restart", "admin hasło: tajne123", "https://immich.lan",
         json.dumps([{"port": 2283, "opis": "web"}])))
+    db.execute("UPDATE devices SET monitor='ping' WHERE id='switch'")
     db.execute("INSERT INTO devices (id, site_id, name, kind, approved) VALUES ('nowy','s1','?? nowy z Proxmoxa','vm',0)")
     db.execute("INSERT INTO deps VALUES ('d1','immich','truenas','dane',1,'NFS')")
     db.execute("INSERT INTO links VALUES ('l1','s1','router','LAN1','switch','1')")
@@ -120,6 +121,8 @@ def test_pelna_migracja_jednej_lokalizacji(app, settings, tmp_path):
         assert "Kasa 1" not in names and "?? nowy z Proxmoxa" not in names       # sklep i niezatwierdzone pominięte
         pve, truenas, immich, docker = (by_name(c, n) for n in ("pve", "TrueNAS", "Immich", "docker"))
         assert pve["criticality"] == 1 and docker["criticality"] == 2           # crit 3 w HLC = P1
+        assert profiles.value(c, by_name(c, "Switch")["id"], "monitor") == "ping"   # sposób sprawdzania z HLC
+        assert profiles.value(c, pve["id"], "monitor") == "auto"
         assert truenas["parent_id"] == pve["id"] and immich["parent_id"] == docker["id"]
         assert "## Dostęp" in immich["notes_md"] and "port: 2283" in immich["notes_md"]
         assert immich["app_url"] == "https://photos.lan" and immich["icon"] == "📷"

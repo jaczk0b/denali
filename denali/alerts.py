@@ -82,7 +82,7 @@ def collect(conn, now=None):
 
     def watched(device_id):
         if device_id not in monitored:
-            monitored[device_id] = bool(profiles.value(conn, device_id, "monitor"))
+            monitored[device_id] = profiles.monitored(conn, device_id)
         return monitored[device_id]
 
     def add(rule, device_id, key, severity, text, integration_id=None, external_id=None):

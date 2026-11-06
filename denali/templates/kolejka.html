@@ -5,11 +5,10 @@
 <div class="row-between">
   <div>
     <h1>Do zatwierdzenia</h1>
-    <p class="muted">Integracje znalazły nowe obiekty. Przy każdym wybierz, co z nim zrobić, i kliknij „Zastosuj wybrane” —
-      te bez wyboru zostają w kolejce na później. Zatwierdzenie tworzy urządzenie z nazwą, adresami, „na czym działa” i profilem.
-      Dodanie VM jako nowej zatwierdza też czekające stacki na niej i host, na którym stoi.</p>
+    <p class="muted">Integracje znalazły nowe obiekty. „Dodaj” tworzy urządzenie z nazwą, adresami, „na czym działa” i profilem —
+      razem z hostem, na którym stoi, i stackami na nim. „Pomiń” chowa obiekt na stałe. Czego nie ruszysz, czeka tutaj.</p>
   </div>
-  {% if (rows or gone) and sess.role == "admin" %}
+  {% if gone and sess.role == "admin" %}
   <div class="actions">
     <button class="btn primary" type="submit" form="kolejka-wybor">Zastosuj wybrane</button>
   </div>
@@ -18,9 +17,9 @@
 {{ alerts(error) }}
 {% if matches %}
 <div class="alert warn">{{ st("warn") }}<span>{{ matches | length }} z tych obiektów wygląda na urządzenia, które już są w Denali (ten sam MAC, IP albo nazwa — np. przeniesione z HLC).
-  To tylko podpowiedź („Wygląda na: …”) — sam wybierz „Przypnij do …”, jeśli się zgadza.</span></div>
+  To tylko podpowiedź („Wygląda na: …”) — jeśli się zgadza, wybierz je w „To już jest w Denali…” i kliknij „Połącz”.</span></div>
 {% endif %}
-{% if not rows and not gone %}
+{% if not rows and not gone and not clients %}
 <div class="card"><p class="muted">Nic nie czeka. Nowe obiekty pojawią się tu, gdy integracje (Etap 3) je znajdą.</p></div>
 {% else %}
 <form method="post" action="/zatwierdz/wybrane" id="kolejka-wybor">
@@ -57,33 +56,33 @@
     przypiętymi do niego. „Zostaw” zachowuje kartę — przyda się, gdy maszyna wróci pod innym numerem.</p>
 </section>
 {% endif %}
-{% if rows %}
-<section class="card">
+{% macro queue_table(items) %}
   <div class="table-wrap">
     <table>
       <thead><tr><th>Nazwa</th><th>Typ</th><th>Skąd</th><th>Adresy</th><th>Na czym działa</th><th>Co zrobić</th></tr></thead>
       <tbody>
-      {% for r in rows %}{% set p = r.proposed %}{% set m = matches.get(r.id) %}
+      {% for r in items %}{% set p = r.proposed %}{% set m = matches.get(r.id) %}
       <tr>
         <td><strong>{{ p.name }}</strong><div class="muted small mono">{{ r.external_id }}</div></td>
         <td>{{ KINDS.get(p.kind, p.kind) }}</td>
         <td>{{ integrations.get(r.integration_id, "?") }}</td>
         <td class="mono">{% for a in p.addresses %}{{ a.value }}<br>{% endfor %}</td>
-        <td>{% if p.parent %}{{ p.parent.values() | first }}{% else %}—{% endif %}</td>
+        <td>{{ parents.get(r.id) or "—" }}</td>
         <td>
           {% if m %}<p class="small">Wygląda na: <a href="/urzadzenia/{{ m.id }}">{{ m.name }}</a></p>{% endif %}
           {% if sess.role == "admin" %}
-          <select class="choice" name="d_{{ r.id }}" aria-label="Co zrobić z {{ p.name }}">
-            <option value="">— zdecyduję później</option>
-            <option value="nowe">Dodaj jako nowe</option>
-            <option value="pomin">Pomiń na stałe</option>
-            {% if m %}<option value="dev:{{ m.id }}">Przypnij do „{{ m.name }}”</option>{% endif %}
-            {% if all_devices %}
-            <optgroup label="Przypnij do istniejącego">
+          <div class="actions">
+            <button class="btn small primary" type="submit" formaction="/zatwierdz/{{ r.id }}">Dodaj</button>
+            <button class="btn small" type="submit" formaction="/zatwierdz/{{ r.id }}/odrzuc">Pomiń</button>
+          </div>
+          <details class="mt"><summary class="small">To już jest w Denali…</summary>
+            <select class="choice" name="d_{{ r.id }}" aria-label="Które urządzenie to {{ p.name }}">
+              <option value="">— wybierz</option>
+              {% if m %}<option value="dev:{{ m.id }}">{{ m.name }} (podpowiedź)</option>{% endif %}
               {% for x in all_devices %}<option value="dev:{{ x.id }}">{{ x.name }}</option>{% endfor %}
-            </optgroup>
-            {% endif %}
-          </select>
+            </select>
+            <button class="btn small" type="submit">Połącz</button>
+          </details>
           {% endif %}
         </td>
       </tr>
@@ -91,9 +90,15 @@
       </tbody>
     </table>
   </div>
-  {% if sess.role == "admin" %}
-  <div class="actions mt"><button class="btn primary" type="submit">Zastosuj wybrane</button></div>
-  {% endif %}
+{% endmacro %}
+{% if rows %}
+<section class="card">{{ queue_table(rows) }}</section>
+{% endif %}
+{% if clients %}
+<section class="card">
+  <details><summary><strong>Klienci sieci: {{ clients | length }}</strong> <span class="muted small">— telefony, laptopy i inne urządzenia z routera i AP. Dodawaj tylko te, które chcesz pilnować.</span></summary>
+  {{ queue_table(clients) }}
+  </details>
 </section>
 {% endif %}
 </form>

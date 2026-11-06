@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
-from . import auth, checks, desk, docs, files, inventory as inv, terms, vault
+from . import auth, checks, desk, docs, files, inventory as inv, profiles, terms, vault
 from .db import kv_get, kv_set
 from .models import change_event, device, incident, incident_device, incident_event
 
@@ -205,6 +205,9 @@ class _Run:
             self.mark(key, did)
             self.dev[d["id"]] = did
             self.r.add("urządzenia")
+            mon = {"agent": "agent", "ping": "ping", "none": "brak"}.get(d.get("monitor") or "auto")
+            if mon:     # sposób sprawdzania z HLC; „auto” zostaje z profilu
+                profiles.set_override(self.conn, did, "monitor", mon)
             ip = (d.get("ip") or "").strip()
             if ip:
                 self._address(did, d["name"], ip, primary=True)

@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from .adapters.ovh import MANAGER as OVH_MANAGER
 from .adapters.tplink import BAND
-from .models import dependency, device, device_address, external_ref, integration, observed_state, update_item
+from .models import dependency, device, rack, device_address, external_ref, integration, observed_state, update_item
 
 TABS = [("mapa", "Mapa", "/infrastruktura/mapa"), ("lista", "Lista", "/urzadzenia"),
         ("proxmox", "Proxmox", "/infrastruktura/proxmox"), ("truenas", "TrueNAS", "/infrastruktura/truenas"),
@@ -23,8 +23,9 @@ WORST = ("down", "warn", "unknown", "off", "ok")
 
 def tabs(conn):
     present = {r.type for r in conn.execute(select(integration.c.type).distinct())}
+    has_rack = conn.execute(select(rack.c.id).limit(1)).first() is not None   # Szafa dopiero, gdy jakaś jest
     return [(key, label, url) for key, label, url in TABS
-            if key not in TAB_SOURCES or present & set(TAB_SOURCES[key])]
+            if (key not in TAB_SOURCES or present & set(TAB_SOURCES[key])) and (key != "szafa" or has_rack)]
 
 
 def worst(states):
