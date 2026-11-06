@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import st, nav_icon %}
+{% from "_makra.html" import st, nav_icon, badge %}
 {% block title %}Tablet{% endblock %}
 {% block body_class %}wall-body wall-{{ prefs.mode }}{% if verdict.state == "down" and alarm_ids %} alarm{% elif verdict.state in ("down", "warn") %} attention{% endif %}{% if sess.elevated %} unlocked{% endif %}{% endblock %}
 {% block chrome %}
@@ -43,8 +43,8 @@
   <section class="kpis wall-kpis" aria-label="Stan labu">
     {% for k in kpis %}
     <div class="kpi"><span class="kpi-label">{{ k.label }}</span>
-      <span class="num">{{ k.value }}{% if k.unit %}<small>{{ k.unit }}</small>{% endif %}</span>
-      <span class="kpi-note {{ k.state }}">{{ st(k.state, 14) }}{{ k.note }}</span></div>
+      <span class="kpi-num{% if k.value == '—' %} is-empty{% endif %}"><span class="num">{{ k.value }}</span>{% if k.unit %}<span class="kpi-unit">{{ k.unit }}</span>{% endif %}</span>
+      {{ badge(k.state, k.note) }}</div>
     {% endfor %}
   </section>
 

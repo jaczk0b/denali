@@ -3,13 +3,13 @@
 {% block title %}Mapa · Infrastruktura{% endblock %}
 {# Kolory wpisane w SVG (fill/stroke), żeby mapa była czytelna nawet bez arkusza stylów; CSS tylko je nadpisuje. #}
 {% set FILL = {"down": "#2a1517", "effect": "#151a1f", "off": "#151a1f"} %}
-{% set STROKE = {"down": "#ff6b61", "warn": "#ffc85a", "effect": "#4a535e"} %}
+{% set STROKE = {"down": "#ff6b61", "warn": "#ffc85a", "effect": "#8a7440"} %}
 {% macro dot(state, cx, cy) -%}
   {%- if state == "ok" %}<circle cx="{{ cx }}" cy="{{ cy }}" r="6" fill="#3fc7b3"/>
   {%- elif state == "down" %}<path transform="translate({{ cx - 7 }} {{ cy - 7 }}) scale(0.875)" d="M5 1h6l4 4v6l-4 4H5l-4-4V5z" fill="#ff6b61"/>
   {%- elif state == "warn" %}<path transform="translate({{ cx - 7 }} {{ cy - 7 }}) scale(0.875)" d="M8 1.5l7 12.5H1z" fill="#ffc85a"/>
-  {%- elif state == "effect" %}<circle cx="{{ cx }}" cy="{{ cy }}" r="5.5" fill="none" stroke="#b3bcc6" stroke-width="1.6" stroke-dasharray="2.5 2"/>
-  {%- else %}<circle cx="{{ cx }}" cy="{{ cy }}" r="5" fill="none" stroke="#6b7580" stroke-width="1.6"/>{% endif -%}
+  {%- elif state == "effect" %}<path d="M{{ cx }} {{ cy - 5.5 }}l5.5 10h-11z" fill="none" stroke="#ffc85a" stroke-width="1.6" stroke-linejoin="round"/>
+  {%- else %}<circle cx="{{ cx }}" cy="{{ cy }}" r="5" fill="none" stroke="#8f98a8" stroke-width="1.6" stroke-dasharray="2.2 2"/>{% endif -%}
 {%- endmacro %}
 {% macro href(id) %}{% if picking %}/infrastruktura/mapa?co_jesli={{ id }}{% if clients %}&amp;klienci=1{% endif %}{% else %}/urzadzenia/{{ id }}{% endif %}{% endmacro %}
 {% block content %}

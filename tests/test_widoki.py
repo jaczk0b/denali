@@ -74,7 +74,7 @@ def test_pulpit_pokazuje_przyczyne_i_skutki(admin, lab):
     html = admin.get("/").text
     assert "truenas nie działa" in html and "Pokaż, co się stało" in html
     assert 'class="is-cause"' in html and "Skąd ta awaria" in html            # łańcuch z zaznaczoną przyczyną
-    assert "Bez danych" in html and "Skutek, nie osobna awaria" in html   # ikona Immich: skutek, nie osobna awaria
+    assert "Przez: truenas" in html and "Skutek, nie osobna awaria" in html   # ikona Immich: skutek, z nazwą przyczyny
     assert 'href="https://immich.lan"' in html and 'rel="noopener noreferrer"' in html
 
 

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_makra.html" import st, search_icon %}
+{% from "_makra.html" import st, search_icon, badge %}
 {% from "_widzet.html" import stat_view %}
 {% block title %}Pulpit{% endblock %}
 {% block body_class %}desk-body{% if edit %} desk-editing{% endif %}{% endblock %}
@@ -30,31 +30,31 @@
 <button type="button" class="grip" aria-label="Przenieś: {{ label }}. Strzałki zmieniają kolejność." title="Przeciągnij albo użyj strzałek"><svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><circle cx="7" cy="5" r="1.4"/><circle cx="13" cy="5" r="1.4"/><circle cx="7" cy="10" r="1.4"/><circle cx="13" cy="10" r="1.4"/><circle cx="7" cy="15" r="1.4"/><circle cx="13" cy="15" r="1.4"/></svg></button>
 {%- endmacro %}
 
-{# Logo czeka na swoje źródło: gdy kafel je ma i wybrano ten styl, zastępuje literę. Reszta pulpitu o tym nie wie. #}
+{# Logo czeka na swoje źródło: gdy kafel je ma i wybrano ten styl, zastępuje literę. Kolor ikony wynika z nazwy. #}
 {% macro app_icon(t) -%}
-<span class="app-icon">{% if t.logo and look.icons == "logo" %}<img src="{{ t.logo }}" alt="">{% else %}{{ t.icon or (t.name | initials) }}{% endif %}</span>
+<span class="app-icon {{ t.name | tile_color }}">{% if t.logo and look.icons == "logo" %}<img src="{{ t.logo }}" alt="">{% else %}{{ t.icon or (t.name | initials) }}{% endif %}</span>
 {%- endmacro %}
 
-{# Symbol w rogu kafelka mówi, co zrobi kliknięcie: nowa karta, strona panelu albo kopiowanie. #}
+{# Skrót (System Zorza, rodzaj 1): ikonka w rogu mówi, co zrobi kliknięcie — nowa karta, strona panelu albo kopiowanie. #}
 {% macro tile_go(t) -%}
-<span class="tile-go" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-{%- if t.copy_only %}<rect x="7" y="7" width="9" height="9" rx="1.5"/><path d="M13 4H5.5A1.5 1.5 0 0 0 4 5.5V13"/>
-{%- elif t.external %}<path d="M7 13l7-7M8 6h6v6"/>
-{%- else %}<path d="M8 5l5 5-5 5"/>{% endif %}</svg></span>
+<span class="tile-go"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if t.copy_only %}<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3 10.5V3.5a1 1 0 0 1 1-1h6.5"/>
+{%- elif t.external %}<path d="M7 3H3v10h10V9M10 3h3v3M13 3 7 9"/>
+{%- else %}<path d="M3 8h10M9 4l4 4-4 4"/>{% endif %}</svg><span class="sr">{{ "kopiuje adres" if t.copy_only else "otwiera w nowej karcie" if t.external else "strona panelu" }}</span></span>
 {%- endmacro %}
 
 {% macro tile_body(t) %}
-<span class="tile-top">{{ app_icon(t) }}
+{{ tile_go(t) }}{{ app_icon(t) }}
 <span class="tile-text"><span class="tile-name"{% if t.copy_only %} data-copy-label{% endif %}>{{ t.name }}</span>
-  {% if look.show_host %}<span class="tile-host">{{ t.host }}</span>{% endif %}</span>{{ tile_go(t) }}</span>
-{% if t.lan_only and look.mark_lan %}<span class="tile-tags"><span class="tag down">tylko w domu</span></span>{% endif %}
-{% if t.copy_only %}<span class="tile-status">kliknij, by skopiować</span>
-{% elif t.status %}<span class="tile-status {{ t.status }}">{{ st(t.status, 14) }}<span>{{ t.status_text }}</span></span>{% endif %}
+  {% if look.show_host %}<span class="tile-host">{{ t.host }}</span>{% endif %}</span>
+{% if t.copy_only or t.status or (t.lan_only and look.mark_lan) %}<span class="tile-tags">
+  {%- if t.copy_only %}<span class="tile-hint">kliknij, by skopiować</span>{% elif t.status %}{{ badge(t.status, t.status_text) }}{% endif %}
+  {%- if t.lan_only and look.mark_lan %}<span class="home">tylko w domu</span>{% endif %}</span>{% endif %}
 {% endmacro %}
 
 {% macro tile(t) %}
 {% if edit %}
-<div class="tile is-edit" data-tile="{{ t.id }}">
+<div class="tile shortcut is-edit" data-tile="{{ t.id }}">
   <div class="tile-tools">{{ grip(t.name) }}
     <span class="tile-buttons">
       <a class="mini" href="/pulpit/ikony/{{ t.id }}/edycja" aria-label="Edytuj {{ t.name }}">{{ pencil() }}</a>
@@ -63,9 +63,9 @@
   {{ app_icon(t) }}<span class="tile-name">{{ t.name }}</span>
 </div>
 {% elif t.copy_only %}
-<button type="button" class="tile" data-copy="{{ t.url }}" title="Skopiuj: {{ t.url }}">{{ tile_body(t) }}</button>
+<button type="button" class="tile shortcut" data-copy="{{ t.url }}" title="Skopiuj: {{ t.url }}">{{ tile_body(t) }}</button>
 {% else %}
-<a class="tile{% if t.mark %} is-{{ t.mark }}{% endif %}" href="{{ t.url }}"{% if t.external %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ tile_body(t) }}</a>
+<a class="tile shortcut{% if t.mark %} is-{{ t.mark }}{% endif %}" href="{{ t.url }}"{% if t.external %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ tile_body(t) }}</a>
 {% endif %}
 {% endmacro %}
 
@@ -73,7 +73,7 @@
 <article class="stat-card{% if w.size == 2 %} wide{% endif %}{% if w.empty %} is-empty{% endif %}" data-widget="{{ w.id }}">
   {% if edit %}
   <div class="stat-tools">{{ grip(w.name) }}
-    <span class="stat-title"><b>{{ w.name }}</b><span class="stat-source">z: {{ w.source }}</span></span>
+    <span class="stat-title"><b>{{ w.name }}</b><span class="src">{{ w.source }}</span></span>
     <button type="button" class="mini" data-stat-edit data-kind="{{ w.kind }}" data-title="{{ w.title }}" data-config='{{ w.config | tojson }}' aria-label="Ustawienia statystyki {{ w.name }}">{{ pencil() }}</button>
     <button type="button" class="mini" data-remove="widzet" data-id="{{ w.id }}" aria-label="Usuń statystykę {{ w.name }}">{{ cross() }}</button>
   </div>
@@ -94,7 +94,7 @@
   <ul class="att">
     {% for r in attention %}<li><a href="{{ r.link }}">{{ st(r.state, 16) }}<span class="att-text"><b>{{ r.title }}</b><span>{{ r.detail }}</span></span>{% if r.when %}<span class="att-when">{{ r.when }}</span>{% endif %}</a></li>{% endfor %}
   </ul>
-  {% else %}<p class="muted small">Nic nie wymaga uwagi.</p>{% endif %}
+  {% else %}<p class="muted small">{% if banner %}Poza tym nic — awaria jest wyżej.{% else %}Nic nie wymaga uwagi.{% endif %}</p>{% endif %}
   {% if attention_more or attention_good %}
   <div class="att-rest">
     {% if attention_more %}<a href="/alerty">Jeszcze {{ attention_more }} w alertach</a>{% endif %}
@@ -132,13 +132,12 @@
 {% endif %}
 {% elif s.key == "zdarzenia" %}
 <section class="widget" aria-labelledby="zdarzenia">
-  <h2 id="zdarzenia">Ostatnie zdarzenia</h2>
+  <div class="widget-head"><h2 id="zdarzenia">Ostatnie zdarzenia</h2><a class="more" href="/os-czasu">Oś czasu</a></div>
   {% if events %}
   <ol class="events">
     {% for e in events %}<li class="{{ 'hot' if e.hot }}"><span class="ev-when">{{ e.when }}</span><a href="{{ e.link }}"><span class="ev-title">{{ e.text }}</span><span class="ev-detail">{{ e.detail }}</span></a></li>{% endfor %}
   </ol>
   {% else %}<p class="muted small">Nic się nie działo.</p>{% endif %}
-  <a class="more" href="/os-czasu">Wszystkie zdarzenia</a>
 </section>
 {% elif s.key == "nadchodzace" and upcoming %}
 <section class="widget" aria-labelledby="nadchodzace">
@@ -170,32 +169,31 @@
 {% set b = banner %}
 {% set v = verdict %}
 {% if b and not b.collapsed %}
-<section class="banner-big {{ b.state }}{% if b.acked %} acked{% endif %}" aria-label="Stan ogólny" aria-live="polite">
+<section class="banner-big {{ b.state }}{% if b.acked %} acked{% endif %}" aria-labelledby="awaria-tytul" aria-live="polite">
+  <span class="bb-mark{{ ' pulse' if not b.acked }}">{{ st(b.state, 44) }}</span>
   <div class="bb-main">
     <div class="bb-head">
-      <span class="{{ 'pulse' if not b.acked }}">{{ st(b.state, 22) }}</span>
-      <h1>{{ b.title }}</h1>
-      <span class="tag {{ b.state }}">{{ "Awaria" if b.state == "down" else "Ostrzeżenie" }}</span>
-      {% if b.acked %}<span class="tag">Potwierdzone{% if b.acked_by %} · {{ b.acked_by }}{% endif %}</span>{% endif %}
+      <p class="bb-eyebrow">{{ "Awaria" if b.state == "down" else "Ostrzeżenie" }} · od {{ b.since | hm }} · {{ b.lasted }}</p>
+      <h1 id="awaria-tytul">{{ b.title }}</h1>
+      {% if b.acked %}<span class="pill">Potwierdzone{% if b.acked_by %} · {{ b.acked_by }}{% endif %}</span>{% endif %}
     </div>
-    {% if b.hit %}<p class="bb-lead">Dotyka {{ b.hit }} {{ "urządzenia" if b.hit == 1 else "urządzeń" }}: {{ b.hit_names | join(", ") }}{% if b.hit > b.hit_names | length %} i innych{% endif %}.</p>{% endif %}
     <dl class="bb-facts">
-      <div><dt>Przyczyna</dt><dd>{{ b.cause or "Jeszcze nieustalona" }}</dd>{% if b.why %}<dd class="mono small muted">{{ b.why }}</dd>{% endif %}</div>
-      <div><dt>Od kiedy</dt><dd>{{ b.since | hm }} · {{ b.lasted }}</dd>{% if b.change %}<dd class="muted">{{ b.change }}</dd>{% endif %}</div>
-      {% if b.note %}<div><dt>Twoja notatka</dt><dd>{{ b.note }}</dd></div>{% endif %}
+      {% if b.hit %}<dt>Kogo dotyka</dt><dd>{{ b.hit }} {{ "urządzenie" if b.hit == 1 else "urządzeń" }} — {{ b.hit_names | join(", ") }}{% if b.hit > b.hit_names | length %} i inne{% endif %}</dd>{% endif %}
+      <dt>Przyczyna</dt><dd>{{ b.cause or "Jeszcze nieustalona" }}{% if b.why %}<span class="mono small muted bb-why">{{ b.why }}</span>{% endif %}</dd>
+      {% if b.change %}<dt>Zmiana przed awarią</dt><dd>{{ b.change }}</dd>{% endif %}
+      {% if b.note or sess.role == "admin" %}<dt>Notatka</dt><dd>{% if b.note %}{{ b.note }} {% endif %}{% if sess.role == "admin" %}<a href="/incydenty/{{ b.id }}#notatka">{{ "Edytuj" if b.note else "Dodaj notatkę" }}</a>{% endif %}</dd>{% endif %}
     </dl>
   </div>
   <div class="bb-actions">
-    <a class="btn primary wide" href="/incydenty/{{ b.id }}">Pokaż, co się stało</a>
+    <a class="btn primary" href="/incydenty/{{ b.id }}">Pokaż, co się stało</a>
     {% if sess.role == "admin" %}
     <form method="post" action="/incydenty/{{ b.id }}/wycisz"><input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <button class="btn wide" type="submit" name="do" value="{{ b.options[0][0] }}">Wycisz do {{ b.options[0][1] }}</button>
+      <button class="btn" type="submit" name="do" value="{{ b.options[0][0] }}">Wycisz do {{ b.options[0][1] }}</button>
     </form>
-    <details class="bb-more"><summary>Inny czas</summary>
+    <details class="bb-more"><summary class="btn ghost">Inny czas…</summary>
       <form method="post" action="/incydenty/{{ b.id }}/wycisz"><input type="hidden" name="csrf_token" value="{{ csrf }}">
         {% for key, label, _at in b.options[1:] %}<button class="btn small" type="submit" name="do" value="{{ key }}">{{ label | capitalize }}</button>{% endfor %}
       </form></details>
-    <a class="bb-note" href="/incydenty/{{ b.id }}#notatka">{{ "Edytuj notatkę" if b.note else "Dodaj notatkę" }}</a>
     {% endif %}
   </div>
 </section>
@@ -229,8 +227,8 @@
       <div class="kpis">
         {% for k in kpis %}
         <div class="kpi"><span class="kpi-label">{{ k.label }}</span>
-          <span class="num">{{ k.value }}{% if k.unit %}<small>{{ k.unit }}</small>{% endif %}</span>
-          <span class="kpi-note {{ k.state }}">{{ st(k.state, 14) }}{{ k.note }}</span></div>
+          <span class="kpi-num{% if k.value == '—' %} is-empty{% endif %}"><span class="num">{{ k.value }}</span>{% if k.unit %}<span class="kpi-unit">{{ k.unit }}</span>{% endif %}</span>
+          {{ badge(k.state, k.note) }}</div>
         {% endfor %}
       </div>
     </section>
@@ -278,7 +276,7 @@
           {% else %}<h2 class="desk-label">{{ label_icon("tiles") }}{{ s.name }}</h2>
           {% if can_edit %}<a class="plus" href="/?edycja=1&amp;dodaj={{ s.id }}" aria-label="Dodaj do: {{ s.name }}">+</a>{% endif %}{% endif %}
         </div>
-        <div class="tiles" data-tiles="{{ s.id }}">{% for t in s.tiles %}{{ tile(t) }}{% endfor %}</div>
+        <div class="tiles shortcuts" data-tiles="{{ s.id }}">{% for t in s.tiles %}{{ tile(t) }}{% endfor %}</div>
       </section>
       {% endif %}
     {% endfor %}

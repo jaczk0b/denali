@@ -185,12 +185,22 @@ def test_skutek_awarii_zdalnego_dostepu_dziala_w_domu(app):
 
 
 @pytest.mark.parametrize("mark,live_state,expected", [
-    ("przyczyna", None, ("down", "Nie działa")), ("skutek", None, ("effect", "Bez danych")), ("gorzej", None, ("warn", "Działa gorzej")),
+    ("przyczyna", None, ("down", "Nie działa")), ("skutek", None, ("effect", "Skutek awarii")), ("gorzej", None, ("warn", "Działa gorzej")),
     (None, {"state": "ok", "why": ""}, ("ok", "Działa")), (None, {"state": "warn", "why": "RAM 91%"}, ("warn", "RAM 91%")),
     (None, {"state": "off", "why": ""}, ("unknown", "Wyłączone")), (None, None, ("unknown", "Brak danych"))])
 def test_stan_kafelka(mark, live_state, expected):
     marks = {1: mark} if mark else {}
     assert deskview.tile_status({"device_id": 1}, marks, {1: live_state} if live_state else {}) == expected
+
+
+def test_skutek_mowi_przez_co():
+    assert deskview.tile_status({"device_id": 1}, {1: "skutek"}, {}, "Router Main") == ("effect", "Przez: Router Main")
+
+
+def test_nieswieze_dane_widzetu():
+    assert deskview.stale(None, 10_000) == ""
+    assert deskview.stale((10_000 - 120, 60), 10_000) == ""                   # świeże: niecałe 10 min
+    assert deskview.stale((10_000 - 7200, 60), 10_000) == "odczyt sprzed 2 h"
 
 
 def test_skrot_bez_urzadzenia_nie_ma_stanu():
@@ -200,7 +210,7 @@ def test_skrot_bez_urzadzenia_nie_ma_stanu():
 # ───────────────────────── widżety ─────────────────────────
 def test_widzety_mowia_skad_dane(app, admin):
     page = admin.get("/").text
-    assert page.count('class="stat-card') == 6 and "z: TrueNAS" in page and "Brak danych z tego źródła" in page
+    assert page.count('class="stat-card') == 6 and 'class="src">TrueNAS' in page and "Brak danych z tego źródła" in page
 
 
 def test_widzet_z_danych_integracji(app):
@@ -220,6 +230,17 @@ def test_kazde_ostrzezenie_ma_powod(app):
         d = inv.create_device(conn, "haos", "vm")
         rows, more, good = deskview.attention(conn, [], deskview.device_rows(conn), {d: {"state": "warn", "why": "RAM 91%"}})
     assert [(r["title"], r["detail"]) for r in rows] == [("haos", "RAM 91%")] and more == 0 and good == 0
+
+
+def test_wymaga_uwagi_nie_powtarza_awarii_z_banera(app):
+    with app.state.engine.begin() as conn:
+        vm = inv.create_device(conn, "docker", "vm")
+        other = inv.create_device(conn, "haos", "vm")
+        incidents.open_manual(conn, "docker nie działa", "x", vm, "krytyczny")
+        states = {vm: {"state": "warn", "why": "RAM 99%"}, other: {"state": "warn", "why": "RAM 91%"}}
+        rows, _more, _good = deskview.attention(conn, status.open_incidents(conn), deskview.device_rows(conn), states,
+                                                marks=status.device_marks(conn))
+    assert [r["title"] for r in rows] == ["haos"]
 
 
 def test_lancuch_od_podstaw_do_skutkow(app):
@@ -449,7 +470,7 @@ def test_podglad_z_prawdziwych_danych_nic_nie_zapisuje(app, admin):
         before = len(desk.widgets(conn))
     r = api(admin, "podglad", csrf(admin), kind="proxmox", title="<b>x</b>", config={**GOOD, "metrics": ["cpu"]})
     html = r.json()["html"]
-    assert "CPU" in html and "23%" in html and "RAM" not in html and "z: Proxmox Main" in html
+    assert "CPU" in html and "23%" in html and "RAM" not in html and 'class="src">Proxmox Main' in html
     assert "<b>x</b>" not in html and "&lt;b&gt;x" in html
     assert 'left: 85%' in html                                            # kreska progu
     with app.state.engine.connect() as conn:

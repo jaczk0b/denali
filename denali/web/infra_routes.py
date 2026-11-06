@@ -52,10 +52,10 @@ def pulpit(request: Request, edycja: str = "", dodaj: str = "", sess: dict = Dep
         last_closed = conn.execute(select(incident.c.ended_at).where(incident.c.status == "zamkniety")
                                    .order_by(incident.c.ended_at.desc()).limit(1)).mappings().first()
         checks_now = deskview.load_checks(conn)
-        board = deskview.decorate(desk.board(conn, sess["role"]), marks, states, checks_now)
         banner = deskview.banner(conn, open_inc, states, names)
+        board = deskview.decorate(desk.board(conn, sess["role"]), marks, states, checks_now, banner["root"] if banner else "")
         settings = desk.look(conn)
-        rows, more, good = deskview.attention(conn, open_inc, devices, states)
+        rows, more, good = deskview.attention(conn, open_inc, devices, states, marks=marks)
         edit = edycja == "1" and sess["role"] == "admin" and sess["kind"] != "kiosk"
         ctx = {
             "board": board, "sections": desk.sections(board, settings), "marks": marks, "open_incidents": open_inc, "effects": effects,

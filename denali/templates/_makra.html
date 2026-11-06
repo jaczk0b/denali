@@ -7,9 +7,14 @@
 {%- if state == "ok" %}<circle cx="8" cy="8" r="7" fill="#3fc7b3"/><path d="M4.6 8.2l2.3 2.3 4.6-4.7" stroke="#0e1114" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 {%- elif state == "down" %}<path d="M5 1h6l4 4v6l-4 4H5l-4-4V5z" fill="#ff6b61"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#2a1517" stroke-width="1.8" stroke-linecap="round"/>
 {%- elif state == "warn" %}<path d="M8 1.5l7 12.5H1z" fill="#ffc85a"/><path d="M8 6v3.5M8 11.6v.01" stroke="#33280f" stroke-width="1.6" stroke-linecap="round"/>
-{%- elif state == "effect" %}<circle cx="8" cy="8" r="6.5" fill="none" stroke="#b5bbe0" stroke-width="1.8" stroke-dasharray="2.5 2"/>
+{%- elif state == "effect" %}<path d="M8 2.2l6.2 11.3H1.8z" fill="none" stroke="#ffc85a" stroke-width="1.6" stroke-linejoin="round"/>
 {%- else %}<circle cx="8" cy="8" r="6" fill="none" stroke="#8f98a8" stroke-width="1.6" stroke-dasharray="2.4 2"/>{% endif -%}
 </svg>
+{%- endmacro %}
+
+{# Plakietka stanu (System Zorza): zabarwione tło, kształt i słowo. Skutek awarii to trójkąt, nie ośmiokąt. #}
+{% macro badge(state, text) -%}
+<span class="pill {{ state }}">{{ st(state, 12) }}{{ text }}</span>
 {%- endmacro %}
 
 {# rola w otwartym incydencie → stan do ikony #}
@@ -19,7 +24,7 @@
 
 {% macro mark_badge(mark) -%}
   {%- if mark == "przyczyna" %}<span class="pill down">{{ st("down", 12) }} przyczyna</span>
-  {%- elif mark == "skutek" %}<span class="pill">{{ st("effect", 12) }} skutek</span>
+  {%- elif mark == "skutek" %}<span class="pill effect">{{ st("effect", 12) }} skutek</span>
   {%- elif mark == "gorzej" %}<span class="pill warn">{{ st("warn", 12) }} działa gorzej</span>{% endif -%}
 {%- endmacro %}
 
@@ -190,7 +195,7 @@
 {%- endmacro %}
 
 {% macro run_status(s) -%}
-  {%- if s == "ok" %}<span class="pill">{{ st("ok", 12) }} wykonana</span>
+  {%- if s == "ok" %}<span class="pill ok">{{ st("ok", 12) }} wykonana</span>
   {%- elif s == "blad" %}<span class="pill down">{{ st("down", 12) }} błąd</span>
   {%- elif s == "trwa" %}<span class="pill warn">{{ st("warn", 12) }} trwa</span>
   {%- elif s == "czeka" %}<span class="pill">{{ st("unknown", 12) }} czeka na poprzedni krok</span>

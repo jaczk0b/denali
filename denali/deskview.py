@@ -153,14 +153,15 @@ def _host(url):
     return urlsplit(url).netloc or url
 
 
-def tile_status(tile, marks, states):
-    """(stan, podpis) kafelka albo None, gdy skrót nie ma urządzenia."""
+def tile_status(tile, marks, states, cause=""):
+    """(stan, podpis) kafelka albo None, gdy skrót nie ma urządzenia. cause: nazwa przyczyny awarii dla skutków."""
     did = tile["device_id"]
     if not did:
         return None
     mark = marks.get(did)
     if mark:
-        return {"przyczyna": ("down", "Nie działa"), "skutek": ("effect", "Bez danych"), "gorzej": ("warn", "Działa gorzej")}[mark]
+        effect = f"Przez: {cause}" if cause else "Skutek awarii"
+        return {"przyczyna": ("down", "Nie działa"), "skutek": ("effect", effect), "gorzej": ("warn", "Działa gorzej")}[mark]
     s = states.get(did)
     if not s:
         return "unknown", "Brak danych"
@@ -171,7 +172,7 @@ def tile_status(tile, marks, states):
     return ("warn" if s["state"] == "warn" else "down"), s.get("why") or ("Uwaga" if s["state"] == "warn" else "Nie działa")
 
 
-def decorate(board, marks, states, checks):
+def decorate(board, marks, states, checks, cause=""):
     """Dopisuje do kafelków stan, adres do pokazania i „tylko w domu”: z internetu nie działa, w domu tak."""
     failing = {c["device_id"] for c in checks if c["kind"] == "internet" and not c["ok"]}
     for cat in board:
@@ -179,7 +180,7 @@ def decorate(board, marks, states, checks):
             did = t["device_id"]
             # Skutek awarii zdalnego dostępu w domu działa normalnie: liczy się stan z LAN, a nie „bez danych”.
             lan_only = did in failing and states.get(did, {}).get("state") in ("ok", "warn")
-            status = tile_status(t, {} if lan_only else marks, states)
+            status = tile_status(t, {} if lan_only else marks, states, cause)
             t["status"], t["status_text"] = status or (None, "")
             t["mark"] = None if lan_only else marks.get(did)
             t["host"] = _host(t["url"])
@@ -234,7 +235,7 @@ def _proxmox(conn, _now, cfg):
     if _on(cfg, "czas") and isinstance(n["uptime"], (int, float)) and n["uptime"] > 0:
         foot.append("działa " + ago(n["uptime"]))
     return {"title": n["name"], "source": src["row"]["name"], "state": n["state"], "bars": bars, "foot": " · ".join(foot),
-            "device_id": n["device_id"], "integration_id": src["row"]["id"], "external_id": n["eid"]}
+            "read": _read([src]), "device_id": n["device_id"], "integration_id": src["row"]["id"], "external_id": n["eid"]}
 
 
 def _pool(conn, _now, cfg):
@@ -257,15 +258,16 @@ def _pool(conn, _now, cfg):
     if _on(cfg, "temp") and temps:
         rows.append(_row("temp", "Temperatury", f"{min(temps):.0f}–{max(temps):.0f} °C"))
     return {"title": p["name"], "source": src["row"]["name"], "state": p["state"], "bars": bars, "rows": rows,
-            "device_id": src["device_id"], "integration_id": src["row"]["id"], "external_id": f"pool/{p['name']}"}
+            "read": _read([src]), "device_id": src["device_id"], "integration_id": src["row"]["id"], "external_id": f"pool/{p['name']}"}
 
 
 def _backups(conn, now, cfg):
-    items, sources = [], []
+    items, sources, used = [], [], []
     if _on(cfg, "zadania"):
         for src in infra_views.truenas(conn):
             if src["tasks"]:
                 sources.append(src["row"]["name"])
+                used.append(src)
             for t in src["tasks"]:
                 when = f"{ago(now - t['last'])} temu" if t["last"] else "bez danych"
                 items.append({"state": t["state"], "name": f"{t['kind'].capitalize()} {t['key']}", "when": when, "ts": t["last"] or 0})
@@ -274,13 +276,15 @@ def _backups(conn, now, cfg):
             rows = [s for eid, s in src["states"].items() if eid.startswith("backup/")]
             if rows:
                 sources.append(src["row"]["name"])
+                used.append(src)
                 late = sum(1 for s in rows if s["state"] != "ok")
                 items.append({"state": "warn" if late else "ok", "name": f"Kopie maszyn ({len(rows)})",
                               "when": f"{late} spóźnione" if late else "na czas", "ts": 0})
     if not items:
         return _missing("TrueNAS, PBS")
     items.sort(key=lambda x: (x["state"] == "ok", -x["ts"]))
-    return {"source": ", ".join(sources), "state": "warn" if any(i["state"] != "ok" for i in items) else "ok", "entries": items[:4]}
+    return {"source": ", ".join(sources), "state": "warn" if any(i["state"] != "ok" for i in items) else "ok", "entries": items[:4],
+            "read": _read(used)}
 
 
 def _containers(conn, _now, cfg):
@@ -296,7 +300,7 @@ def _containers(conn, _now, cfg):
         out.append(_row("problemy", "Z problemem", str(bad), "warn" if bad else ""))
     if _on(cfg, "obrazy"):
         out.append(_row("obrazy", "Nowe obrazy", f"{fresh}" + (f" · {', '.join(named)}" if named else "")))
-    data = {"source": ", ".join(r["row"]["name"] for r in rows), "state": "warn" if bad else "ok", "rows": out}
+    data = {"source": ", ".join(r["row"]["name"] for r in rows), "state": "warn" if bad else "ok", "rows": out, "read": _read(rows)}
     if _on(cfg, "liczba"):
         data.update(big=stacks - bad, unit=f"/{stacks}", big_note="stacków działa")
     return data
@@ -319,7 +323,7 @@ def _network(conn, _now, cfg):
     if weak and _on(cfg, "slaby"):
         out.append(_row("slaby", "Słaby sygnał", str(weak), "warn"))
     return {"source": ", ".join(r["row"]["name"] for r in rows), "state": router["state"] if router else "unknown", "rows": out,
-            "foot": router["summary"] if router and _on(cfg, "router") else ""}
+            "read": _read(rows), "foot": router["summary"] if router and _on(cfg, "router") else ""}
 
 
 def _certs(conn, now, cfg):
@@ -343,6 +347,24 @@ def _certs(conn, now, cfg):
     return data
 
 
+def _read(sources):
+    """(najstarszy udany odczyt, co ile odpytujemy) ze źródeł, z których widżet wziął dane."""
+    rows = [src["row"] for src in sources if src["row"]["last_ok_at"]]
+    if not rows:
+        return None
+    oldest = min(rows, key=lambda r: r["last_ok_at"])
+    return oldest["last_ok_at"], oldest["poll_seconds"] or 60
+
+
+def stale(read, now):
+    """„odczyt sprzed 2 h”, gdy dane są starsze niż trzy cykle odpytywania (i co najmniej 10 minut); inaczej ""."""
+    if not read:
+        return ""
+    at, poll = read
+    age = now - at
+    return f"odczyt sprzed {ago(age)}" if age > max(3 * poll, 600) else ""
+
+
 WIDGET_DATA = {"proxmox": _proxmox, "pula": _pool, "kopie": _backups, "kontenery": _containers, "siec": _network, "certyfikaty": _certs}
 
 
@@ -357,7 +379,8 @@ def widget(conn, row, now=None):
         log.exception("widżet %s", row["kind"])
         data = _missing(label)
     return {"id": row["id"], "kind": row["kind"], "title": row["title"], "size": row["size"], "config": cfg, "label": label,
-            "view": cfg.get("view", "paski"), **{k: v for k, v in data.items() if k != "title"},
+            "view": cfg.get("view", "paski"), **{k: v for k, v in data.items() if k not in ("title", "read")},
+            "stale": stale(data.get("read"), now),
             "name": row["title"] or data.get("title") or label}
 
 
@@ -398,12 +421,16 @@ def stat_sources(conn):
 
 
 # ───────────────────────── panel boczny ─────────────────────────
-def attention(conn, open_inc, devices, states, now=None):
-    """(wiersze, ile pozostałych działa). Każde ostrzeżenie ma powód, a nie sam kolor."""
+def attention(conn, open_inc, devices, states, now=None, marks=None):
+    """(wiersze, ile pozostałych działa). Każde ostrzeżenie ma powód, a nie sam kolor.
+
+    marks ({device_id: rola} z otwartych incydentów): awarie są już w banerze i w „Skąd ta awaria”, więc tu ich nie
+    powtarzamy — ani samych incydentów, ani alertów i ostrzeżeń urządzeń, które w nich biorą udział."""
     now = now or time.time()
     names = {d["id"]: d["name"] for d in devices}
+    in_banner = set(marks or ())
     rows = []
-    for i in sorted(open_inc, key=lambda x: x["started_at"]):
+    for i in sorted(open_inc if marks is None else [], key=lambda x: x["started_at"]):
         detail = (states.get(i["root_device_id"]) or {}).get("why") or "Otwarty incydent"
         if i["status"] == "potwierdzony":
             detail = f"Potwierdzone: {i['acked_by']}" if i["acked_by"] else "Potwierdzone"
@@ -411,13 +438,13 @@ def attention(conn, open_inc, devices, states, now=None):
                      "when": ago(now - i["started_at"]), "link": f"/incydenty/{i['id']}"})
     covered = set()
     for a in alerts.active(conn, now=now):
-        if a["silenced"]:
+        if a["silenced"] or a["device_id"] in in_banner:
             continue
         covered.add(a["device_id"])
         rows.append({"state": "down" if a["severity"] == alerts.CRIT else "warn", "title": a["device"] or a["label"], "detail": a["message"],
                      "when": ago(now - a["first_seen"]), "link": f"/urzadzenia/{a['device_id']}" if a["device_id"] else "/alerty"})
     for did, s in states.items():
-        if s["state"] == "warn" and did not in covered and did in names:
+        if s["state"] == "warn" and did not in covered and did in names and did not in in_banner:
             rows.append({"state": "warn", "title": names[did], "detail": s.get("why") or "Stan: uwaga", "when": "", "link": f"/urzadzenia/{did}"})
     good = sum(1 for d in devices if states.get(d["id"], {}).get("state") == "ok")
     return rows[:MAX_ATTENTION], len(rows) - min(len(rows), MAX_ATTENTION), good
