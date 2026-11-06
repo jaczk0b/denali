@@ -204,11 +204,11 @@ def test_mapa_kolumny_i_zaleznosci(conn):
     inv.add_dependency(conn, immich, nas, "dane")
     inv.add_cable(conn, router, pve)
     m = mapview.build(conn, {nas: {"state": "down"}}, {})
-    assert [c["label"] for c in m["columns"]] == ["Sieć", "Serwery i maszyny"]
+    assert [c["label"] for c in m["columns"]] == ["Internet", "Sieć", "Serwery i maszyny"]
     [box] = m["boxes"]                                           # serwer = ramka z maszynami w środku
     assert box["id"] == pve and box["count"] == 2 and pve not in {n["id"] for n in m["nodes"]}
     assert phone not in {n["id"] for n in m["nodes"]} and m["hidden_clients"] == 1
-    assert sorted(e["cls"] for e in m["lines"]) == ["", "dane broken"]   # kabel do ramki + dane (źródło padło)
+    assert sorted(e["cls"] for e in m["lines"]) == ["", "", "dane broken"]   # internet→router, kabel do ramki, dane
     assert phone in {n["id"] for n in mapview.build(conn, {}, {}, with_clients=True)["nodes"]}
 
 
@@ -224,7 +224,7 @@ def test_mapa_siec_jako_lancuch(conn):
     inv.add_dependency(conn, ap, switch)
     m = mapview.build(conn, {}, {})
     pos = {n["id"]: (n["x"], n["y"]) for n in m["nodes"]}
-    assert [c["label"] for c in m["columns"]] == ["Sieć", "", "", ""]
+    assert [c["label"] for c in m["columns"]] == ["Internet", "Sieć", "", "", ""]
     assert pos[brama][0] < pos[router][0] < pos[switch][0] < pos[ap][0]
     assert pos[brama][1] == pos[router][1] == pos[switch][1] == pos[ap][1]
     assert pos[osobny][0] == pos[brama][0] and pos[osobny][1] != pos[brama][1]
@@ -294,3 +294,31 @@ def test_szablony_bez_atrybutu_style():
     bad = [str(p.relative_to(root)) for p in root.rglob("*.html")
            if re.search(r'(?<![\w-])style="', p.read_text(encoding="utf-8"))]
     assert bad == []
+
+
+def test_mapa_internet_vps_kolory_i_uklad(app, conn):
+    """Internet = łącze od dostawcy (stan z uplink), VPS osobno „z zewnątrz”, kolor = podsieć, układ z przeciągania."""
+    from denali import uplink
+    router = inv.create_device(conn, "router", "router")
+    vps = inv.create_device(conn, "vps-ovh", "vps")
+    pve = inv.create_device(conn, "pve", "host")
+    a = inv.create_device(conn, "docker", "vm", parent_id=pve)
+    b = inv.create_device(conn, "hass", "vm", parent_id=pve)
+    inv.add_address(conn, a, "ip", "192.168.20.20")
+    inv.add_address(conn, b, "ip", "192.168.30.2")
+    uplink.record(conn, False, now=1)
+    uplink.record(conn, False, now=2)
+    m = mapview.build(conn, {}, {})
+    assert [c["label"] for c in m["columns"]][:3] == ["Z zewnątrz", "Internet", "Sieć"]
+    nodes = {n["id"]: n for n in m["nodes"]}
+    assert nodes["internet"]["state"] == "down" and nodes[vps]["x"] < nodes["internet"]["x"]
+    assert {(e["a"], e["b"]) for e in m["lines"]} >= {(router, "internet")}
+    assert nodes[a]["color"] != nodes[b]["color"] and set(m["nets"]) == {"192.168.20.0/24", "192.168.30.0/24"}
+    [box] = m["boxes"]
+    mapview.save_layout(conn, {str(pve): [box["x"] + 100, box["y"] + 50], "zly": [1, 2], str(router): [-5, 3]})
+    m2 = mapview.build(conn, {}, {})
+    n2 = {n["id"]: n for n in m2["nodes"]}
+    assert m2["boxes"][0]["x"] == box["x"] + 100 and n2[a]["x"] == nodes[a]["x"] + 100 and n2[a]["y"] == nodes[a]["y"] + 50
+    assert n2[router]["x"] == nodes[router]["x"] and m2["arranged"]          # zła pozycja odrzucona
+    mapview.save_layout(conn, None)
+    assert not mapview.build(conn, {}, {})["arranged"]

@@ -8,17 +8,28 @@ do serwera. Linie:
 - niebieska przerywana: zależność „dane” (czerwona, gdy źródło danych nie działa),
 - cienka szara: aplikacja → maszyna, na której działa.
 Klienci sieci (komputery, telefony) domyślnie schowani; po włączeniu stoją pod routerem / AP.
+Z lewej „z zewnątrz” (VPS) i internet od dostawcy (stan łącza z uplink.py, modem), od którego zależy brama.
+Linie widać po najechaniu (przeglądarka), poza przerwanymi danymi. Kolor paska na kafelku = podsieć (VLAN) adresu.
+Układ można zmienić przeciąganiem: zapisane pozycje (kv map.layout) przesuwają ramkę z maszynami albo kafelek.
 
 Każde urządzenie ma w data-rel listę tego, od czego zależy i co od niego zależy (przechodnio) — przeglądarka
 podświetla po najechaniu cały łańcuch (static/denali.js). Tryb „co jeśli” (simulate=id) rysuje stan, jaki byłby,
 gdyby to urządzenie padło: zamiast stanu na żywo — przyczyna, skutki twarde i to, co będzie działać gorzej.
 """
+import ipaddress
+
 from sqlalchemy import select
 
-from . import inventory as inv
+from . import inventory as inv, uplink
+from .db import kv_get, kv_set
 from .models import cable, dependency, device, device_address
 
-INTERNET = {"vps", "modem"}
+LAYOUT_KEY = "map.layout"
+INTERNET_ID = "internet"
+OUTSIDE = {"vps"}           # dostęp spoza domu — nie źródło internetu
+INTERNET = {"modem"}
+# kolory podsieci — rozróżnialne na ciemnym tle; kolejne sieci po kolei
+NET_COLORS = ("#60a5fa", "#f472b6", "#a78bfa", "#fbbf24", "#34d399", "#fb923c", "#22d3ee", "#e879f9")
 NETWORK = {"router", "firewall", "switch", "ap"}
 HOSTS = {"host"}
 MACHINES = {"vm", "lxc", "nas", "ups"}
@@ -78,11 +89,19 @@ def build(conn, live, marks, with_clients=False, simulate=None):
     nodes, rect = [], {}                            # rect: device_id → (x, y, w, h)
     layers = []                                     # to samo jako lista warstw — na wąski ekran telefonu
 
-    def node(d, x, y, sub=None, nested=False):
+    nets = {}                                       # podsieć → kolor, w kolejności adresów
+    for ip in sorted(ips.values(), key=_ip_key):
+        n = _net(ip)
+        if n and n not in nets:
+            nets[n] = NET_COLORS[len(nets) % len(NET_COLORS)]
+
+    def node(d, x, y, sub=None, nested=False, box=None):
         rect[d["id"]] = (x, y, W, H)
         s = _state(d["id"], live, marks)
+        net = _net(ips.get(d["id"], ""))
         nodes.append({"id": d["id"], "x": x, "y": y, "name": d["name"], "short": _short(d["name"], 24),
-                      "sub": sub or ips.get(d["id"]) or "", "kind": kind(d), "state": s, "label": STATE_LABEL.get(s, s)})
+                      "sub": sub or ips.get(d["id"]) or "", "kind": kind(d), "state": s, "label": STATE_LABEL.get(s, s),
+                      "box": box, "net": net, "color": nets.get(net)})
         layers[-1]["items"].append({**nodes[-1], "nested": nested})
 
     def column(x, label):
@@ -91,12 +110,26 @@ def build(conn, live, marks, with_clients=False, simulate=None):
             layers.append({"label": label, "items": []})
 
     columns, x = [], LEFT
-    # 1: internet
-    col = [d for d in devs.values() if kind(d) in INTERNET]
+    # 1: z zewnątrz — VPS to dostęp spoza domu
+    col = [d for d in devs.values() if kind(d) in OUTSIDE]
     if col:
-        column(x, "Internet")
+        column(x, "Z zewnątrz")
         for j, d in enumerate(col):
             node(d, x, TOP + j * (H + GAP_Y))
+        x += W + GAP_X
+    # 2: internet od dostawcy (stan łącza z uplink.py) i modem
+    modems = [d for d in devs.values() if kind(d) in INTERNET]
+    if modems or any(kind(d) in NETWORK for d in devs.values()):
+        column(x, "Internet")
+        s = "unknown" if simulate else ("down" if uplink.is_down(conn) else ("ok" if kv_get(conn, uplink.KEY) else "unknown"))
+        rect[INTERNET_ID] = (x, TOP, W, H)
+        nodes.append({"id": INTERNET_ID, "x": x, "y": TOP, "name": "Internet", "short": "Internet",
+                      "sub": "łącze od dostawcy", "kind": "internet", "state": s, "label": STATE_LABEL.get(s, s),
+                      "box": None, "net": None, "color": None})
+        layers[-1]["items"].append({**nodes[-1], "nested": False})
+        for j, d in enumerate(modems, 1):
+            node(d, x, TOP + j * (H + GAP_Y))
+            edges.append((d["id"], INTERNET_ID, "siec", True))
         x += W + GAP_X
     # 2: sieć jako łańcuch — urządzenie zależne od innego sieciowego (router za bramą, switch za routerem, AP za
     #    switchem) stoi kolumnę dalej, na wysokości tego, od którego zależy; klienci (gdy włączeni) pod ostatnią
@@ -104,7 +137,12 @@ def build(conn, live, marks, with_clients=False, simulate=None):
     clients = [d for d in devs.values() if kind(d) in CLIENTS] if with_clients else []
     if clients and not levels:
         levels = [[]]
+    modem_ids = {d["id"] for d in modems}
     for depth, level in enumerate(levels):
+        if depth == 0:              # brama wychodzi do internetu — przez modem, jeśli jest w dokumentacji
+            for d, _up in level:
+                if not any(e[0] == d["id"] and e[1] in modem_ids for e in dep_edges):
+                    edges.append((d["id"], INTERNET_ID, "siec", True))
         column(x, "Sieć" if depth == 0 else "")
         y = TOP
         for d, up in sorted(level, key=lambda p: (rect[p[1]][1] if p[1] in rect else 0, p[0]["name"].lower())):
@@ -141,7 +179,7 @@ def build(conn, live, marks, with_clients=False, simulate=None):
                                     "state": s, "label": STATE_LABEL.get(s, s), "nested": False})
         for i, d in enumerate(kids):
             c, r = divmod(i, per_col)
-            node(d, x + BOX_PAD + c * (W + BOX_PAD), y + BOX_HEAD + BOX_PAD + r * (H + GAP_Y), nested=True)
+            node(d, x + BOX_PAD + c * (W + BOX_PAD), y + BOX_HEAD + BOX_PAD + r * (H + GAP_Y), nested=True, box=h["id"])
         y += bh + BOX_GAP
     for d in loose:
         node(d, x, y)
@@ -164,6 +202,22 @@ def build(conn, live, marks, with_clients=False, simulate=None):
             y += H + GAP_Y
         x += W + GAP_X
 
+    # 5: układ ułożony ręcznie — ramka przesuwa się razem z maszynami w środku
+    saved = kv_get(conn, LAYOUT_KEY) or {}
+    for b in boxes:
+        if str(b["id"]) in saved:
+            dx, dy = saved[str(b["id"])][0] - b["x"], saved[str(b["id"])][1] - b["y"]
+            b["x"], b["y"] = b["x"] + dx, b["y"] + dy
+            rect[b["id"]] = (b["x"], b["y"], b["w"], b["h"])
+            for n in nodes:
+                if n["box"] == b["id"]:
+                    n["x"], n["y"] = n["x"] + dx, n["y"] + dy
+                    rect[n["id"]] = (n["x"], n["y"], W, H)
+    for n in nodes:
+        if n["box"] is None and str(n["id"]) in saved:
+            n["x"], n["y"] = saved[str(n["id"])]
+            rect[n["id"]] = (n["x"], n["y"], W, H)
+
     states = {n["id"]: n["state"] for n in nodes}
     states.update({b["id"]: b["state"] for b in boxes})
     lines, seen = [], set()
@@ -174,7 +228,7 @@ def build(conn, live, marks, with_clients=False, simulate=None):
             continue                                # maszyna w ramce serwera — bez linii
         if devs[a]["parent_id"] == b and kind(devs[b]) in HOSTS:
             continue                                # zależność od własnego serwera widać po ramce
-        pair = (min(a, b), max(a, b), typ == "dane")
+        pair = (min(str(a), str(b)), max(str(a), str(b)), typ == "dane")
         if pair in seen:
             continue
         seen.add(pair)
@@ -187,14 +241,46 @@ def build(conn, live, marks, with_clients=False, simulate=None):
     lines.sort(key=lambda e: e["dane"])             # dane na wierzchu
     g = inv.load_graph(conn)
     for n in nodes + boxes:
+        if n["id"] == INTERNET_ID:      # internet: cała sieć, która przez niego wychodzi
+            n["rel"] = " ".join(str(d["id"]) for d in devs.values() if kind(d) in NETWORK | INTERNET)
+            continue
         hard, soft = g.impact(n["id"])
-        n["rel"] = " ".join(str(x) for x in sorted(g.ancestors(n["id"], hard_only=False) | hard | soft
-                                                    | {e[0] for e in edges if e[1] == n["id"]}
-                                                    | {e[1] for e in edges if e[0] == n["id"]}))
+        n["rel"] = " ".join(sorted(str(x) for x in g.ancestors(n["id"], hard_only=False) | hard | soft
+                                   | {e[0] for e in edges if e[1] == n["id"]}
+                                   | {e[1] for e in edges if e[0] == n["id"]}))
     height = max([n["y"] + H for n in nodes] + [b["y"] + b["h"] for b in boxes] + [TOP]) + 12
+    width = max([x - GAP_X + LEFT + 60, 300] + [n["x"] + W + 60 for n in nodes] + [b["x"] + b["w"] + 60 for b in boxes])
     hidden = sum(1 for d in devs.values() if kind(d) in CLIENTS)
-    return {"nodes": nodes, "boxes": boxes, "lines": lines, "columns": columns, "layers": layers, "width": max(x - GAP_X + LEFT + 60, 300),
-            "height": height, "w": W, "h": H, "hidden_clients": hidden}
+    return {"nodes": nodes, "boxes": boxes, "lines": lines, "columns": columns, "layers": layers, "width": width,
+            "height": height, "w": W, "h": H, "hidden_clients": hidden, "nets": nets, "arranged": bool(saved)}
+
+
+def save_layout(conn, positions):
+    """positions: {id: [x, y]} lewego górnego rogu ramki albo kafelka (dopisywane do zapisanych); None = automatyczny."""
+    if positions is None:
+        kv_set(conn, LAYOUT_KEY, {})
+        return
+    clean = {}
+    for k, v in positions.items():
+        if (str(k).isdigit() or k == INTERNET_ID) and isinstance(v, (list, tuple)) and len(v) == 2 \
+                and all(isinstance(c, (int, float)) and not isinstance(c, bool) and 0 <= c <= 20000 for c in v):
+            clean[str(k)] = [round(v[0]), round(v[1])]
+    kv_set(conn, LAYOUT_KEY, {**(kv_get(conn, LAYOUT_KEY) or {}), **clean})
+
+
+def _net(ip):
+    # shortcut: podsieć jako /24 z adresu, bez prawdziwych masek VLAN-ów; do zmiany, gdy OpenWrt poda sieci
+    try:
+        return str(ipaddress.ip_network(f"{ip}/24", strict=False)) if ip and ":" not in ip else None
+    except ValueError:
+        return None
+
+
+def _ip_key(ip):
+    try:
+        return (0, int(ipaddress.ip_address(ip)))
+    except ValueError:
+        return (1, 0)
 
 
 def _network_levels(net, edges):

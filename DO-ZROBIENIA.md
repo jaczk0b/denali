@@ -59,7 +59,9 @@ Kod sprawdzony testami i w przeglądarce na lokalnej bazie demo, nie na prawdziw
 - [ ] *Akcje*: lista kontrolna dla każdej integracji; zmiana profilu z tej strony nie kasuje akcji innych integracji.
 - [ ] *Do zatwierdzenia*: „Dodaj” i „Pomiń” jednym kliknięciem, klienci routera w zwiniętej sekcji.
 - [ ] Powiadomienia przy niedziałającym Discordzie: panel nie zwalnia (wysyłka już nie trzyma blokady bazy).
-- [ ] Zostało: sieci/VLAN-y z OpenWrt do zakładki *Adresy IP* (dziś zakłada /24), mapa — do omówienia, co w niej przeszkadza.
+- [ ] Mapa: Internet od dostawcy (stan łącza), VPS w „Z zewnątrz”, kolory podsieci, linie po najechaniu, *Ułóż mapę*
+      (przeciąganie, zapis, układ automatyczny) — sprawdzić na prawdziwym labie i na tablecie (dotyk).
+- [ ] Zostało: sieci/VLAN-y z OpenWrt — prawdziwe maski i nazwy VLAN-ów w *Adresach IP* i w legendzie mapy (dziś /24 z adresu).
 
 ## 2. Bezpieczeństwo — do domknięcia
 

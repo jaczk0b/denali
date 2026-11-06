@@ -291,3 +291,23 @@ def test_kolejka_przyciski_i_klienci_osobno(admin, lab, app):
     page = admin.get("/zatwierdz").text
     assert f'formaction="/zatwierdz/{lab["ref"]}"' in page and "To już jest w Denali" in page
     assert "Klienci sieci: 1" in page
+
+
+def test_mapa_uklad_zapis_tylko_admin(admin, viewer, lab, app):
+    from denali import mapview
+    from denali.db import kv_get
+    page = admin.get("/infrastruktura/mapa").text
+    assert "Ułóż mapę" in page and 'data-move="' in page
+    csrf = re.search(r'data-csrf="([^"]+)"', page).group(1)
+    r = admin.post("/infrastruktura/mapa/uklad", json={"positions": {str(lab["pve"]): [500, 40]}},
+                   headers={"X-CSRF-Token": csrf})
+    assert r.status_code == 200
+    with app.state.engine.connect() as c:
+        assert kv_get(c, mapview.LAYOUT_KEY) == {str(lab["pve"]): [500, 40]}
+    assert admin.post("/infrastruktura/mapa/uklad", json={"auto": True}).status_code in (400, 403)   # bez CSRF
+    with app.state.engine.connect() as c:
+        assert kv_get(c, mapview.LAYOUT_KEY)                                   # nie skasowane
+    vpage = viewer.get("/infrastruktura/mapa").text
+    assert "Ułóż mapę" not in vpage
+    vcsrf = re.search(r'data-csrf="([^"]+)"', vpage).group(1)
+    assert viewer.post("/infrastruktura/mapa/uklad", json={"auto": True}, headers={"X-CSRF-Token": vcsrf}).status_code == 403

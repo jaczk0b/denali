@@ -407,8 +407,11 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
 - **Restart z panelu** (Proxmox, agent, Komodo) sam zakłada planowaną przerwę (10–60 min, zależnie od akcji).
   Serwer fizyczny ma *Bezpieczny restart…*: kolejność wyłączania i uruchamiania maszyn liczona z zależności,
   przerwa jednym kliknięciem, stan na żywo. Sam restart węzła robisz w Proxmoxie — panel nie ma do tego uprawnień.
-- **Mapa**: najechanie na urządzenie podświetla cały łańcuch zależności; *Co jeśli…?* pokazuje, co przestanie
-  działać, gdy wybrane urządzenie padnie (symulacja, nic nie jest wyłączane).
+- **Mapa**: od lewej *Z zewnątrz* (VPS), *Internet* (łącze od dostawcy — stan z testu łącza), sieć, serwery w ramkach,
+  aplikacje. Kolor paska na kafelku = podsieć (VLAN). Powiązania widać po najechaniu na urządzenie (albo wszystkie
+  przyciskiem), przerwane dane zawsze. *Ułóż mapę* (administrator): przeciągasz ramki i kafelki, *Zapisz układ*;
+  *Układ automatyczny* wraca do rysowanego samego. *Co jeśli…?* pokazuje, co przestanie działać, gdy wybrane urządzenie
+  padnie (symulacja, nic nie jest wyłączane).
 - **Prognoza miejsca** — pule TrueNAS i magazyny PBS: zajętość co godzinę, prognoza z przyrostu w ostatnich 14 dniach
   (potrzeba min. 2 dni danych). Poniżej 14 dni do zapełnienia — wiadomość na Discord (raz na tydzień).
 - **Podsumowanie tygodnia** w poniedziałek od 8:00 (albo *Kanały powiadomień → Wyślij teraz*), a dostępność za miesiąc pierwszego dnia miesiąca.

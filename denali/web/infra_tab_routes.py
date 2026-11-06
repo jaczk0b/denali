@@ -2,7 +2,7 @@
 Przyciski akcji (Proxmox, Docker) widzi tylko administrator i tylko te, które przeszły zamki — prowadzą do tego samego
 okna potwierdzenia co karta urządzenia."""
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 
 from .. import actions, auth, infra_views as views, live, mapview, oui, racks, status
@@ -219,3 +219,18 @@ def tab_map(request: Request, klienci: str = "", co_jesli: str = "", sess: dict 
                           simulate=sim_id if sim else None)
         return render(request, "infra_mapa.html", {"tabs": views.tabs(conn), "m": m, "clients": bool(klienci),
                                                    "picking": co_jesli != "", "sim": sim})
+
+
+@router.post("/infrastruktura/mapa/uklad")
+async def map_layout(request: Request, sess: dict = Depends(require_admin)):
+    """Układ z przeciągania: JSON {"positions": {id: [x, y]}}; {"auto": true} = wróć do układu automatycznego."""
+    try:
+        data = await request.json()
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("positions", {}), dict):
+        return JSONResponse({"error": "Zły format."}, 400)
+    with request.app.state.engine.begin() as conn:
+        mapview.save_layout(conn, None if data.get("auto") else data.get("positions") or {})
+        auth.audit(conn, "map_layout", user=sess["login"], ip=client_ip(request), result="auto" if data.get("auto") else "")
+    return {"ok": True}

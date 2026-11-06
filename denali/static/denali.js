@@ -91,6 +91,105 @@
   }
   ["mouseover", "mouseout", "focusin", "focusout"].forEach(function (t) { document.addEventListener(t, mapFocus); });
 
+  // Mapa: „pokaż wszystkie powiązania” i układanie przeciąganiem (tylko administrator; zapis w /infrastruktura/mapa/uklad).
+  var H = 48;                       // wysokość kafelka — jak mapview.H
+  function mapPath(a, b) {          // to samo co mapview._path
+    var ax = a[0], ay = a[1], aw = a[2], ah = a[3], bx = b[0], by = b[1], bw = b[2], bh = b[3], t;
+    if (ax + aw <= bx || bx + bw <= ax) {
+      if (bx < ax) { t = [ax, ay, aw, ah]; ax = bx; ay = by; aw = bw; ah = bh; bx = t[0]; by = t[1]; bw = t[2]; bh = t[3]; }
+      var y1 = ay + Math.min(ah, H) / 2, y2 = by + Math.min(bh, H) / 2, x1 = ax + aw, x2 = bx, mid = (x1 + x2) / 2;
+      return "M " + x1 + " " + y1 + " C " + mid + " " + y1 + ", " + mid + " " + y2 + ", " + x2 + " " + y2;
+    }
+    var x = Math.max(ax + aw, bx + bw), ya = ay + Math.min(ah, H) / 2, yb = by + Math.min(bh, H) / 2;
+    var bulge = x + 24 + Math.min(Math.abs(yb - ya) / 8, 30);
+    return "M " + (ax + aw) + " " + ya + " C " + bulge + " " + ya + ", " + bulge + " " + yb + ", " + (bx + bw) + " " + yb;
+  }
+  function mapRects(svg) {
+    var r = {};
+    [].forEach.call(svg.querySelectorAll("[data-rect]"), function (el) {
+      var v = el.dataset.rect.split(" ").map(Number), m = el.dataset.off ? el.dataset.off.split(" ").map(Number) : [0, 0];
+      r[el.dataset.id] = [v[0] + m[0], v[1] + m[1], v[2], v[3]];
+    });
+    return r;
+  }
+  function mapRedraw(svg) {
+    var r = mapRects(svg);
+    [].forEach.call(svg.querySelectorAll(".map-edge"), function (e) {
+      if (r[e.dataset.a] && r[e.dataset.b]) { e.setAttribute("d", mapPath(r[e.dataset.a], r[e.dataset.b])); }
+    });
+  }
+  var drag = null;
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("[data-map-lines], [data-map-arrange], [data-map-save], [data-map-cancel], [data-map-auto]");
+    var svg = document.querySelector(".map-wrap svg");
+    if (svg && svg.classList.contains("arranging") && e.target.closest && e.target.closest(".map-wrap a")) {
+      e.preventDefault();           // w trybie układania kliknięcie nie otwiera urządzenia
+      return;
+    }
+    if (!btn || !svg) { return; }
+    var wrap = document.querySelector(".map-wrap");
+    function post(body) {
+      return fetch("/infrastruktura/mapa/uklad", { method: "POST", body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": wrap.dataset.csrf } })
+        .then(function (r) { if (!r.ok) { throw new Error(r.status); } location.reload(); })
+        .catch(function () { alert("Nie zapisano układu."); });
+    }
+    function mode(on) {
+      svg.classList.toggle("arranging", on);
+      document.querySelector("[data-map-arrange]").hidden = on;
+      document.querySelector("[data-map-save]").hidden = !on;
+      document.querySelector("[data-map-cancel]").hidden = !on;
+      document.querySelector("[data-map-hint]").hidden = !on;
+    }
+    if (btn.hasAttribute("data-map-lines")) {
+      var all = svg.classList.toggle("all-lines");
+      btn.textContent = all ? "Powiązania po najechaniu" : "Pokaż wszystkie powiązania";
+    } else if (btn.hasAttribute("data-map-arrange")) {
+      mode(true);
+      var vb = svg.viewBox.baseVal, w = vb.width + 400, h = vb.height + 400;   // miejsce na przesuwanie
+      svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+      svg.setAttribute("width", w);
+      svg.setAttribute("height", h);
+    } else if (btn.hasAttribute("data-map-cancel")) {
+      location.reload();
+    } else if (btn.hasAttribute("data-map-auto")) {
+      post({ auto: true });
+    } else if (btn.hasAttribute("data-map-save")) {
+      var pos = {};
+      [].forEach.call(svg.querySelectorAll("[data-off]"), function (el) {
+        if (el.dataset.id === el.dataset.move) {            // ramka albo samodzielny kafelek
+          var v = el.dataset.rect.split(" ").map(Number), m = el.dataset.off.split(" ").map(Number);
+          pos[el.dataset.id] = [Math.max(0, v[0] + m[0]), Math.max(0, v[1] + m[1])];
+        }
+      });
+      post({ positions: pos });
+    }
+  });
+  document.addEventListener("pointerdown", function (e) {
+    var svg = document.querySelector(".map-wrap svg.arranging");
+    var el = svg && e.target.closest && e.target.closest("[data-move]");
+    if (!el) { return; }
+    e.preventDefault();
+    var k = el.dataset.move, group = svg.querySelectorAll('[data-move="' + k + '"]');
+    var scale = svg.viewBox.baseVal.width / svg.getBoundingClientRect().width || 1;
+    drag = { svg: svg, group: group, x: e.clientX, y: e.clientY, scale: scale,
+             start: [].map.call(group, function (g) { return (g.dataset.off || "0 0").split(" ").map(Number); }) };
+    svg.classList.add("dragging");
+  });
+  document.addEventListener("pointermove", function (e) {
+    if (!drag) { return; }
+    var dx = (e.clientX - drag.x) * drag.scale, dy = (e.clientY - drag.y) * drag.scale;
+    [].forEach.call(drag.group, function (g, i) {
+      var ox = drag.start[i][0] + dx, oy = drag.start[i][1] + dy;
+      g.dataset.off = ox + " " + oy;
+      g.setAttribute("transform", "translate(" + ox + " " + oy + ")");
+    });
+    mapRedraw(drag.svg);
+  });
+  document.addEventListener("pointerup", function () {
+    if (drag) { drag.svg.classList.remove("dragging"); drag = null; }
+  });
+
   // Tablet raz na godzinę ładuje stronę od nowa — po wdrożeniu dostaje nowy wygląd.
   if (body.classList.contains("kiosk")) {
     setTimeout(reloadWhenUp, HOUR);

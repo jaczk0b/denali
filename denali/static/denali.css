@@ -314,6 +314,14 @@ a.rk-shelf-empty:hover { color: var(--link); }
 .break-form input, .break-form select { width: 100%; }
 /* mapa: podświetlony łańcuch zależności i symulacja */
 .map-wrap svg [data-id], .map-wrap svg .map-edge { transition: opacity .15s; }
+/* powiązania tylko po najechaniu (albo wszystkie po przełączniku); przerwane dane zawsze */
+.map-wrap svg .map-edge { opacity: 0; pointer-events: none; }
+.map-wrap svg.focus .map-edge.lit, .map-wrap svg.all-lines .map-edge, .map-wrap svg .map-edge.broken { opacity: 1; }
+.map-wrap svg:not(.all-lines).focus .map-edge:not(.lit):not(.broken) { opacity: 0; }
+.map-wrap svg.arranging [data-move] { cursor: grab; }
+.map-wrap svg.arranging { user-select: none; -webkit-user-select: none; touch-action: none; }
+[data-map-save][hidden], [data-map-cancel][hidden], [data-map-arrange][hidden], [data-map-hint][hidden] { display: none; }
+.map-wrap svg.arranging.dragging [data-move] { cursor: grabbing; }
 .map-wrap svg.focus [data-id]:not(.lit), .map-wrap svg.focus .map-edge:not(.lit) { opacity: .22; }
 .map-wrap svg.focus .map-edge.lit { stroke-width: 2.6; }
 .map-wrap svg.focus a.lit rect { stroke: var(--accent); }

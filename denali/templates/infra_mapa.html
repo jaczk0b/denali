@@ -11,11 +11,18 @@
   {%- elif state == "effect" %}<path d="M{{ cx }} {{ cy - 5.5 }}l5.5 10h-11z" fill="none" stroke="#ffc85a" stroke-width="1.6" stroke-linejoin="round"/>
   {%- else %}<circle cx="{{ cx }}" cy="{{ cy }}" r="5" fill="none" stroke="#8f98a8" stroke-width="1.6" stroke-dasharray="2.2 2"/>{% endif -%}
 {%- endmacro %}
-{% macro href(id) %}{% if picking %}/infrastruktura/mapa?co_jesli={{ id }}{% if clients %}&amp;klienci=1{% endif %}{% else %}/urzadzenia/{{ id }}{% endif %}{% endmacro %}
+{% macro href(id) %}{% if id == "internet" %}/infrastruktura/siec{% elif picking %}/infrastruktura/mapa?co_jesli={{ id }}{% if clients %}&amp;klienci=1{% endif %}{% else %}/urzadzenia/{{ id }}{% endif %}{% endmacro %}
 {% block content %}
 <div class="row-between">
   <h1>Infrastruktura</h1>
   <div class="actions">
+    {% if m.nodes or m.boxes %}<button class="btn small" type="button" data-map-lines>Pokaż wszystkie powiązania</button>{% endif %}
+    {% if sess.role == "admin" and not picking and (m.nodes or m.boxes) %}
+    <button class="btn small" type="button" data-map-arrange>Ułóż mapę</button>
+    <button class="btn small primary" type="button" data-map-save hidden>Zapisz układ</button>
+    <button class="btn small" type="button" data-map-cancel hidden>Anuluj</button>
+    {% if m.arranged %}<button class="btn small" type="button" data-map-auto>Układ automatyczny</button>{% endif %}
+    {% endif %}
     {% if picking %}<a class="btn small" href="/infrastruktura/mapa">Zakończ „co jeśli”</a>
     {% else %}<a class="btn small" href="/infrastruktura/mapa?co_jesli=0">Co jeśli…?</a>{% endif %}
     {% if m.hidden_clients %}
@@ -50,12 +57,14 @@
   </ul>
   {% endfor %}
 </section>
-<section class="map-wrap" aria-label="Mapa infrastruktury">
+<p class="alert warn" data-map-hint hidden>Przeciągnij ramkę serwera (z maszynami w środku) albo kafelek w inne miejsce, potem „Zapisz układ”.</p>
+<section class="map-wrap" aria-label="Mapa infrastruktury" data-csrf="{{ csrf }}">
   <svg width="{{ m.width }}" height="{{ m.height }}" viewBox="0 0 {{ m.width }} {{ m.height }}" role="img"
        aria-label="Mapa: {{ m.nodes | length }} urządzeń" font-family="Geist, system-ui, sans-serif">
-    {% for c in m.columns %}<text class="map-col" x="{{ c.x }}" y="20" fill="#a6aed4" font-size="12">{{ c.label | upper }}</text>{% endfor %}
+    {% if not m.arranged %}{% for c in m.columns %}<text class="map-col" x="{{ c.x }}" y="20" fill="#a6aed4" font-size="12">{{ c.label | upper }}</text>{% endfor %}{% endif %}
     {% for b in m.boxes %}
-    <a href="{{ href(b.id) }}" class="map-box-link" data-id="{{ b.id }}" data-rel="{{ b.rel }}">
+    <a href="{{ href(b.id) }}" class="map-box-link" data-id="{{ b.id }}" data-rel="{{ b.rel }}" data-move="{{ b.id }}"
+       data-rect="{{ b.x }} {{ b.y }} {{ b.w }} {{ b.h }}">
       <title>{{ b.name }} — {{ b.label }} · {{ b.count }} maszyn</title>
       <rect class="map-box {{ b.state }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="14"
             fill="#151c24" stroke="{{ STROKE.get(b.state, '#33404f') }}"/>
@@ -67,11 +76,13 @@
       stroke="{{ '#ff6b61' if 'broken' in e.cls else ('#5eead4' if e.dane else '#6b7682') }}" stroke-width="{{ 1.2 if e.cls == 'app' else 1.8 }}"
       {% if e.dane or 'soft' in e.cls %}stroke-dasharray="6 5"{% endif %}/>{% endfor %}
     {% for n in m.nodes %}
-    <a href="{{ href(n.id) }}" class="map-node {{ n.state }}" data-id="{{ n.id }}" data-rel="{{ n.rel }}">
+    <a href="{{ href(n.id) }}" class="map-node {{ n.state }}" data-id="{{ n.id }}" data-rel="{{ n.rel }}"
+       data-move="{{ n.box if n.box is not none else n.id }}" data-rect="{{ n.x }} {{ n.y }} {{ m.w }} {{ m.h }}">
       <title>{{ n.name }} — {{ KINDS.get(n.kind, n.kind) }} · {{ n.label }}</title>
       <rect x="{{ n.x }}" y="{{ n.y }}" width="{{ m.w }}" height="{{ m.h }}" rx="9"
             fill="{{ FILL.get(n.state, '#1b2128') }}" stroke="{{ STROKE.get(n.state, '#2c343e') }}"
             {% if n.state == "effect" %}stroke-dasharray="5 4"{% endif %} stroke-width="{{ 2 if n.state == 'down' else 1 }}"/>
+      {% if n.color %}<rect x="{{ n.x + 1 }}" y="{{ n.y + 8 }}" width="3" height="{{ m.h - 16 }}" rx="1.5" fill="{{ n.color }}"><title>sieć {{ n.net }}</title></rect>{% endif %}
       {{ dot(n.state, n.x + 17, n.y + 24) }}
       <text x="{{ n.x + 32 }}" y="{{ n.y + 21 }}" fill="#e7eaee" font-size="13" font-weight="500">{{ n.short }}</text>
       <text class="sub" x="{{ n.x + 32 }}" y="{{ n.y + 37 }}" fill="#a6aed4" font-size="11">{{ n.sub or KINDS.get(n.kind, n.kind) }}</text>
@@ -83,7 +94,8 @@
     <span><svg width="28" height="8" aria-hidden="true"><path d="M0 4h28" stroke="#5eead4" stroke-width="2" stroke-dasharray="6 5"/></svg> zależność danych</span>
     <span><svg width="28" height="8" aria-hidden="true"><path d="M0 4h28" stroke="#ff6b61" stroke-width="2" stroke-dasharray="6 5"/></svg> dane przerwane</span>
     <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#b3bcc6" stroke-width="1.6" stroke-dasharray="2.5 2"/></svg> skutek awarii</span>
-    <span>Ramka = serwer, w środku maszyny, które na nim działają. Układ liczy się sam z dokumentacji.</span>
+    {% for net, color in m.nets.items() %}<span><svg width="6" height="14" aria-hidden="true"><rect width="4" height="14" rx="2" fill="{{ color }}"/></svg> {{ net }}</span>{% endfor %}
+    <span>Ramka = serwer, w środku maszyny, które na nim działają. Powiązania widać po najechaniu na urządzenie.</span>
   </div>
 </section>
 {% endif %}
