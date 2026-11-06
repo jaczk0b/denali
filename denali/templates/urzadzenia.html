@@ -32,15 +32,19 @@
 <section class="card" aria-label="{{ label }}">
   <h2>{{ label }} <span class="muted">· {{ devs | length }}</span></h2>
   <div class="table-wrap">
-    <table>
-      <thead><tr><th>Nazwa</th><th>Typ</th><th>Na czym działa</th><th>Adres</th><th>Ważność</th><th>Stan</th></tr></thead>
+    <table class="dev-table">
+      <colgroup><col class="c-name"><col class="c-kind"><col class="c-parent"><col class="c-addr"><col class="c-mon"><col class="c-prio"><col class="c-state"></colgroup>
+      <thead><tr><th>Nazwa</th><th>Typ</th><th>Na czym działa</th><th>Adres i sieć</th><th>Sprawdzanie</th><th>Ważność</th><th>Stan</th></tr></thead>
       <tbody>
       {% for d in devs %}
         <tr>
           <td><a href="/urzadzenia/{{ d.id }}">{{ d.name }}</a>{% if d.role %}<div class="muted small">{{ d.role }}</div>{% endif %}</td>
           <td>{{ KINDS.get(d.kind, d.kind) }}</td>
           <td>{% if d.parent_id %}<a href="/urzadzenia/{{ d.parent_id }}">{{ names.get(d.parent_id) }}</a>{% else %}—{% endif %}</td>
-          <td class="mono">{{ ips.get(d.id, "—") }}</td>
+          <td>{% set a = addrs.get(d.id) %}{% if a and a.ip %}<span class="mono small">{{ a.ip }}</span>
+            {% if a.net %}<div class="src-net small"><i class="dot"{% if a.net.color %} data-style="background: {{ a.net.color }}"{% endif %}></i>{{ a.net.label }}</div>{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="small{% if monitor.get(d.id) == 'brak' %} muted{% endif %}">{{ MONITOR.get(monitor.get(d.id), "") }}</td>
           <td>{{ PRIORITY[d.criticality] }}</td>
           <td>{% if marks.get(d.id) %}{{ mark_badge(marks.get(d.id)) }}
             {% elif states.get(d.id) %}{% set s = states[d.id].state %}<span class="pill {{ {'down': 'down', 'warn': 'warn', 'ok': 'ok'}.get(s, '') }}">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(s, "unknown"), 12) }} {{ {"ok": "działa", "down": "nie działa", "warn": "uwaga", "off": "wyłączone", "unknown": "?"}[s] }}</span>

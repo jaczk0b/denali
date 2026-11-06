@@ -146,10 +146,6 @@
       btn.textContent = all ? "Powiązania po najechaniu" : "Pokaż wszystkie powiązania";
     } else if (btn.hasAttribute("data-map-arrange")) {
       mode(true);
-      var vb = svg.viewBox.baseVal, w = vb.width + 400, h = vb.height + 400;   // miejsce na przesuwanie
-      svg.setAttribute("viewBox", "0 0 " + w + " " + h);
-      svg.setAttribute("width", w);
-      svg.setAttribute("height", h);
     } else if (btn.hasAttribute("data-map-cancel")) {
       location.reload();
     } else if (btn.hasAttribute("data-map-auto")) {
@@ -165,13 +161,63 @@
       post({ positions: pos });
     }
   });
+  // Przybliżanie (kółko, przyciski) i przesuwanie (przeciągnięcie tła) — zmiana viewBox, bez przewijania strony w bok.
+  function vb(svg) { var b = svg.viewBox.baseVal; return [b.x, b.y, b.width, b.height]; }
+  function setVb(svg, v) { svg.setAttribute("viewBox", v.map(function (n) { return Math.round(n * 10) / 10; }).join(" ")); }
+  function full(svg) { if (!svg.dataset.full) { svg.dataset.full = vb(svg).join(" "); } return svg.dataset.full.split(" ").map(Number); }
+  function zoom(svg, k, cx, cy) {
+    var v = vb(svg), f = full(svg);
+    var w = Math.min(Math.max(v[2] * k, f[2] * 0.15), f[2] * 3), h = v[3] * (w / v[2]);
+    if (cx === undefined) { cx = v[0] + v[2] / 2; cy = v[1] + v[3] / 2; }
+    setVb(svg, [cx - (cx - v[0]) * (w / v[2]), cy - (cy - v[1]) * (h / v[3]), w, h]);
+  }
+  function toSvg(svg, e) {
+    var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+    return p.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  document.addEventListener("wheel", function (e) {
+    var svg = e.target.closest && e.target.closest(".map-wrap svg");
+    if (!svg) { return; }
+    e.preventDefault();
+    var p = toSvg(svg, e);
+    zoom(svg, e.deltaY > 0 ? 1.15 : 1 / 1.15, p.x, p.y);
+  }, { passive: false });
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-map-zoom]");
+    var svg = document.querySelector(".map-wrap svg");
+    if (!b || !svg) { return; }
+    if (b.dataset.mapZoom === "fit") { setVb(svg, full(svg)); } else { zoom(svg, b.dataset.mapZoom === "in" ? 1 / 1.3 : 1.3); }
+  });
+  var pan = null, panMoved = false;
+  document.addEventListener("pointerdown", function (e) {
+    var svg = e.target.closest && e.target.closest(".map-wrap svg");
+    if (!svg || e.button !== 0) { return; }
+    if (svg.classList.contains("arranging") && e.target.closest("[data-move]")) { return; }   // to układanie, nie przesuwanie
+    pan = { svg: svg, x: e.clientX, y: e.clientY, v: vb(svg), k: 1 / svg.getScreenCTM().a };
+    panMoved = false;
+  });
+  document.addEventListener("pointermove", function (e) {
+    if (!pan) { return; }
+    var dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+    if (!panMoved && Math.abs(dx) + Math.abs(dy) < 5) { return; }     // drobny ruch to jeszcze kliknięcie
+    panMoved = true;
+    pan.svg.classList.add("panning");
+    setVb(pan.svg, [pan.v[0] - dx * pan.k, pan.v[1] - dy * pan.k, pan.v[2], pan.v[3]]);
+  });
+  document.addEventListener("pointerup", function () {
+    if (pan) { pan.svg.classList.remove("panning"); pan = null; }
+  });
+  document.addEventListener("click", function (e) {      // po przesunięciu mapy puszczenie myszy nie otwiera urządzenia
+    if (panMoved && e.target.closest && e.target.closest(".map-wrap svg a")) { e.preventDefault(); panMoved = false; }
+  }, true);
+
   document.addEventListener("pointerdown", function (e) {
     var svg = document.querySelector(".map-wrap svg.arranging");
     var el = svg && e.target.closest && e.target.closest("[data-move]");
     if (!el) { return; }
     e.preventDefault();
     var k = el.dataset.move, group = svg.querySelectorAll('[data-move="' + k + '"]');
-    var scale = svg.viewBox.baseVal.width / svg.getBoundingClientRect().width || 1;
+    var scale = 1 / (svg.getScreenCTM() ? svg.getScreenCTM().a : 1);
     drag = { svg: svg, group: group, x: e.clientX, y: e.clientY, scale: scale,
              start: [].map.call(group, function (g) { return (g.dataset.off || "0 0").split(" ").map(Number); }) };
     svg.classList.add("dragging");

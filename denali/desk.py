@@ -16,7 +16,7 @@ DEFAULT_CATEGORY = "Na co dzień"
 MAX_ICON = 3
 # Strony panelu: szybkie przejście (Ctrl+K) i propozycje ikon.
 PAGES = [("Pulpit", "/"), ("Mapa", "/infrastruktura/mapa"), ("Lista urządzeń", "/urzadzenia"),
-         ("Szafa", "/infrastruktura/szafa"), ("Adresy IP", "/infrastruktura/adresy"),
+         ("Źródła (Proxmox, TrueNAS, Komodo, router…)", "/infrastruktura/zrodla"), ("Adresy IP", "/infrastruktura/adresy"),
          ("Incydenty", "/incydenty"), ("Alerty", "/alerty"), ("Aktualizacje", "/aktualizacje"), ("Oś czasu", "/os-czasu"),
          ("Procedury", "/procedury"),
          ("Co jeśli…? (symulacja awarii)", "/infrastruktura/mapa?co_jesli=0"), ("Konto i sesje", "/konto")]

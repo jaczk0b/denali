@@ -11,7 +11,7 @@ zależności i kable, profile, kolejka „do zatwierdzenia”, analiza przyczyny
 skarbiec, pulpit, tablet, eksport awaryjny, kopie zapasowe; integracje Proxmox, PBS, TrueNAS, Komodo, router OpenWrt, router TP-Link i OVHcloud (VPS),
 sprawdzenia z LAN i z internetu, stan na żywo z automatycznymi incydentami, powiadomienia na Discord, strażnik na VPS,
 odświeżanie na żywo (SSE); jedna lista aktualizacji (Proxmox, PBS, Komodo, OpenWrt, agent) i agent na maszynach (apt,
-wymagany restart, NFS, dyski, pamięć, usługi failed, kontenery); alerty, oś czasu i terminy; dział Infrastruktura z zakładkami Mapa (rysowana sama), Proxmox, TrueNAS, Docker, Sieć, VPS,
+wymagany restart, NFS, dyski, pamięć, usługi failed, kontenery); alerty, oś czasu i terminy; dział Infrastruktura z zakładkami Mapa (rysowana sama, przybliżanie i własny układ), Lista, Źródła (każda integracja — Proxmox, PBS, TrueNAS, Komodo, router, OVH, agenci — w tym samym układzie),
 Adresy IP (zajęte i wolne, konflikty) i Szafa (co na której wysokości); akcje z listy dozwolonych (Proxmox: start,
 wyłączenie, restart, snapshot; Komodo: start, restart, stop, Deploy; agent: apt upgrade po snapshocie i restart
 maszyny, gdy jest wymagany; OpenWrt: kopia konfiguracji) z potwierdzeniem i audytem — z karty urządzenia i z zakładek Proxmox i Docker; TrueNAS:
@@ -410,7 +410,7 @@ ryzyko, ale nie daje gwarancji: przejrzyj plik, zanim go gdzieś wkleisz.
 - **Mapa**: od lewej *Z zewnątrz* (VPS), *Internet* (łącze od dostawcy — stan z testu łącza), sieć, serwery w ramkach,
   aplikacje. Kolor paska na kafelku = sieć (VLAN z routera OpenWrt, bez niego /24 z adresu). Powiązania widać po najechaniu na urządzenie (albo wszystkie
   przyciskiem), przerwane dane zawsze. *Ułóż mapę* (administrator): przeciągasz ramki i kafelki, *Zapisz układ*;
-  *Układ automatyczny* wraca do rysowanego samego. *Co jeśli…?* pokazuje, co przestanie działać, gdy wybrane urządzenie
+  *Układ automatyczny* wraca do rysowanego samego. Kółko myszy przybliża, przeciągnięcie tła przesuwa, *Całość* pokazuje wszystko. *Co jeśli…?* pokazuje, co przestanie działać, gdy wybrane urządzenie
   padnie (symulacja, nic nie jest wyłączane).
 - **Prognoza miejsca** — pule TrueNAS i magazyny PBS: zajętość co godzinę, prognoza z przyrostu w ostatnich 14 dniach
   (potrzeba min. 2 dni danych). Poniżej 14 dni do zapełnienia — wiadomość na Discord (raz na tydzień).

@@ -68,7 +68,7 @@ def items(conn, now=None):
         label = names.get(dev, s["external_id"])
         out.append({"when": ts, "level": "down" if ts < now + 7 * 86400 else "warn",
                     "text": f"Opłata {label} kończy się {_days(ts - now)} ({exp})",
-                    "link": f"/urzadzenia/{dev}" if dev else "/infrastruktura/vps"})
+                    "link": f"/urzadzenia/{dev}" if dev else "/infrastruktura/zrodla"})
     waiting = {}
     for u in conn.execute(select(update_item.c.integration_id, update_item.c.external_id, update_item.c.detected_at)
                           .where(update_item.c.security.is_(True),

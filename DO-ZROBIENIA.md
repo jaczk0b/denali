@@ -66,6 +66,12 @@ Kod sprawdzony testami i w przeglądarce na lokalnej bazie demo, nie na prawdziw
       sprawdzenia. Legenda mapy z tymi nazwami. Do sprawdzenia: czy VLAN z nazwy urządzenia (`br-lan.30`) zgadza się z DSA
       na AX23 (przy VLAN-ach na mostku urządzenie może nazywać się inaczej — wtedy numer zostanie pusty, nazwa i sieć działają).
 
+- [ ] *Infrastruktura → Źródła* (zamiast osobnych zakładek Proxmox, TrueNAS, Docker, Sieć, VPS): każda integracja
+      w tym samym układzie — kafle, „Do sprawdzenia”, tabele z kolumnami Stan · Nazwa · Adres i sieć · Zasoby · Szczegóły
+      · Akcje. Stare adresy przekierowują. Sprawdzić na prawdziwych danych, czy niczego nie brakuje względem starych zakładek.
+- [ ] Mapa: przybliżanie kółkiem, przesuwanie tła, *Całość*; bez przewijania strony w bok.
+- [ ] Poprawione: wskaźniki CPU/RAM/zajętości w Proxmoxie i TrueNAS były ucięte (kolizja klasy `.meter`).
+
 ## 2. Bezpieczeństwo — do domknięcia
 
 - [ ] Hasło, które trafiło do logu Komodo i do rozmowy — jeśli używasz go gdziekolwiek, zmień je tam.

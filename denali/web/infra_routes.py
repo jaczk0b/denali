@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from sqlalchemy import func, or_, select
 
 from .. import (actions, alerts, auth, changes, checks, configs, desk, deskview, discovery, docs, files, forecast, history, incidents, infra_views, integrations,
-               inventory as inv, live, maintenance, profiles, racks, status, tablet, terms, upcoming, updates, vault)
+               inventory as inv, live, maintenance, profiles, racks, sources_view, status, tablet, terms, upcoming, updates, vault)
 from ..db import kv_get
 from ..models import (cable, dependency, device, device_address, external_ref, incident, integration, procedure,
                       procedure_step, runbook, setting)
@@ -130,6 +130,9 @@ def device_list(request: Request, q: str = "", stan: str = "", sess: dict = Depe
             .where(device_address.c.kind == "ip").order_by(device_address.c.is_primary))}
         names = {r["id"]: r["name"] for r in rows}
         tabs = infra_views.tabs(conn)
+        ctx = sources_view.Ctx(conn)
+        addrs = {d["id"]: ctx.addr(d["id"]) for d in rows}
+        monitor = {d["id"]: profiles.value(conn, d["id"], "monitor") for d in rows}
     total = len(rows)
     needle = q.strip().lower()
     if needle:
@@ -143,6 +146,7 @@ def device_list(request: Request, q: str = "", stan: str = "", sess: dict = Depe
         if devs:
             groups.append((label, devs))
     return render(request, "urzadzenia.html", {"groups": groups, "marks": marks, "ips": ips, "names": names,
+                                               "addrs": addrs, "monitor": monitor,
                                                "states": states, "tabs": tabs, "q": q, "stan": stan,
                                                "shown": len(rows), "total": total})
 

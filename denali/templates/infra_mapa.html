@@ -11,7 +11,7 @@
   {%- elif state == "effect" %}<path d="M{{ cx }} {{ cy - 5.5 }}l5.5 10h-11z" fill="none" stroke="#ffc85a" stroke-width="1.6" stroke-linejoin="round"/>
   {%- else %}<circle cx="{{ cx }}" cy="{{ cy }}" r="5" fill="none" stroke="#8f98a8" stroke-width="1.6" stroke-dasharray="2.2 2"/>{% endif -%}
 {%- endmacro %}
-{% macro href(id) %}{% if id == "internet" %}/infrastruktura/siec{% elif picking %}/infrastruktura/mapa?co_jesli={{ id }}{% if clients %}&amp;klienci=1{% endif %}{% else %}/urzadzenia/{{ id }}{% endif %}{% endmacro %}
+{% macro href(id) %}{% if id == "internet" %}/infrastruktura/zrodla{% elif picking %}/infrastruktura/mapa?co_jesli={{ id }}{% if clients %}&amp;klienci=1{% endif %}{% else %}/urzadzenia/{{ id }}{% endif %}{% endmacro %}
 {% block content %}
 <div class="row-between">
   <h1>Infrastruktura</h1>
@@ -59,6 +59,11 @@
 </section>
 <p class="alert warn" data-map-hint hidden>Przeciągnij ramkę serwera (z maszynami w środku) albo kafelek w inne miejsce, potem „Zapisz układ”.</p>
 <section class="map-wrap" aria-label="Mapa infrastruktury" data-csrf="{{ csrf }}">
+  <div class="map-zoom" role="group" aria-label="Przybliżenie mapy">
+    <button class="btn" type="button" data-map-zoom="in" aria-label="Przybliż">+</button>
+    <button class="btn" type="button" data-map-zoom="out" aria-label="Oddal">−</button>
+    <button class="btn fit" type="button" data-map-zoom="fit" aria-label="Pokaż całą mapę">Całość</button>
+  </div>
   <svg width="{{ m.width }}" height="{{ m.height }}" viewBox="0 0 {{ m.width }} {{ m.height }}" role="img"
        aria-label="Mapa: {{ m.nodes | length }} urządzeń" font-family="Geist, system-ui, sans-serif">
     {% if not m.arranged %}{% for c in m.columns %}<text class="map-col" x="{{ c.x }}" y="20" fill="#a6aed4" font-size="12">{{ c.label | upper }}</text>{% endfor %}{% endif %}
@@ -95,7 +100,8 @@
     <span><svg width="28" height="8" aria-hidden="true"><path d="M0 4h28" stroke="#ff6b61" stroke-width="2" stroke-dasharray="6 5"/></svg> dane przerwane</span>
     <span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#b3bcc6" stroke-width="1.6" stroke-dasharray="2.5 2"/></svg> skutek awarii</span>
     {% for net, color in m.nets.items() %}<span><svg width="6" height="14" aria-hidden="true"><rect width="4" height="14" rx="2" fill="{{ color }}"/></svg> {{ net }}</span>{% endfor %}
-    <span>Ramka = serwer, w środku maszyny, które na nim działają. Powiązania widać po najechaniu na urządzenie.</span>
+    <span>Ramka = serwer, w środku maszyny, które na nim działają. Powiązania widać po najechaniu na urządzenie.
+      Kółko myszy przybliża, przeciągnięcie tła przesuwa.</span>
   </div>
 </section>
 {% endif %}

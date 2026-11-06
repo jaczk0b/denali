@@ -12,20 +12,16 @@ from .adapters.tplink import BAND
 from .models import dependency, device, rack, device_address, external_ref, integration, observed_state, update_item
 
 TABS = [("mapa", "Mapa", "/infrastruktura/mapa"), ("lista", "Lista", "/urzadzenia"),
-        ("proxmox", "Proxmox", "/infrastruktura/proxmox"), ("truenas", "TrueNAS", "/infrastruktura/truenas"),
-        ("docker", "Docker", "/infrastruktura/docker"), ("siec", "Sieć", "/infrastruktura/siec"),
-        ("vps", "VPS", "/infrastruktura/vps"), ("adresy", "Adresy IP", "/infrastruktura/adresy"), ("szafa", "Szafa", "/infrastruktura/szafa")]
-# Zakładka źródła jest widoczna dopiero, gdy jest podłączona integracja tego typu — bez pustych zakładek.
-TAB_SOURCES = {"proxmox": ("proxmox",), "truenas": ("truenas",), "docker": ("komodo",), "siec": ("tplink", "openwrt"),
-               "vps": ("ovh",)}
+        ("zrodla", "Źródła", "/infrastruktura/zrodla"), ("adresy", "Adresy IP", "/infrastruktura/adresy"),
+        ("szafa", "Szafa", "/infrastruktura/szafa")]
 WORST = ("down", "warn", "unknown", "off", "ok")
 
 
 def tabs(conn):
-    present = {r.type for r in conn.execute(select(integration.c.type).distinct())}
-    has_rack = conn.execute(select(rack.c.id).limit(1)).first() is not None   # Szafa dopiero, gdy jakaś jest
+    has_source = conn.execute(select(integration.c.id).limit(1)).first() is not None   # Źródła: gdy jest integracja
+    has_rack = conn.execute(select(rack.c.id).limit(1)).first() is not None            # Szafa: gdy jest szafa
     return [(key, label, url) for key, label, url in TABS
-            if (key not in TAB_SOURCES or present & set(TAB_SOURCES[key])) and (key != "szafa" or has_rack)]
+            if (key != "zrodla" or has_source) and (key != "szafa" or has_rack)]
 
 
 def worst(states):

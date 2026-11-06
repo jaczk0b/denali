@@ -299,9 +299,10 @@ def test_zakladka_siec_i_strona_integracji(app, router):
     cli = new_client(app)
     do_login(cli, "admin")
     enable_2fa(cli, app, "admin")
-    html = cli.get("/infrastruktura/siec").text
-    assert "OpenWrt 24.10.0" in html and "pakiety do aktualizacji: 2" in html and "83.1.2.3" in html
-    assert "lan3 100 Mb/s, półdupleks" in html and "„Dom”" in html and "iPhone-Jakub" in html
+    html = cli.get("/infrastruktura/siec", follow_redirects=True).text
+    assert "OpenWrt 24.10.0" in html and "Pakiety do aktualizacji na routerze: 2" in html and "83.1.2.3" in html
+    assert "lan3" in html and "100 Mb/s, półdupleks" in html and "„Dom”" in html and "iPhone-Jakub" in html
+    assert "Sieci (VLAN-y)" in html and "192.168.1.0/24" in html
     form = cli.get("/admin/integracje/nowa?typ=openwrt").text
     assert "uhttpd -m" in form and "denali-kopia" in form
     page = cli.get(f"/admin/integracje/{router['iid']}").text

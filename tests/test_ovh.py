@@ -190,14 +190,14 @@ def test_zakladka_vps_i_terminal(app):
     with app.state.engine.begin() as c:
         row = integrations.get(c, integrations.save(c, app.state.box, "ovh", "OVH", CONFIG, SECRETS))
     assert run(integrations.poll_one(app.state.engine, app.state.box, row, ovh_api())) is None
-    html = cli.get("/infrastruktura/vps").text
+    html = cli.get("/infrastruktura/vps", follow_redirects=True).text
     assert "vps-pangolin" in html and "Warsaw" in html and "51.68.1.2" in html and "PL101" in html
-    assert "Zatwierdź, by mieć terminal" in html and 'href="/infrastruktura/vps"' in html
+    assert "Zatwierdź, by mieć terminal" in html and 'href="/infrastruktura/zrodla"' in html
     with app.state.engine.begin() as c:
         ref = next(r for r in discovery.pending(c) if r["external_id"] == f"vps/{NAME}")
         discovery.approve(c, ref["id"], "admin")
-    html = cli.get("/infrastruktura/vps").text
-    assert 'href="/terminale/' in html and "Karta urządzenia" in html
+    html = cli.get("/infrastruktura/vps", follow_redirects=True).text
+    assert 'href="/terminale/' in html and 'href="/urzadzenia/' in html
     with app.state.engine.connect() as c:
         device_id = c.execute(select(device.c.id).where(device.c.kind == "vps")).scalar_one()
         assert consoles.addresses(c, device_id)[0] == "51.68.1.2"

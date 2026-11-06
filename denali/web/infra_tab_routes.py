@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 
-from .. import actions, auth, infra_views as views, live, mapview, oui, racks, status
-from ..models import device, rack, rack_item
+from .. import actions, auth, infra_views as views, live, mapview, oui, racks, sources_view, status
+from ..models import device, integration, rack, rack_item
 from ..templating import render
 from .deps import client_ip, require_admin, require_user
 
@@ -34,44 +34,33 @@ def _actions(conn, sess, rows):
     return actions.ready_by_target(conn, [r["device_id"] for r in rows if r["device_id"]])
 
 
-@router.get("/infrastruktura/proxmox")
-def tab_proxmox(request: Request, sess: dict = Depends(require_user)):
-    def build(conn):
-        clusters = views.proxmox(conn)
-        return {"clusters": clusters, "admin": sess["role"] == "admin",
-                "acts": _actions(conn, sess, [g for c in clusters for g in c["guests"]])}
-    return _page(request, "infra_proxmox.html", "proxmox", build)
+@router.get("/infrastruktura/zrodla")
+def tab_sources(request: Request, z: str = "", sess: dict = Depends(require_user)):
+    """Wszystkie integracje w jednym układzie. z: id integracji albo „agenci”; bez — pierwsza z problemem."""
+    with request.app.state.engine.connect() as conn:
+        tabs = views.tabs(conn)
+        sources = sources_view.overview(conn)
+        key = z if any(o["key"] == z for o in sources) else next(
+            (o["key"] for o in sources if o["state"] in ("down", "warn")), sources[0]["key"] if sources else "")
+        data_dir = request.app.state.settings.data_dir
+        v = sources_view.build(conn, key, vendor=lambda mac: oui.lookup(data_dir, mac)) if key else None
+        rows = [r for t in (v["tables"] if v else []) for r in t["rows"]]
+        return render(request, "infra_zrodla.html", {"tabs": tabs, "sources": sources, "key": key, "v": v,
+                                                     "admin": sess["role"] == "admin", "acts": _actions(conn, sess, rows)})
 
 
-@router.get("/infrastruktura/truenas")
-def tab_truenas(request: Request, sess: dict = Depends(require_user)):
-    return _page(request, "infra_truenas.html", "truenas", lambda c: {"nases": views.truenas(c),
-                                                                      "tn_levels": views.TN_LEVELS})
+def _old_tab(types):
+    """Dawne zakładki źródeł (linki z pulpitu, zakładki w przeglądarce) prowadzą do tego samego źródła w Źródłach."""
+    def go(request: Request, sess: dict = Depends(require_user)):
+        with request.app.state.engine.connect() as conn:
+            r = conn.execute(select(integration.c.id).where(integration.c.type.in_(types)).order_by(integration.c.name)).first()
+        return RedirectResponse(f"/infrastruktura/zrodla?z={r.id}" if r else "/infrastruktura/zrodla", 303)
+    return go
 
 
-@router.get("/infrastruktura/docker")
-def tab_docker(request: Request, sess: dict = Depends(require_user)):
-    def build(conn):
-        komodos = views.docker(conn)
-        return {"komodos": komodos, "admin": sess["role"] == "admin",
-                "acts": _actions(conn, sess, [s for k in komodos for g in k["groups"] for s in g["stacks"]])}
-    return _page(request, "infra_docker.html", "docker", build)
-
-
-@router.get("/infrastruktura/siec")
-def tab_network(request: Request, sess: dict = Depends(require_user)):
-    def build(conn):
-        nets = views.network(conn)
-        for n in nets:
-            for c in n["clients"]:
-                c["vendor"] = oui.lookup(request.app.state.settings.data_dir, c["mac"])
-        return {"nets": nets, "clients": views.all_clients(nets), "weak_signal": views.WEAK_SIGNAL, "bands": views.BAND}
-    return _page(request, "infra_siec.html", "siec", build)
-
-
-@router.get("/infrastruktura/vps")
-def tab_vps(request: Request, sess: dict = Depends(require_user)):
-    return _page(request, "infra_vps.html", "vps", lambda c: {"accounts": views.vps(c)})
+for _path, _types in (("proxmox", ("proxmox",)), ("truenas", ("truenas",)), ("docker", ("komodo",)),
+                      ("siec", ("openwrt", "tplink")), ("vps", ("ovh",))):
+    router.add_api_route(f"/infrastruktura/{_path}", _old_tab(_types), methods=["GET"])
 
 
 @router.get("/infrastruktura/adresy")

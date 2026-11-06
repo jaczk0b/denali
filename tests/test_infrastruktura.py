@@ -39,7 +39,7 @@ def full(app, monkeypatch):
 def test_zakladki_tylko_dla_podlaczonych_zrodel(app, conn):
     assert [k for k, _l, _u in infra_views.tabs(conn)] == ["mapa", "lista", "adresy"]   # Szafa: gdy jest jakaś
     integrations.save(conn, app.state.box, "komodo", "komodo", KOMODO_CONFIG, KOMODO_SECRETS)
-    assert "docker" in [k for k, _l, _u in infra_views.tabs(conn)]
+    assert "zrodla" in [k for k, _l, _u in infra_views.tabs(conn)]          # Źródła: gdy jest jakaś integracja
 
 
 def test_dane_zakladek(full):
@@ -69,18 +69,18 @@ def test_strony_zakladek(full):
                            ("/infrastruktura/docker", "Nowsze obrazy"), ("/infrastruktura/siec", "Kto jest w sieci"),
                            ("/infrastruktura/adresy", "192.168.1.0/24"), ("/infrastruktura/szafa", "Dodaj szafę"),
                            ("/urzadzenia", "Od góry to, czego używasz")]:
-            r = cl.get(path)
+            r = cl.get(path, follow_redirects=True)                  # dawne zakładki źródeł → Źródła
             assert r.status_code == 200, path
             assert text in r.text, path
             assert 'class="tabs infra-tabs"' in r.text, path
         assert cl.get("/infrastruktura").headers["location"] == "/infrastruktura/mapa"
-        tn = cl.get("/infrastruktura/truenas").text
-        assert "Powiadomienia TrueNAS" in tn and "Nowa wersja TrueNAS" in tn and "informacja" in tn
-        assert "odrzucony" not in tn
-        assert "Dyski i SMART" in tn and "WD-222" in tn and "Completed: read failure" in tn
-        docker = cl.get("/infrastruktura/docker").text
-        assert "immich-server:<strong>release</strong>" in docker and "nowszy obraz w rejestrze" in docker
-        assert "redis:<strong>6.2-alpine</strong>" in docker
+        tn = cl.get("/infrastruktura/truenas", follow_redirects=True).text
+        assert "TrueNAS (informacja): Nowa wersja TrueNAS" in tn and "odrzucony" not in tn
+        assert "Dyski" in tn and "WD-222" in tn and "Completed: read failure" in tn and "Do sprawdzenia" in tn
+        docker = cl.get("/infrastruktura/docker", follow_redirects=True).text
+        assert "immich-server:release — nowszy obraz" in docker and "redis:6.2-alpine" in docker
+        # wszystkie źródła w jednym układzie: te same kolumny w każdej tabeli
+        assert docker.count("<th>Adres i sieć</th>") == docker.count("<table") >= 2
 
 
 def test_przyciski_akcji_na_zakladkach(full):
@@ -95,14 +95,14 @@ def test_przyciski_akcji_na_zakladkach(full):
     with new_client(full) as cl:
         do_login(cl)
         enable_2fa(cl, full)
-        page = cl.get("/infrastruktura/proxmox").text
+        page = cl.get("/infrastruktura/proxmox", follow_redirects=True).text
         assert "<th>Akcje</th>" in page and "Zrób snapshot…" in page
         assert "/akcje/" in page and "proxmox.snapshot" in page and "proxmox.reboot" not in page
-        assert "<th>Akcje</th>" in cl.get("/infrastruktura/docker").text      # Komodo bez tokenu: same kreski
+        assert "<th>Akcje</th>" in cl.get("/infrastruktura/docker", follow_redirects=True).text   # Komodo bez tokenu: kreski
     make_user(full, "domownik", "inne-dlugie-haslo-domownika", role="podglad")
     with new_client(full) as cl:
         do_login(cl, "domownik", "inne-dlugie-haslo-domownika")
-        page = cl.get("/infrastruktura/proxmox").text
+        page = cl.get("/infrastruktura/proxmox", follow_redirects=True).text
         assert page.count("Maszyny i kontenery") and "<th>Akcje</th>" not in page and "Zrób snapshot" not in page
 
 
@@ -112,7 +112,8 @@ def test_zakladka_bez_zrodla_wraca_do_listy(app):
         do_login(cl)
         enable_2fa(cl, app)
         r = cl.get("/infrastruktura/proxmox")
-        assert r.status_code == 303 and r.headers["location"] == "/urzadzenia"
+        assert r.status_code == 303 and r.headers["location"] == "/infrastruktura/zrodla"
+        assert "Nie ma jeszcze żadnej integracji" in cl.get(r.headers["location"]).text
 
 
 def test_adresy_ip_zajete_wolne_konflikt(conn):
@@ -322,3 +323,26 @@ def test_mapa_internet_vps_kolory_i_uklad(app, conn):
     assert n2[router]["x"] == nodes[router]["x"] and m2["arranged"]          # zła pozycja odrzucona
     mapview.save_layout(conn, None)
     assert not mapview.build(conn, {}, {})["arranged"]
+
+
+def test_zrodla_wspolny_uklad_i_widok_ogolny(full):
+    """Każde źródło ma ten sam kształt; integracja bez własnego opisu dostaje widok ogólny ze swoich stanów."""
+    import time
+    from denali import sources_view
+    from denali.models import integration, observed_state
+    with full.state.engine.begin() as c:
+        iid = c.execute(integration.insert().values(type="nowa", name="nowa-integracja")).inserted_primary_key[0]
+        c.execute(observed_state.insert().values(integration_id=iid, external_id="x/1", state="warn", summary="coś",
+                                                 data={"alarms": [{"text": "sprawdź x"}]}, observed_at=time.time()))
+    with full.state.engine.connect() as c:
+        over = sources_view.overview(c)
+        assert [o["type"] for o in over][:3] == ["proxmox", "pbs", "truenas"]       # stała kolejność typów
+        for o in over:
+            v = sources_view.build(c, o["key"])
+            assert set(v) >= {"kpis", "checks", "tables"}, o["name"]
+            for t in v["tables"]:
+                for r in t["rows"]:
+                    assert set(r) >= {"state", "name", "ip", "net", "meters", "details", "links"}, (o["name"], t["title"])
+        v = sources_view.build(c, str(iid))
+        assert v["tables"][0]["rows"][0]["details"] == ["coś"] and v["checks"] == [{"state": "warn", "text": "sprawdź x"}]
+        assert sources_view.build(c, "999") is None and sources_view.build(c, "agenci") is None

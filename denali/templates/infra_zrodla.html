@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_makra.html" import infra_nav, bar, state_pill, st, action_buttons %}
+{% block title %}{% if v %}{{ v.name }} · {% endif %}Źródła · Infrastruktura{% endblock %}
+{% block content %}
+<h1>Infrastruktura</h1>
+{{ infra_nav(tabs, "zrodla") }}
+
+<nav class="src-switch" aria-label="Źródła danych">
+  {% for o in sources %}
+  <a href="/infrastruktura/zrodla?z={{ o.key }}" class="src-pick {{ o.state }}"{% if v and o.key == key %} aria-current="page"{% endif %}>
+    <span class="src-pick-head">{{ st({"ok": "ok", "down": "down", "warn": "warn"}.get(o.state, "unknown"), 14) }}<b>{{ o.name }}</b></span>
+    <span class="muted small">{{ o.label }}{% if not o.enabled %} · wyłączona{% endif %}</span>
+    <span class="small {{ 'down-text' if o.error else ('warn-text' if o.problems else 'muted') }}">
+      {%- if o.error %}odczyt nieudany{% elif o.problems %}do sprawdzenia: {{ o.problems }}{% else %}wszystko działa{% endif %}</span>
+  </a>
+  {% endfor %}
+  {% if admin %}<a href="/admin/integracje" class="src-pick add"><b>+ Dodaj</b><span class="muted small">integrację</span></a>{% endif %}
+</nav>
+
+{% if not v %}
+<div class="card"><p class="muted">Nie ma jeszcze żadnej integracji. Podłącz Proxmoxa, TrueNAS, Komodo albo router w
+  <a href="/admin/integracje">Integracjach</a> — pojawią się tutaj w jednym, wspólnym układzie.</p></div>
+{% else %}
+<section class="src-head">
+  <div>
+    <h2>{{ v.name }} <span class="muted">· {{ v.label }}</span></h2>
+    <p class="muted small">
+      {%- if v.row %}{% if v.row.last_ok_at %}odczyt {{ v.row.last_ok_at | hm }}{% else %}jeszcze bez odczytu{% endif %}{% endif %}
+      {%- if v.row and v.row.last_error %} · <span class="pill down">{{ st("down", 12) }} ostatni odczyt nieudany: {{ v.row.last_error }}</span>{% endif %}</p>
+  </div>
+  <div class="actions">
+    {% if v.device_id %}<a class="btn" href="/urzadzenia/{{ v.device_id }}">Karta urządzenia</a>{% endif %}
+    {% if admin and v.row %}<a class="btn" href="/admin/integracje/{{ v.row.id }}">Ustawienia</a>{% endif %}
+    {% if v.open_url %}<a class="btn" href="{{ v.open_url }}" target="_blank" rel="noopener noreferrer">Otwórz ↗</a>{% endif %}
+  </div>
+</section>
+
+{% if v.kpis %}
+<section class="src-kpis" aria-label="Podsumowanie">
+  {% for k in v.kpis %}
+  <div class="src-kpi {{ k.state or '' }}">
+    <span class="muted small">{{ k.label }}</span>
+    <b>{{ k.value }}</b>
+    {% if k.pct is number %}{{ bar(k.pct) }}{% endif %}
+    {% if k.sub %}<span class="muted small">{{ k.sub }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if v.checks %}
+<section class="alert warn src-checks" aria-label="Do sprawdzenia">
+  {{ st("warn", 16) }}
+  <div><strong>Do sprawdzenia</strong>
+    <ul class="plain">{% for c in v.checks %}<li>{{ st(c.state, 12) }} {{ c.text }}</li>{% endfor %}</ul></div>
+</section>
+{% endif %}
+
+{% for t in v.tables if t.rows %}
+<section class="card src-table" aria-labelledby="t-{{ loop.index }}">
+  <h3 id="t-{{ loop.index }}">{{ t.title }} <span class="count">{{ t.rows | length }}</span></h3>
+  <div class="table-wrap">
+    <table>
+      <colgroup><col class="c-state"><col class="c-name"><col class="c-addr"><col class="c-res"><col>{% if admin %}<col class="c-act">{% endif %}</colgroup>
+      <thead><tr><th>Stan</th><th>Nazwa</th><th>Adres i sieć</th><th>Zasoby</th><th>Szczegóły</th>{% if admin %}<th>Akcje</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for r in t.rows %}
+      <tr{% if r.state == "down" %} class="is-down"{% endif %}>
+        <td>{{ state_pill(r.state) }}</td>
+        <td>{% if r.device_id %}<a href="/urzadzenia/{{ r.device_id }}"><b>{{ r.name }}</b></a>{% else %}<b>{{ r.name }}</b>{% endif %}
+          {% if r.sub %}<div class="muted small">{{ r.sub }}</div>{% endif %}</td>
+        <td>{% if r.ip %}<span class="mono small">{{ r.ip }}</span>{% else %}<span class="muted">—</span>{% endif %}
+          {% if r.net %}<div class="src-net small"><i class="dot"{% if r.net.color %} data-style="background: {{ r.net.color }}"{% endif %}></i>{{ r.net.label }}</div>{% endif %}</td>
+        <td>{% for m in r.meters %}<div class="src-meter"><span class="muted small">{{ m.label }}</span><span class="small mono">{{ m.text }}</span>{{ bar(m.pct) }}</div>{% else %}<span class="muted">—</span>{% endfor %}</td>
+        <td class="small">{% for d in r.details %}<div>{{ d }}</div>{% endfor %}</td>
+        {% if admin %}<td>{% if r.links %}<div class="actions">{% for text, url in r.links %}<a class="btn small" href="{{ url }}">{{ text }}</a>{% endfor %}</div>{% endif %}
+          {% set a = acts.get((v.row.id if v.row else 0, r.eid)) %}{% if a or not r.links %}{{ action_buttons(a) }}{% endif %}</td>{% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}
