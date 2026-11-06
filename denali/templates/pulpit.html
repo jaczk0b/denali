@@ -15,6 +15,12 @@
 <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16l1-4 8-8 3 3-8 8z"/><path d="M11.5 5.5l3 3"/></svg>
 {%- endmacro %}
 
+{# Nagłówki działów: wykres przy Statystykach, siatka skrótów przy kategoriach ikon. #}
+{% macro label_icon(kind) -%}
+<svg class="label-icon" width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if kind == "stat" %}<path d="M4 16V10M10 16V4M16 16v-8"/>{% else %}<rect x="3.5" y="3.5" width="5" height="5" rx="1.2"/><rect x="11.5" y="3.5" width="5" height="5" rx="1.2"/><rect x="3.5" y="11.5" width="5" height="5" rx="1.2"/><rect x="11.5" y="11.5" width="5" height="5" rx="1.2"/>{% endif %}</svg>
+{%- endmacro %}
+
 {% macro cross() -%}
 <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
 {%- endmacro %}
@@ -29,10 +35,19 @@
 <span class="app-icon">{% if t.logo and look.icons == "logo" %}<img src="{{ t.logo }}" alt="">{% else %}{{ t.icon or (t.name | initials) }}{% endif %}</span>
 {%- endmacro %}
 
+{# Symbol w rogu kafelka mówi, co zrobi kliknięcie: nowa karta, strona panelu albo kopiowanie. #}
+{% macro tile_go(t) -%}
+<span class="tile-go" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+{%- if t.copy_only %}<rect x="7" y="7" width="9" height="9" rx="1.5"/><path d="M13 4H5.5A1.5 1.5 0 0 0 4 5.5V13"/>
+{%- elif t.external %}<path d="M7 13l7-7M8 6h6v6"/>
+{%- else %}<path d="M8 5l5 5-5 5"/>{% endif %}</svg></span>
+{%- endmacro %}
+
 {% macro tile_body(t) %}
-<span class="tile-top">{{ app_icon(t) }}{% if t.lan_only and look.mark_lan %}<span class="tag down">tylko w domu</span>{% endif %}</span>
+<span class="tile-top">{{ app_icon(t) }}
 <span class="tile-text"><span class="tile-name"{% if t.copy_only %} data-copy-label{% endif %}>{{ t.name }}</span>
-  {% if look.show_host %}<span class="tile-host">{{ t.host }}</span>{% endif %}</span>
+  {% if look.show_host %}<span class="tile-host">{{ t.host }}</span>{% endif %}</span>{{ tile_go(t) }}</span>
+{% if t.lan_only and look.mark_lan %}<span class="tile-tags"><span class="tag down">tylko w domu</span></span>{% endif %}
 {% if t.copy_only %}<span class="tile-status">kliknij, by skopiować</span>
 {% elif t.status %}<span class="tile-status {{ t.status }}">{{ st(t.status, 14) }}<span>{{ t.status_text }}</span></span>{% endif %}
 {% endmacro %}
@@ -244,7 +259,7 @@
       <section class="desk-section" data-section="statystyki" aria-labelledby="statystyki">
         <div class="section-head">
           {% if edit %}{{ grip("Statystyki") }}{% endif %}
-          <h2 class="desk-label" id="statystyki">Statystyki</h2>
+          <h2 class="desk-label" id="statystyki">{{ label_icon("stat") }}Statystyki</h2>
           {% if edit %}<button type="button" class="btn small" data-add data-tab="statystyki">+ Dodaj statystykę</button>
           {% elif can_edit %}<a class="plus" href="/?edycja=1&amp;dodaj=0" aria-label="Dodaj statystykę">+</a>{% endif %}
         </div>
@@ -260,7 +275,7 @@
           <input class="cat-name" value="{{ s.name }}" maxlength="100" aria-label="Nazwa kategorii" data-rename="{{ s.id }}">
           <button type="button" class="btn small" data-add data-category="{{ s.id }}">+ Dodaj</button>
           <button type="button" class="mini" data-remove="kategoria" data-id="{{ s.id }}" aria-label="Usuń kategorię {{ s.name }}">{{ cross() }}</button>
-          {% else %}<h2 class="desk-label">{{ s.name }}</h2>
+          {% else %}<h2 class="desk-label">{{ label_icon("tiles") }}{{ s.name }}</h2>
           {% if can_edit %}<a class="plus" href="/?edycja=1&amp;dodaj={{ s.id }}" aria-label="Dodaj do: {{ s.name }}">+</a>{% endif %}{% endif %}
         </div>
         <div class="tiles" data-tiles="{{ s.id }}">{% for t in s.tiles %}{{ tile(t) }}{% endfor %}</div>
